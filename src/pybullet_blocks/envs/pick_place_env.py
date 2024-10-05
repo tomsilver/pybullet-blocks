@@ -48,8 +48,8 @@ class PickPlacePyBulletBlocksState:
     @classmethod
     def from_vec(cls, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksState:
         """Build a state from a vector."""
-        assert len(vec) == 7 + 7 + 8
-        block_pose_vec, robot_joints_vec, grasp_vec = np.split(vec, [7, 7])
+        assert len(vec) == 7 + 9 + 8
+        block_pose_vec, robot_joints_vec, grasp_vec = np.split(vec, [7, 9])
         block_pose = Pose(tuple(block_pose_vec[:3]), tuple(block_pose_vec[3:]))
         robot_joints = robot_joints_vec.tolist()
         if grasp_vec[0] < 0.5:  # no grasp
@@ -65,16 +65,44 @@ class PickPlacePyBulletBlocksSceneDescription:
 
     robot_name: str = "panda"  # must be 7-dof and have fingers
     robot_base_pose: Pose = Pose.identity()
-    initial_joints: JointPositions = field(default_factory=lambda: [0.0] * 7)
+    initial_joints: JointPositions = field(default_factory=lambda: [
+            -1.6760817784086874,
+            -0.8633617886115512,
+            1.0820023618960484,
+            -1.7862427129376002,
+            0.7563762599673787,
+            1.3595324116603988,
+            1.7604148617061273,
+            0.04,
+            0.04,
+        ])
+    
+    robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
+    robot_stand_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
+    robot_stand_half_extents: tuple[float, float, float] = (0.2, 0.2, 0.225)
+
+    table_pose: Pose = Pose((0.5, 0.0, -0.175))
+    table_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
+    table_half_extents: tuple[float, float, float] = (0.25, 0.4, 0.25)
 
     block_rgba: tuple[float, float, float, float] = (0.5, 0.0, 0.5, 1.0)
-    block_half_extents: tuple[float, float, float] = (0.1, 0.1, 0.1)
-    block_init_position_lower: tuple[float, float, float] = (0.5, 0.6, 0.25)
-    block_init_position_upper: tuple[float, float, float] = (0.55, 0.65, 0.25)
+    block_half_extents: tuple[float, float, float] = (0.03, 0.03, 0.03)
 
-    table_pose: Pose = Pose((0.5, 0.75, -0.175))
-    table_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
-    table_half_extents: tuple[float, float, float] = (0.25, 0.4, 0.345)
+    @property
+    def block_init_position_lower(self) -> tuple[float, float, float]:
+        return (
+            self.table_pose.position[0] - self.table_half_extents[0] + self.block_half_extents[0],
+            self.table_pose.position[1] - self.table_half_extents[1] + self.block_half_extents[1],
+            self.table_pose.position[2] + self.table_half_extents[2] + self.block_half_extents[2],
+        )
+    
+    @property
+    def block_init_position_upper(self) -> tuple[float, float, float]:
+        return (
+            self.table_pose.position[0] + self.table_half_extents[0] - self.block_half_extents[0],
+            self.table_pose.position[1] + self.table_half_extents[1] - self.block_half_extents[1],
+            self.table_pose.position[2] + self.table_half_extents[2] + self.block_half_extents[2],
+        )
 
 
 class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
@@ -99,9 +127,9 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
 
         # Set up gym spaces.
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(7 + 7 + 8,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(7 + 9 + 8,), dtype=np.float32
         )
-        self.action_space = spaces.Box(low=-0.1, high=0.1, shape=(7,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-0.1, high=0.1, shape=(9,), dtype=np.float32)
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -123,6 +151,19 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         assert isinstance(robot, FingeredSingleArmPyBulletRobot)
         robot.close_fingers()
         self._robot = robot
+
+        # Create robot stand.
+        self._robot_stand_id = create_pybullet_block(
+            self.scene_description.robot_stand_rgba,
+            half_extents=self.scene_description.robot_stand_half_extents,
+            physics_client_id=self.physics_client_id,
+        )
+        p.resetBasePositionAndOrientation(
+            self._robot_stand_id,
+            self.scene_description.robot_stand_pose.position,
+            self.scene_description.robot_stand_pose.orientation,
+            physicsClientId=self.physics_client_id,
+        )
 
         # Create table.
         self._table_id = create_pybullet_block(
@@ -181,7 +222,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             self.scene_description.block_init_position_upper,
         )
         p.resetBasePositionAndOrientation(
-            self._table_id,
+            self._block_id,
             block_position,
             (0, 0, 0, 1),
             physicsClientId=self.physics_client_id,
