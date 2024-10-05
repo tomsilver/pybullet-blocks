@@ -25,6 +25,7 @@ class PickPlacePyBulletBlocksState:
     """A state in the PickPlacePyBulletBlocksEnv."""
 
     block_pose: Pose
+    target_pose : Pose
     robot_joints: JointPositions
     grasp_transform: Pose | None
 
@@ -41,6 +42,8 @@ class PickPlacePyBulletBlocksState:
         inner_vecs: list[ArrayLike] = [
             self.block_pose.position,
             self.block_pose.orientation,
+            self.target_pose.position,
+            self.target_pose.orientation,
             self.robot_joints,
             grasp_vec,
         ]
@@ -49,15 +52,16 @@ class PickPlacePyBulletBlocksState:
     @classmethod
     def from_vec(cls, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksState:
         """Build a state from a vector."""
-        assert len(vec) == 7 + 9 + 8
-        block_pose_vec, robot_joints_vec, grasp_vec = np.split(vec, [7, 9])
+        assert len(vec) == 7 + 7 + 9 + 8
+        block_pose_vec, target_pose_vec, robot_joints_vec, grasp_vec = np.split(vec, [7, 14, 23])
         block_pose = Pose(tuple(block_pose_vec[:3]), tuple(block_pose_vec[3:]))
+        target_pose = Pose(tuple(target_pose_vec[:3]), tuple(target_pose_vec[3:]))
         robot_joints = robot_joints_vec.tolist()
         if grasp_vec[0] < 0.5:  # no grasp
             grasp_transform: Pose | None = None
         else:
             grasp_transform = Pose(tuple(grasp_vec[1:4]), tuple(grasp_vec[4:]))
-        return PickPlacePyBulletBlocksState(block_pose, robot_joints, grasp_transform)
+        return PickPlacePyBulletBlocksState(block_pose, target_pose, robot_joints, grasp_transform)
 
 
 @dataclass(frozen=True)
@@ -87,7 +91,7 @@ class PickPlacePyBulletBlocksSceneDescription:
     table_half_extents: tuple[float, float, float] = (0.25, 0.4, 0.25)
 
     block_rgba: tuple[float, float, float, float] = (0.5, 0.0, 0.5, 1.0)
-    block_half_extents: tuple[float, float, float] = (0.03, 0.03, 0.03)
+    block_half_extents: tuple[float, float, float] = (0.025, 0.025, 0.025)
 
     target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
     target_half_extents: tuple[float, float, float] = (0.05, 0.05, 0.001)
@@ -138,7 +142,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
     def __init__(
         self,
         scene_description: PickPlacePyBulletBlocksSceneDescription | None = None,
-        render_mode: str | None = None,
+        render_mode: str | None = "rgb_array",
         use_gui: bool = False,
     ) -> None:
         # Finalize the scene description.
@@ -148,7 +152,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
 
         # Set up gym spaces.
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(7 + 9 + 8,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(7 + 7 + 9 + 8,), dtype=np.float32
         )
         self.action_space = spaces.Box(low=-0.1, high=0.1, shape=(9,), dtype=np.float32)
 
@@ -171,7 +175,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         )
         assert isinstance(robot, FingeredSingleArmPyBulletRobot)
         robot.close_fingers()
-        self._robot = robot
+        self.robot = robot
 
         # Create robot stand.
         self._robot_stand_id = create_pybullet_block(
@@ -229,10 +233,10 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
     ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
         
         # Set the robot joints.
-        new_joints = np.clip(self._robot.get_joint_positions() + action,
-                             self._robot.joint_lower_limits,
-                             self._robot.joint_upper_limits)
-        self._robot.set_joints(new_joints.tolist())
+        new_joints = np.clip(self.robot.get_joint_positions() + action,
+                             self.robot.joint_lower_limits,
+                             self.robot.joint_upper_limits)
+        self.robot.set_joints(new_joints.tolist())
 
         reward = 0.0
         terminated = False
@@ -289,9 +293,35 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
 
     def _get_pick_place_pybullet_state(self) -> PickPlacePyBulletBlocksState:
         block_pose = get_pose(self._block_id, self.physics_client_id)
-        robot_joints = self._robot.get_joint_positions()
+        target_pose = get_pose(self._target_id, self.physics_client_id)
+        robot_joints = self.robot.get_joint_positions()
         grasp_transform = self._current_grasp_transform
-        return PickPlacePyBulletBlocksState(block_pose, robot_joints, grasp_transform)
+        return PickPlacePyBulletBlocksState(block_pose, target_pose, robot_joints, grasp_transform)
+    
+    def get_collision_ids(self) -> set[int]:
+        """Expose all pybullet IDs for collision checking."""
+        ids = {self._table_id, self._target_id}
+        if self._current_grasp_transform is None:
+            ids.add(self._block_id)
+        return ids
+    
+    def set_state(self, obs: NDArray[np.float32]) -> None:
+        """Reset the internal state to the given observation vector."""
+        state = PickPlacePyBulletBlocksState.from_vec(obs)
+        p.resetBasePositionAndOrientation(
+            self._block_id,
+            state.block_pose.position,
+            state.block_pose.orientation,
+            physicsClientId=self.physics_client_id,
+        )
+        p.resetBasePositionAndOrientation(
+            self._target_id,
+            state.target_pose.position,
+            state.target_pose.orientation,
+            physicsClientId=self.physics_client_id,
+        )
+        self.robot.set_joints(state.robot_joints)
+        self._current_grasp_transform = state.grasp_transform
 
     def render(self) -> NDArray[np.uint8]:  # type: ignore
         return capture_image(self.physics_client_id)
