@@ -57,16 +57,30 @@ def test_pick_place_env():
         include_start=False,
     ))
     joint_distance_fn = create_joint_distance_fn(sim.robot)
-    plan = smoothly_follow_end_effector_path(sim.robot, end_effector_path,
+    pregrasp_to_grasp_plan = smoothly_follow_end_effector_path(sim.robot, end_effector_path,
                                       state.robot_joints, sim.get_collision_ids(),
                                       joint_distance_fn,
                                       max_time=max_motion_planning_time,
                                       include_start=False)
-    assert plan is not None
-    for joint_state in plan:
+    assert pregrasp_to_grasp_plan is not None
+    for joint_state in pregrasp_to_grasp_plan:
         action = np.subtract(joint_state, state.robot_joints).astype(np.float32)
         assert env.action_space.contains(action)
         obs, _, _, _, _ = env.step(action)
         state = PickPlacePyBulletBlocksState.from_vec(obs)
+
+    # Close the gripper.
+    action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, -1.0])
+    obs, _, _, _, _ = env.step(action)
+
+    # Move up to remove contact between block and table. Can just reverse the
+    # path that we took to get from pre-grasp to grasp.
+    grasp_to_pregrasp_plan = pregrasp_to_grasp_plan[::-1]
+    for joint_state in grasp_to_pregrasp_plan:
+        action = np.subtract(joint_state, state.robot_joints).astype(np.float32)
+        assert env.action_space.contains(action)
+        obs, _, _, _, _ = env.step(action)
+        state = PickPlacePyBulletBlocksState.from_vec(obs)
+
     
     env.close()
