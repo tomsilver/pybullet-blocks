@@ -265,34 +265,34 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         )
 
         # Create table.
-        self._table_id = create_pybullet_block(
+        self.table_id = create_pybullet_block(
             self.scene_description.table_rgba,
             half_extents=self.scene_description.table_half_extents,
             physics_client_id=self.physics_client_id,
         )
         p.resetBasePositionAndOrientation(
-            self._table_id,
+            self.table_id,
             self.scene_description.table_pose.position,
             self.scene_description.table_pose.orientation,
             physicsClientId=self.physics_client_id,
         )
 
         # Create block.
-        self._block_id = create_pybullet_block(
+        self.block_id = create_pybullet_block(
             self.scene_description.block_rgba,
             half_extents=self.scene_description.block_half_extents,
             physics_client_id=self.physics_client_id,
         )
 
         # Create target.
-        self._target_id = create_pybullet_block(
+        self.target_id = create_pybullet_block(
             self.scene_description.target_rgba,
             half_extents=self.scene_description.target_half_extents,
             physics_client_id=self.physics_client_id,
         )
 
         # Initialize the grasp transform.
-        self._current_grasp_transform: Pose | None = None
+        self.current_grasp_transform: Pose | None = None
 
     def _get_obs(self) -> NDArray[np.float32]:
         state = self._get_pick_place_pybullet_state()
@@ -316,18 +316,18 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
 
         # Update gripper if required.
         if action_obj.gripper_action == 1:
-            self._current_grasp_transform = None
+            self.current_grasp_transform = None
         elif action_obj.gripper_action == -1:
             # Check if the block is close enough to the end effector position
             # and grasp if so.
             world_to_robot = self.robot.get_end_effector_pose()
             end_effector_position = world_to_robot.position
-            world_to_block = get_pose(self._block_id, self.physics_client_id)
+            world_to_block = get_pose(self.block_id, self.physics_client_id)
             block_position = world_to_block.position
             dist = np.sum(np.square(np.subtract(end_effector_position, block_position)))
             # Grasp successful.
             if dist < 1e-6:
-                self._current_grasp_transform = multiply_poses(
+                self.current_grasp_transform = multiply_poses(
                     world_to_robot.invert(), world_to_block
                 )
 
@@ -338,13 +338,13 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         self.robot.set_joints(clipped_joints.tolist())
 
         # Apply the grasp transform if it exists.
-        if self._current_grasp_transform:
+        if self.current_grasp_transform:
             world_to_robot = self.robot.get_end_effector_pose()
             world_to_block = multiply_poses(
-                world_to_robot, self._current_grasp_transform
+                world_to_robot, self.current_grasp_transform
             )
             p.resetBasePositionAndOrientation(
-                self._block_id,
+                self.block_id,
                 world_to_block.position,
                 world_to_block.orientation,
                 physicsClientId=self.physics_client_id,
@@ -355,7 +355,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             terminated = True
             # Check success. For now, just require contact.
             success = check_body_collisions(
-                self._block_id, self._target_id, self.physics_client_id
+                self.block_id, self.target_id, self.physics_client_id
             )
             reward = 1.0 if success else -1.0
         else:
@@ -382,7 +382,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             self.scene_description.block_init_position_upper,
         )
         p.resetBasePositionAndOrientation(
-            self._block_id,
+            self.block_id,
             block_position,
             (0, 0, 0, 1),
             physicsClientId=self.physics_client_id,
@@ -395,13 +395,13 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
                 self.scene_description.target_init_position_upper,
             )
             p.resetBasePositionAndOrientation(
-                self._target_id,
+                self.target_id,
                 target_position,
                 (0, 0, 0, 1),
                 physicsClientId=self.physics_client_id,
             )
             if not check_body_collisions(
-                self._block_id, self._target_id, self.physics_client_id
+                self.block_id, self.target_id, self.physics_client_id
             ):
                 break
 
@@ -409,7 +409,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         self.robot.set_joints(self.scene_description.initial_joints)
 
         # Reset the grasp transform.
-        self._current_grasp_transform = None
+        self.current_grasp_transform = None
 
         observation = self._get_obs()
         info = self._get_info()
@@ -417,46 +417,46 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         return observation, info
 
     def _get_pick_place_pybullet_state(self) -> PickPlacePyBulletBlocksState:
-        block_pose = get_pose(self._block_id, self.physics_client_id)
-        target_pose = get_pose(self._target_id, self.physics_client_id)
+        block_pose = get_pose(self.block_id, self.physics_client_id)
+        target_pose = get_pose(self.target_id, self.physics_client_id)
         robot_joints = self.robot.get_joint_positions()
-        grasp_transform = self._current_grasp_transform
+        grasp_transform = self.current_grasp_transform
         return PickPlacePyBulletBlocksState(
             block_pose, target_pose, robot_joints, grasp_transform
         )
 
     def get_collision_ids(self) -> set[int]:
         """Expose all pybullet IDs for collision checking."""
-        ids = {self._table_id, self._target_id}
-        if self._current_grasp_transform is None:
-            ids.add(self._block_id)
+        ids = {self.table_id, self.target_id}
+        if self.current_grasp_transform is None:
+            ids.add(self.block_id)
         return ids
 
     def get_held_object_id(self) -> int | None:
         """Expose the pybullet ID of the held object, if it exists."""
-        return self._block_id if self._current_grasp_transform else None
+        return self.block_id if self.current_grasp_transform else None
 
     def get_held_object_tf(self) -> Pose | None:
         """Expose the grasp transform for the held object, if it exists."""
-        return self._current_grasp_transform
+        return self.current_grasp_transform
 
     def set_state(self, obs: NDArray[np.float32]) -> None:
         """Reset the internal state to the given observation vector."""
         state = PickPlacePyBulletBlocksState.from_vec(obs)
         p.resetBasePositionAndOrientation(
-            self._block_id,
+            self.block_id,
             state.block_pose.position,
             state.block_pose.orientation,
             physicsClientId=self.physics_client_id,
         )
         p.resetBasePositionAndOrientation(
-            self._target_id,
+            self.target_id,
             state.target_pose.position,
             state.target_pose.orientation,
             physicsClientId=self.physics_client_id,
         )
         self.robot.set_joints(state.robot_joints)
-        self._current_grasp_transform = state.grasp_transform
+        self.current_grasp_transform = state.grasp_transform
 
     def render(self) -> NDArray[np.uint8]:  # type: ignore
         return capture_image(
