@@ -11,7 +11,8 @@ from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
 
 # Create generic types.
 robot_type = Type("robot")
-object_type = Type("object")
+object_type = Type("obj")  # NOTE: pyperplan breaks with 'object' type name
+TYPES = {robot_type, object_type}
 
 # Create predicates.
 IsMovable = Predicate("IsMovable", [object_type])
@@ -19,6 +20,13 @@ On = Predicate("On", [object_type, object_type])
 NothingOn = Predicate("NothingOn", [object_type])
 Holding = Predicate("Holding", [robot_type, object_type])
 GripperEmpty = Predicate("GripperEmpty", [robot_type])
+PREDICATES = {
+    IsMovable,
+    On,
+    NothingOn,
+    Holding,
+    GripperEmpty,
+}
 
 
 class PickPlacePyBulletBlocksPerceiver(Perceiver[NDArray[np.float32]]):
