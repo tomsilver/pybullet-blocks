@@ -96,9 +96,9 @@ class PickPlacePyBulletBlocksSceneDescription:
     target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
     target_half_extents: tuple[float, float, float] = (0.05, 0.05, 0.001)
 
-
     @property
     def block_init_position_lower(self) -> tuple[float, float, float]:
+        """Lower bounds for block position."""
         return (
             self.table_pose.position[0] - self.table_half_extents[0] + self.block_half_extents[0],
             self.table_pose.position[1] - self.table_half_extents[1] + self.block_half_extents[1],
@@ -107,6 +107,7 @@ class PickPlacePyBulletBlocksSceneDescription:
     
     @property
     def block_init_position_upper(self) -> tuple[float, float, float]:
+        """Upper bounds for block position."""
         return (
             self.table_pose.position[0] + self.table_half_extents[0] - self.block_half_extents[0],
             self.table_pose.position[1] + self.table_half_extents[1] - self.block_half_extents[1],
@@ -115,6 +116,7 @@ class PickPlacePyBulletBlocksSceneDescription:
     
     @property
     def target_init_position_lower(self) -> tuple[float, float, float]:
+        """Lower bounds for target region position."""
         return (
             self.table_pose.position[0] - self.table_half_extents[0] + self.target_half_extents[0],
             self.table_pose.position[1] - self.table_half_extents[1] + self.target_half_extents[1],
@@ -123,11 +125,23 @@ class PickPlacePyBulletBlocksSceneDescription:
     
     @property
     def target_init_position_upper(self) -> tuple[float, float, float]:
+        """Upper bounds for target region position."""
         return (
             self.table_pose.position[0] + self.table_half_extents[0] - self.target_half_extents[0],
             self.table_pose.position[1] + self.table_half_extents[1] - self.target_half_extents[1],
             self.table_pose.position[2] + self.table_half_extents[2] + self.target_half_extents[2],
         )
+    
+    @property
+    def camera_kwargs(self) -> dict[str, Any]:
+        """Derived kwargs for taking images."""
+        return {
+            "camera_target": self.robot_base_pose.position,
+            "camera_yaw": 90,
+            "camera_distance": 1.5,
+            "camera_pitch": -20,
+        }
+
 
 
 class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
@@ -137,7 +151,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
     are changes in robot joint states.
     """
 
-    metadata = {"render_modes": ["rgb_array"], "render_fps": 4}
+    metadata = {"render_modes": ["rgb_array"], "render_fps": 10}
 
     def __init__(
         self,
@@ -324,4 +338,4 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         self._current_grasp_transform = state.grasp_transform
 
     def render(self) -> NDArray[np.uint8]:  # type: ignore
-        return capture_image(self.physics_client_id)
+        return capture_image(self.physics_client_id, **self.scene_description.camera_kwargs)
