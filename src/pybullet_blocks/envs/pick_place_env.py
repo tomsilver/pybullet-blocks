@@ -74,20 +74,22 @@ class PickPlacePyBulletBlocksAction:
 
     robot_arm_joint_delta: JointPositions
     gripper_action: int  # -1 for close, 0 for no change, 1 for open
+    declare_done: bool  # goal only checked when this is True
 
     def to_vec(self) -> NDArray[np.float32]:
         """Create vector representation of the action."""
-        return np.hstack([self.robot_arm_joint_delta, [self.gripper_action]])
+        return np.hstack([self.robot_arm_joint_delta, [self.gripper_action, self.declare_done]])
 
     @classmethod
     def from_vec(self, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksAction:
         """Build an action from a vector."""
-        assert len(vec) == 7 + 1
-        robot_arm_joint_delta_vec, gripper_action_vec = np.split(vec, [7])
+        assert len(vec) == 7 + 1 + 1
+        robot_arm_joint_delta_vec, gripper_action_vec, declare_done_vec = np.split(vec, [7, 8])
         robot_arm_joint_delta = robot_arm_joint_delta_vec.tolist()
         gripper_action = int(gripper_action_vec[0])
         assert gripper_action in {-1, 0, 1}
-        return PickPlacePyBulletBlocksAction(robot_arm_joint_delta, gripper_action)
+        declare_done = bool(declare_done_vec[0])
+        return PickPlacePyBulletBlocksAction(robot_arm_joint_delta, gripper_action, declare_done)
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,7 @@ class PickPlacePyBulletBlocksSceneDescription:
             0.04,
         ]
     )
+    robot_max_joint_delta: float = 0.25
 
     robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
     robot_stand_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
@@ -202,7 +205,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
     are changes in robot joint states.
     """
 
-    metadata = {"render_modes": ["rgb_array"], "render_fps": 10}
+    metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
 
     def __init__(
         self,
@@ -219,11 +222,12 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(7 + 7 + 9 + 8,), dtype=np.float32
         )
+        dv = self.scene_description.robot_max_joint_delta
         self.action_space = spaces.Box(
             low=np.array(
-                [-0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -1], dtype=np.float32
+                [-dv, -dv, -dv, -dv, -dv, -dv, -dv, -1, 0], dtype=np.float32
             ),
-            high=np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 1], dtype=np.float32),
+            high=np.array([dv, dv, dv, dv, dv, dv, dv, 1, 1], dtype=np.float32),
         )
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
@@ -342,10 +346,19 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
                 physicsClientId=self.physics_client_id,
             )
 
-        reward = 0.0
-        terminated = False
-        truncated = False
+        # Check goal if done is declared.
+        if action_obj.declare_done:
+            terminated = True
+            # Check success. For now, just require contact.
+            success = check_body_collisions(
+                self._block_id, self._target_id, self.physics_client_id
+            )
+            reward = 1.0 if success else -1.0
+        else:
+            terminated = False
+            reward = 0.0
 
+        truncated = False
         observation = self._get_obs()
         info = self._get_info()
 
@@ -388,6 +401,9 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             ):
                 break
 
+        # Reset the robot.
+        self.robot.set_joints(self.scene_description.initial_joints)
+
         # Reset the grasp transform.
         self._current_grasp_transform = None
 
@@ -411,6 +427,14 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         if self._current_grasp_transform is None:
             ids.add(self._block_id)
         return ids
+    
+    def get_held_object_id(self) -> int | None:
+        """Expose the pybullet ID of the held object, if it exists."""
+        return self._block_id if self._current_grasp_transform else None
+    
+    def get_held_object_tf(self) -> Pose | None:
+        """Expose the grasp transform for the held object, if it exists."""
+        return self._current_grasp_transform
 
     def set_state(self, obs: NDArray[np.float32]) -> None:
         """Reset the internal state to the given observation vector."""
