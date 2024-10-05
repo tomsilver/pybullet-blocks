@@ -63,9 +63,7 @@ class PickPlacePyBulletBlocksState:
             grasp_transform: Pose | None = None
         else:
             grasp_transform = Pose(tuple(grasp_vec[1:4]), tuple(grasp_vec[4:]))
-        return PickPlacePyBulletBlocksState(
-            block_pose, target_pose, robot_joints, grasp_transform
-        )
+        return cls(block_pose, target_pose, robot_joints, grasp_transform)
 
 
 @dataclass(frozen=True)
@@ -78,18 +76,22 @@ class PickPlacePyBulletBlocksAction:
 
     def to_vec(self) -> NDArray[np.float32]:
         """Create vector representation of the action."""
-        return np.hstack([self.robot_arm_joint_delta, [self.gripper_action, self.declare_done]])
+        return np.hstack(
+            [self.robot_arm_joint_delta, [self.gripper_action, self.declare_done]]
+        )
 
     @classmethod
-    def from_vec(self, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksAction:
+    def from_vec(cls, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksAction:
         """Build an action from a vector."""
         assert len(vec) == 7 + 1 + 1
-        robot_arm_joint_delta_vec, gripper_action_vec, declare_done_vec = np.split(vec, [7, 8])
+        robot_arm_joint_delta_vec, gripper_action_vec, declare_done_vec = np.split(
+            vec, [7, 8]
+        )
         robot_arm_joint_delta = robot_arm_joint_delta_vec.tolist()
         gripper_action = int(gripper_action_vec[0])
         assert gripper_action in {-1, 0, 1}
         declare_done = bool(declare_done_vec[0])
-        return PickPlacePyBulletBlocksAction(robot_arm_joint_delta, gripper_action, declare_done)
+        return cls(robot_arm_joint_delta, gripper_action, declare_done)
 
 
 @dataclass(frozen=True)
@@ -224,9 +226,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         )
         dv = self.scene_description.robot_max_joint_delta
         self.action_space = spaces.Box(
-            low=np.array(
-                [-dv, -dv, -dv, -dv, -dv, -dv, -dv, -1, 0], dtype=np.float32
-            ),
+            low=np.array([-dv, -dv, -dv, -dv, -dv, -dv, -dv, -1, 0], dtype=np.float32),
             high=np.array([dv, dv, dv, dv, dv, dv, dv, 1, 1], dtype=np.float32),
         )
 
@@ -316,7 +316,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
 
         # Update gripper if required.
         if action_obj.gripper_action == 1:
-           self._current_grasp_transform = None
+            self._current_grasp_transform = None
         elif action_obj.gripper_action == -1:
             # Check if the block is close enough to the end effector position
             # and grasp if so.
@@ -327,7 +327,9 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             dist = np.sum(np.square(np.subtract(end_effector_position, block_position)))
             # Grasp successful.
             if dist < 1e-6:
-                self._current_grasp_transform = multiply_poses(world_to_robot.invert(), world_to_block)
+                self._current_grasp_transform = multiply_poses(
+                    world_to_robot.invert(), world_to_block
+                )
 
         # Set the robot joints.
         clipped_joints = np.clip(
@@ -338,7 +340,9 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         # Apply the grasp transform if it exists.
         if self._current_grasp_transform:
             world_to_robot = self.robot.get_end_effector_pose()
-            world_to_block = multiply_poses(world_to_robot, self._current_grasp_transform)
+            world_to_block = multiply_poses(
+                world_to_robot, self._current_grasp_transform
+            )
             p.resetBasePositionAndOrientation(
                 self._block_id,
                 world_to_block.position,
@@ -427,11 +431,11 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         if self._current_grasp_transform is None:
             ids.add(self._block_id)
         return ids
-    
+
     def get_held_object_id(self) -> int | None:
         """Expose the pybullet ID of the held object, if it exists."""
         return self._block_id if self._current_grasp_transform else None
-    
+
     def get_held_object_tf(self) -> Pose | None:
         """Expose the grasp transform for the held object, if it exists."""
         return self._current_grasp_transform
