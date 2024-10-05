@@ -12,6 +12,8 @@ dependencies = [
    "numpy",
    "pybullet_helpers@git+https://github.com/tomsilver/pybullet-helpers.git",
    "task_then_motion_planning@git+https://github.com/tomsilver/task-then-motion-planning.git",
+   "gymnasium",
+   "moviepy",
 ]
 
 [project.optional-dependencies]
@@ -47,3 +49,9 @@ strict_equality = true
 disallow_untyped_calls = true
 warn_unreachable = true
 exclude = [".venv/*"]
+
+[[tool.mypy.overrides]]
+module = [
+    "pybullet.*",
+]
+ignore_missing_imports = true
