@@ -35,10 +35,6 @@ def test_pick_place_env():
     # picking and placing.
     robot_grasp_orientation = sim.robot.get_end_effector_pose().orientation
 
-    # Open the gripper.
-    action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-    obs, _, _, _, _ = env.step(action)
-
     def _execute_pybullet_helpers_plan(plan, state):
         assert plan is not None
         for joint_state in plan:
@@ -52,7 +48,7 @@ def test_pick_place_env():
     # Move to above the block.
     sim.set_state(obs)
     state = PickPlacePyBulletBlocksState.from_vec(obs)
-    above_block_position = np.add(state.block_pose.position, (0.0, 0.0, 0.1))
+    above_block_position = np.add(state.block_pose.position, (0.0, 0.0, 0.05))
     above_block_pose = Pose(tuple(above_block_position), robot_grasp_orientation)
     plan = run_smooth_motion_planning_to_pose(
         above_block_pose,

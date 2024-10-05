@@ -11,7 +11,7 @@ import pybullet as p
 from gymnasium import spaces
 from numpy.typing import ArrayLike, NDArray
 from pybullet_helpers.camera import capture_image
-from pybullet_helpers.geometry import Pose, get_pose
+from pybullet_helpers.geometry import Pose, get_pose, multiply_poses
 from pybullet_helpers.gui import create_gui_connection
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.joint import JointPositions
@@ -310,11 +310,37 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         # Assume that first 7 entries are arm.
         joint_arr[:7] += action_obj.robot_arm_joint_delta
 
+        # Update gripper if required.
+        if action_obj.gripper_action == 1:
+           self._current_grasp_transform = None
+        elif action_obj.gripper_action == -1:
+            # Check if the block is close enough to the end effector position
+            # and grasp if so.
+            world_to_robot = self.robot.get_end_effector_pose()
+            end_effector_position = world_to_robot.position
+            world_to_block = get_pose(self._block_id, self.physics_client_id)
+            block_position = world_to_block.position
+            dist = np.sum(np.square(np.subtract(end_effector_position, block_position)))
+            # Grasp successful.
+            if dist < 1e-6:
+                self._current_grasp_transform = multiply_poses(world_to_robot.invert(), world_to_block)
+
         # Set the robot joints.
         clipped_joints = np.clip(
             joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
         )
         self.robot.set_joints(clipped_joints.tolist())
+
+        # Apply the grasp transform if it exists.
+        if self._current_grasp_transform:
+            world_to_robot = self.robot.get_end_effector_pose()
+            world_to_block = multiply_poses(world_to_robot, self._current_grasp_transform)
+            p.resetBasePositionAndOrientation(
+                self._block_id,
+                world_to_block.position,
+                world_to_block.orientation,
+                physicsClientId=self.physics_client_id,
+            )
 
         reward = 0.0
         terminated = False
