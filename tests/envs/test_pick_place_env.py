@@ -10,5 +10,9 @@ def test_pick_place_env():
     env = PickPlacePyBulletBlocksEnv(use_gui=True)
 
     env.reset(seed=123)
+    env.action_space.seed(123)
     while True:
-        env.step(np.zeros(7))
+        for _ in range(1000):
+            action = env.action_space.sample()
+            env.step(action)
+        env.reset()

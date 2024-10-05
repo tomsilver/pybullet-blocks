@@ -13,6 +13,7 @@ from numpy.typing import NDArray, ArrayLike
 from pybullet_helpers.camera import capture_image
 from pybullet_helpers.geometry import Pose, get_pose
 from pybullet_helpers.gui import create_gui_connection
+from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.joint import JointPositions
 from pybullet_helpers.robots import create_pybullet_robot
 from pybullet_helpers.robots.single_arm import FingeredSingleArmPyBulletRobot
@@ -88,6 +89,10 @@ class PickPlacePyBulletBlocksSceneDescription:
     block_rgba: tuple[float, float, float, float] = (0.5, 0.0, 0.5, 1.0)
     block_half_extents: tuple[float, float, float] = (0.03, 0.03, 0.03)
 
+    target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
+    target_half_extents: tuple[float, float, float] = (0.05, 0.05, 0.001)
+
+
     @property
     def block_init_position_lower(self) -> tuple[float, float, float]:
         return (
@@ -102,6 +107,22 @@ class PickPlacePyBulletBlocksSceneDescription:
             self.table_pose.position[0] + self.table_half_extents[0] - self.block_half_extents[0],
             self.table_pose.position[1] + self.table_half_extents[1] - self.block_half_extents[1],
             self.table_pose.position[2] + self.table_half_extents[2] + self.block_half_extents[2],
+        )
+    
+    @property
+    def target_init_position_lower(self) -> tuple[float, float, float]:
+        return (
+            self.table_pose.position[0] - self.table_half_extents[0] + self.target_half_extents[0],
+            self.table_pose.position[1] - self.table_half_extents[1] + self.target_half_extents[1],
+            self.table_pose.position[2] + self.table_half_extents[2] + self.target_half_extents[2],
+        )
+    
+    @property
+    def target_init_position_upper(self) -> tuple[float, float, float]:
+        return (
+            self.table_pose.position[0] + self.table_half_extents[0] - self.target_half_extents[0],
+            self.table_pose.position[1] + self.table_half_extents[1] - self.target_half_extents[1],
+            self.table_pose.position[2] + self.table_half_extents[2] + self.target_half_extents[2],
         )
 
 
@@ -185,6 +206,13 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             physics_client_id=self.physics_client_id,
         )
 
+        # Create target.
+        self._target_id = create_pybullet_block(
+            self.scene_description.target_rgba,
+            half_extents=self.scene_description.target_half_extents,
+            physics_client_id=self.physics_client_id,
+        )
+
         # Initialize the grasp transform.
         self._current_grasp_transform: Pose | None = None
 
@@ -199,6 +227,13 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         self,
         action: NDArray[np.float32],
     ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
+        
+        # Set the robot joints.
+        new_joints = np.clip(self._robot.get_joint_positions() + action,
+                             self._robot.joint_lower_limits,
+                             self._robot.joint_upper_limits)
+        self._robot.set_joints(new_joints.tolist())
+
         reward = 0.0
         terminated = False
         truncated = False
@@ -227,6 +262,22 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             (0, 0, 0, 1),
             physicsClientId=self.physics_client_id,
         )
+
+        # Reset the position of the target (avoiding collision with block).
+        while True:
+            target_position = self.np_random.uniform(
+                self.scene_description.target_init_position_lower,
+                self.scene_description.target_init_position_upper,
+            )
+            p.resetBasePositionAndOrientation(
+                self._target_id,
+                target_position,
+                (0, 0, 0, 1),
+                physicsClientId=self.physics_client_id,
+            )
+            if not check_body_collisions(self._block_id, self._target_id,
+                                         self.physics_client_id):
+                break
 
         # Reset the grasp transform.
         self._current_grasp_transform = None
