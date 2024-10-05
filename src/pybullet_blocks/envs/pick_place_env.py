@@ -72,26 +72,20 @@ class PickPlacePyBulletBlocksAction:
 
     robot_arm_joint_delta: JointPositions
     gripper_action: int  # -1 for close, 0 for no change, 1 for open
-    declare_done: bool  # goal only checked when this is True
 
     def to_vec(self) -> NDArray[np.float32]:
         """Create vector representation of the action."""
-        return np.hstack(
-            [self.robot_arm_joint_delta, [self.gripper_action, self.declare_done]]
-        )
+        return np.hstack([self.robot_arm_joint_delta, [self.gripper_action]])
 
     @classmethod
     def from_vec(cls, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksAction:
         """Build an action from a vector."""
-        assert len(vec) == 7 + 1 + 1
-        robot_arm_joint_delta_vec, gripper_action_vec, declare_done_vec = np.split(
-            vec, [7, 8]
-        )
+        assert len(vec) == 7 + 1
+        robot_arm_joint_delta_vec, gripper_action_vec = np.split(vec, [7])
         robot_arm_joint_delta = robot_arm_joint_delta_vec.tolist()
         gripper_action = int(gripper_action_vec[0])
         assert gripper_action in {-1, 0, 1}
-        declare_done = bool(declare_done_vec[0])
-        return cls(robot_arm_joint_delta, gripper_action, declare_done)
+        return cls(robot_arm_joint_delta, gripper_action)
 
 
 @dataclass(frozen=True)
@@ -226,8 +220,8 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         )
         dv = self.scene_description.robot_max_joint_delta
         self.action_space = spaces.Box(
-            low=np.array([-dv, -dv, -dv, -dv, -dv, -dv, -dv, -1, 0], dtype=np.float32),
-            high=np.array([dv, dv, dv, dv, dv, dv, dv, 1, 1], dtype=np.float32),
+            low=np.array([-dv, -dv, -dv, -dv, -dv, -dv, -dv, -1], dtype=np.float32),
+            high=np.array([dv, dv, dv, dv, dv, dv, dv, 1], dtype=np.float32),
         )
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
@@ -350,18 +344,13 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
                 physicsClientId=self.physics_client_id,
             )
 
-        # Check goal if done is declared.
-        if action_obj.declare_done:
-            terminated = True
-            # Check success. For now, just require contact.
-            success = check_body_collisions(
-                self.block_id, self.target_id, self.physics_client_id
-            )
-            reward = 1.0 if success else -1.0
-        else:
-            terminated = False
-            reward = 0.0
-
+        # Check goal.
+        gripper_empty = self.current_grasp_transform is None
+        block_on_target = check_body_collisions(
+            self.block_id, self.target_id, self.physics_client_id
+        )
+        terminated = gripper_empty and block_on_target
+        reward = float(terminated)
         truncated = False
         observation = self._get_obs()
         info = self._get_info()

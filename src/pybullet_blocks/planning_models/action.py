@@ -1,26 +1,34 @@
 """Action models."""
 
-from pybullet_blocks.planning_models.perception import IsMovable, On, NothingOn, Holding, GripperEmpty, robot_type, object_type
-from relational_structs import LiftedAtom, LiftedOperator, GroundOperator, Object
+import abc
 from typing import Sequence
-from task_then_motion_planning.structs import LiftedOperatorSkill
+
 import numpy as np
 from numpy.typing import NDArray
-from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
 from pybullet_helpers.geometry import Pose, interpolate_poses
+from pybullet_helpers.joint import JointPositions
 from pybullet_helpers.motion_planning import (
     create_joint_distance_fn,
     remap_joint_position_plan_to_constant_distance,
     run_smooth_motion_planning_to_pose,
     smoothly_follow_end_effector_path,
 )
+from relational_structs import GroundOperator, LiftedAtom, LiftedOperator, Object
+from task_then_motion_planning.structs import LiftedOperatorSkill
 
-from pybullet_helpers.joint import JointPositions
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
     PickPlacePyBulletBlocksState,
 )
-import abc
+from pybullet_blocks.planning_models.perception import (
+    GripperEmpty,
+    Holding,
+    IsMovable,
+    NothingOn,
+    On,
+    object_type,
+    robot_type,
+)
 
 # Create operators.
 robot = robot_type("?robot")
@@ -29,10 +37,11 @@ surface = object_type("?surface")
 PickOperator = LiftedOperator(
     "Pick",
     [robot, obj, surface],
-    preconditions={LiftedAtom(IsMovable, [obj]),
-                   LiftedAtom(GripperEmpty, [robot]),
-                   LiftedAtom(NothingOn, [obj]),
-                   LiftedAtom(On, [obj, surface]),
+    preconditions={
+        LiftedAtom(IsMovable, [obj]),
+        LiftedAtom(GripperEmpty, [robot]),
+        LiftedAtom(NothingOn, [obj]),
+        LiftedAtom(On, [obj, surface]),
     },
     add_effects={
         LiftedAtom(Holding, [robot, obj]),
@@ -46,8 +55,9 @@ PickOperator = LiftedOperator(
 PlaceOperator = LiftedOperator(
     "Place",
     [robot, obj, surface],
-    preconditions={LiftedAtom(Holding, [robot, obj]),
-                   LiftedAtom(NothingOn, [surface]),
+    preconditions={
+        LiftedAtom(Holding, [robot, obj]),
+        LiftedAtom(NothingOn, [surface]),
     },
     add_effects={
         LiftedAtom(On, [obj, surface]),
@@ -60,11 +70,19 @@ PlaceOperator = LiftedOperator(
 )
 OPERATORS = {PickOperator, PlaceOperator}
 
+
 # Create skills.
-class PickPlacePyBulletBlocksSkill(LiftedOperatorSkill[NDArray[np.float32], NDArray[np.float32]]):
+class PickPlacePyBulletBlocksSkill(
+    LiftedOperatorSkill[NDArray[np.float32], NDArray[np.float32]]
+):
     """Shared functionality."""
 
-    def __init__(self, sim: PickPlacePyBulletBlocksEnv, max_motion_planning_time: float = 1.0, seed: int = 0) -> None:
+    def __init__(
+        self,
+        sim: PickPlacePyBulletBlocksEnv,
+        max_motion_planning_time: float = 1.0,
+        seed: int = 0,
+    ) -> None:
         super().__init__()
         self._sim = sim
         self._max_motion_planning_time = max_motion_planning_time
@@ -81,7 +99,7 @@ class PickPlacePyBulletBlocksSkill(LiftedOperatorSkill[NDArray[np.float32], NDAr
         self._robot_grasp_orientation = sim.robot.get_end_effector_pose().orientation
 
         self._current_plan: list[NDArray[np.float32]] = []
-        self._rollout_sim_state : PickPlacePyBulletBlocksState | None = None
+        self._rollout_sim_state: PickPlacePyBulletBlocksState | None = None
 
     def reset(self, ground_operator: GroundOperator) -> None:
         self._current_plan = []
@@ -94,8 +112,10 @@ class PickPlacePyBulletBlocksSkill(LiftedOperatorSkill[NDArray[np.float32], NDAr
         if not self._current_plan:
             self._current_plan = self._get_plan_given_objects(objects)
         return self._current_plan.pop(0)
-    
-    def _rollout_pybullet_helpers_plan(self, plan: list[JointPositions]) -> list[NDArray[np.float32]]:
+
+    def _rollout_pybullet_helpers_plan(
+        self, plan: list[JointPositions]
+    ) -> list[NDArray[np.float32]]:
         rollout = []
         assert plan is not None
         assert self._rollout_sim_state is not None
@@ -103,15 +123,17 @@ class PickPlacePyBulletBlocksSkill(LiftedOperatorSkill[NDArray[np.float32], NDAr
         plan = remap_joint_position_plan_to_constant_distance(plan, self._sim.robot)
         for joint_state in plan:
             joint_delta = np.subtract(joint_state, self._rollout_sim_state.robot_joints)
-            action = np.hstack([joint_delta[:7], [0.0, 0.0]]).astype(np.float32)
+            action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert self._sim.action_space.contains(action)
             rollout.append(action)
             obs, _, _, _, _ = self._sim.step(action)
             self._rollout_sim_state = PickPlacePyBulletBlocksState.from_vec(obs)
         return rollout
-    
+
     @abc.abstractmethod
-    def _get_plan_given_objects(self, objects: Sequence[Object]) -> list[NDArray[np.float32]]:
+    def _get_plan_given_objects(
+        self, objects: Sequence[Object]
+    ) -> list[NDArray[np.float32]]:
         """Get a plan given objects, assuming sim is already up to date."""
 
 
@@ -120,13 +142,19 @@ class PickSkill(PickPlacePyBulletBlocksSkill):
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return PickOperator
-    
-    def _get_plan_given_objects(self, objects: Sequence[Object]) -> list[NDArray[np.float32]]:
+
+    def _get_plan_given_objects(
+        self, objects: Sequence[Object]
+    ) -> list[NDArray[np.float32]]:
         assert len(objects) == 3 and objects[1].name == "block"
         plan: list[NDArray[np.float32]] = []
         # Move to above the block.
-        above_block_position = np.add(self._rollout_sim_state.block_pose.position, (0.0, 0.0, 0.075))
-        above_block_pose = Pose(tuple(above_block_position), self._robot_grasp_orientation)
+        above_block_position = np.add(
+            self._rollout_sim_state.block_pose.position, (0.0, 0.0, 0.075)
+        )
+        above_block_pose = Pose(
+            tuple(above_block_position), self._robot_grasp_orientation
+        )
         pybullet_helpers_plan = run_smooth_motion_planning_to_pose(
             above_block_pose,
             self._sim.robot,
@@ -141,7 +169,10 @@ class PickSkill(PickPlacePyBulletBlocksSkill):
         end_effector_path = list(
             interpolate_poses(
                 self._sim.robot.get_end_effector_pose(),
-                Pose(self._rollout_sim_state.block_pose.position, self._robot_grasp_orientation),
+                Pose(
+                    self._rollout_sim_state.block_pose.position,
+                    self._robot_grasp_orientation,
+                ),
                 include_start=False,
             )
         )
@@ -155,20 +186,25 @@ class PickSkill(PickPlacePyBulletBlocksSkill):
             include_start=False,
         )
         assert pregrasp_to_grasp_pybullet_helpers_plan is not None
-        plan.extend(self._rollout_pybullet_helpers_plan(pregrasp_to_grasp_pybullet_helpers_plan))
+        plan.extend(
+            self._rollout_pybullet_helpers_plan(pregrasp_to_grasp_pybullet_helpers_plan)
+        )
 
         # Close the gripper.
-        action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0], dtype=np.float32)
+        action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0], dtype=np.float32)
         plan.append(action)
         obs, _, _, _, _ = self._sim.step(action)
         self._rollout_sim_state = PickPlacePyBulletBlocksState.from_vec(obs)
 
         # Move up to remove contact between block and table. Can just reverse the
         # path that we took to get from pre-grasp to grasp.
-        plan.extend(self._rollout_pybullet_helpers_plan(pregrasp_to_grasp_pybullet_helpers_plan[::-1]))
+        plan.extend(
+            self._rollout_pybullet_helpers_plan(
+                pregrasp_to_grasp_pybullet_helpers_plan[::-1]
+            )
+        )
 
         return plan
-
 
 
 class PlaceSkill(PickPlacePyBulletBlocksSkill):
@@ -176,14 +212,20 @@ class PlaceSkill(PickPlacePyBulletBlocksSkill):
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return PlaceOperator
-    
-    def _get_plan_given_objects(self, objects: Sequence[Object]) -> list[NDArray[np.float32]]:
+
+    def _get_plan_given_objects(
+        self, objects: Sequence[Object]
+    ) -> list[NDArray[np.float32]]:
         assert len(objects) == 3 and objects[1].name == "block"
         plan: list[NDArray[np.float32]] = []
 
         # Move to above the target.
-        above_target_position = np.add(self._rollout_sim_state.target_pose.position, (0.0, 0.0, 0.075))
-        above_target_pose = Pose(tuple(above_target_position), self._robot_grasp_orientation)
+        above_target_position = np.add(
+            self._rollout_sim_state.target_pose.position, (0.0, 0.0, 0.075)
+        )
+        above_target_pose = Pose(
+            tuple(above_target_position), self._robot_grasp_orientation
+        )
         pybullet_helpers_plan = run_smooth_motion_planning_to_pose(
             above_target_pose,
             self._sim.robot,
@@ -201,7 +243,9 @@ class PlaceSkill(PickPlacePyBulletBlocksSkill):
             self._sim.scene_description.target_half_extents[2]
             + self._sim.scene_description.block_half_extents[2]
         )
-        target_drop_position = np.add(self._rollout_sim_state.target_pose.position, (0.0, 0.0, dz))
+        target_drop_position = np.add(
+            self._rollout_sim_state.target_pose.position, (0.0, 0.0, dz)
+        )
         end_effector_path = list(
             interpolate_poses(
                 self._sim.robot.get_end_effector_pose(),
@@ -220,24 +264,17 @@ class PlaceSkill(PickPlacePyBulletBlocksSkill):
             include_start=False,
         )
         assert preplace_to_place_pybullet_plan is not None
-        plan.extend(self._rollout_pybullet_helpers_plan(preplace_to_place_pybullet_plan))
+        plan.extend(
+            self._rollout_pybullet_helpers_plan(preplace_to_place_pybullet_plan)
+        )
 
         # Open the gripper.
-        action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float32)
-        plan.append(action)
-        obs, _, _, _, _ = self._sim.step(action)
-        self._rollout_sim_state = PickPlacePyBulletBlocksState.from_vec(obs)
-
-        # Move up to prove that placing was successful. Can just reverse the
-        # path that we took to get from pre-grasp to grasp.
-        plan.extend(self._rollout_pybullet_helpers_plan(preplace_to_place_pybullet_plan[::-1]))
-
-        # Declare done.
-        action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+        action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
         plan.append(action)
         obs, _, _, _, _ = self._sim.step(action)
         self._rollout_sim_state = PickPlacePyBulletBlocksState.from_vec(obs)
 
         return plan
+
 
 SKILLS = {PickSkill, PlaceSkill}

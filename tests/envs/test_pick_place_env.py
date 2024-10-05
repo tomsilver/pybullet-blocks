@@ -37,7 +37,7 @@ def test_pick_place_env():
         plan = remap_joint_position_plan_to_constant_distance(plan, sim.robot)
         for joint_state in plan:
             joint_delta = np.subtract(joint_state, state.robot_joints)
-            action = np.hstack([joint_delta[:7], [0.0, 0.0]]).astype(np.float32)
+            action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert env.action_space.contains(action)
             obs, _, _, _, _ = env.step(action)
             state = PickPlacePyBulletBlocksState.from_vec(obs)
@@ -84,7 +84,7 @@ def test_pick_place_env():
     state = _execute_pybullet_helpers_plan(pregrasp_to_grasp_plan, state)
 
     # Close the gripper.
-    action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0], dtype=np.float32)
+    action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0], dtype=np.float32)
     obs, _, _, _, _ = env.step(action)
 
     # Move up to remove contact between block and table. Can just reverse the
@@ -136,18 +136,12 @@ def test_pick_place_env():
     state = _execute_pybullet_helpers_plan(preplace_to_place_plan, state)
 
     # Open the gripper.
-    action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float32)
+    action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
     obs, _, _, _, _ = env.step(action)
 
     # Move up to prove that placing was successful. Can just reverse the
     # path that we took to get from pre-grasp to grasp.
     place_to_preplace_plan = preplace_to_place_plan[::-1]
     state = _execute_pybullet_helpers_plan(place_to_preplace_plan, state)
-
-    # Declare done.
-    action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-    obs, reward, terminated, _, _ = env.step(action)
-    assert terminated
-    assert reward > 0
 
     env.close()

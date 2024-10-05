@@ -1,18 +1,23 @@
 """Tests for action.py."""
 
-from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
-from pybullet_blocks.planning_models.perception import PickPlacePyBulletBlocksPerceiver, TYPES, PREDICATES
-from pybullet_blocks.planning_models.action import OPERATORS, SKILLS
 from task_then_motion_planning.planning import TaskThenMotionPlanner
+
+from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
+from pybullet_blocks.planning_models.action import OPERATORS, SKILLS
+from pybullet_blocks.planning_models.perception import (
+    PREDICATES,
+    TYPES,
+    PickPlacePyBulletBlocksPerceiver,
+)
 
 
 def test_pick_place_pybullet_blocks_action():
     """Tests task then motion planning in PickPlacePyBulletBlocksEnv()."""
 
-    env = PickPlacePyBulletBlocksEnv(use_gui=True)
+    env = PickPlacePyBulletBlocksEnv(use_gui=False)
     sim = PickPlacePyBulletBlocksEnv(env.scene_description, use_gui=False)
 
-    from gymnasium.wrappers import RecordVideo
+    # from gymnasium.wrappers import RecordVideo
     # env = RecordVideo(env, "pick-place-ttmp-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
@@ -32,7 +37,6 @@ def test_pick_place_pybullet_blocks_action():
     for _ in range(10000):  # should terminate earlier
         action = planner.step(obs)
         obs, reward, done, _, _ = env.step(action)
-        import time; time.sleep(0.1)
         if done:  # goal reached!
             assert reward > 0
             break
