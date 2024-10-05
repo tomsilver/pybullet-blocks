@@ -458,6 +458,10 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         self.robot.set_joints(state.robot_joints)
         self.current_grasp_transform = state.grasp_transform
 
+    def get_state(self) -> NDArray[np.float32]:
+        """Expose the internal state vector."""
+        return self._get_obs()
+
     def render(self) -> NDArray[np.uint8]:  # type: ignore
         return capture_image(
             self.physics_client_id, **self.scene_description.camera_kwargs
