@@ -9,7 +9,7 @@ import gymnasium as gym
 import numpy as np
 import pybullet as p
 from gymnasium import spaces
-from numpy.typing import NDArray, ArrayLike
+from numpy.typing import ArrayLike, NDArray
 from pybullet_helpers.camera import capture_image
 from pybullet_helpers.geometry import Pose, get_pose
 from pybullet_helpers.gui import create_gui_connection
@@ -25,7 +25,7 @@ class PickPlacePyBulletBlocksState:
     """A state in the PickPlacePyBulletBlocksEnv."""
 
     block_pose: Pose
-    target_pose : Pose
+    target_pose: Pose
     robot_joints: JointPositions
     grasp_transform: Pose | None
 
@@ -53,7 +53,9 @@ class PickPlacePyBulletBlocksState:
     def from_vec(cls, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksState:
         """Build a state from a vector."""
         assert len(vec) == 7 + 7 + 9 + 8
-        block_pose_vec, target_pose_vec, robot_joints_vec, grasp_vec = np.split(vec, [7, 14, 23])
+        block_pose_vec, target_pose_vec, robot_joints_vec, grasp_vec = np.split(
+            vec, [7, 14, 23]
+        )
         block_pose = Pose(tuple(block_pose_vec[:3]), tuple(block_pose_vec[3:]))
         target_pose = Pose(tuple(target_pose_vec[:3]), tuple(target_pose_vec[3:]))
         robot_joints = robot_joints_vec.tolist()
@@ -61,7 +63,31 @@ class PickPlacePyBulletBlocksState:
             grasp_transform: Pose | None = None
         else:
             grasp_transform = Pose(tuple(grasp_vec[1:4]), tuple(grasp_vec[4:]))
-        return PickPlacePyBulletBlocksState(block_pose, target_pose, robot_joints, grasp_transform)
+        return PickPlacePyBulletBlocksState(
+            block_pose, target_pose, robot_joints, grasp_transform
+        )
+
+
+@dataclass(frozen=True)
+class PickPlacePyBulletBlocksAction:
+    """An action in the PickPlacePyBulletBlocksEnv."""
+
+    robot_arm_joint_delta: JointPositions
+    gripper_action: int  # -1 for close, 0 for no change, 1 for open
+
+    def to_vec(self) -> NDArray[np.float32]:
+        """Create vector representation of the action."""
+        return np.hstack([self.robot_arm_joint_delta, [self.gripper_action]])
+
+    @classmethod
+    def from_vec(self, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksAction:
+        """Build an action from a vector."""
+        assert len(vec) == 7 + 1
+        robot_arm_joint_delta_vec, gripper_action_vec = np.split(vec, [7])
+        robot_arm_joint_delta = robot_arm_joint_delta_vec.tolist()
+        gripper_action = int(gripper_action_vec[0])
+        assert gripper_action in {-1, 0, 1}
+        return PickPlacePyBulletBlocksAction(robot_arm_joint_delta, gripper_action)
 
 
 @dataclass(frozen=True)
@@ -70,7 +96,8 @@ class PickPlacePyBulletBlocksSceneDescription:
 
     robot_name: str = "panda"  # must be 7-dof and have fingers
     robot_base_pose: Pose = Pose.identity()
-    initial_joints: JointPositions = field(default_factory=lambda: [
+    initial_joints: JointPositions = field(
+        default_factory=lambda: [
             -1.6760817784086874,
             -0.8633617886115512,
             1.0820023618960484,
@@ -80,8 +107,9 @@ class PickPlacePyBulletBlocksSceneDescription:
             1.7604148617061273,
             0.04,
             0.04,
-        ])
-    
+        ]
+    )
+
     robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
     robot_stand_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
     robot_stand_half_extents: tuple[float, float, float] = (0.2, 0.2, 0.225)
@@ -100,38 +128,62 @@ class PickPlacePyBulletBlocksSceneDescription:
     def block_init_position_lower(self) -> tuple[float, float, float]:
         """Lower bounds for block position."""
         return (
-            self.table_pose.position[0] - self.table_half_extents[0] + self.block_half_extents[0],
-            self.table_pose.position[1] - self.table_half_extents[1] + self.block_half_extents[1],
-            self.table_pose.position[2] + self.table_half_extents[2] + self.block_half_extents[2],
+            self.table_pose.position[0]
+            - self.table_half_extents[0]
+            + self.block_half_extents[0],
+            self.table_pose.position[1]
+            - self.table_half_extents[1]
+            + self.block_half_extents[1],
+            self.table_pose.position[2]
+            + self.table_half_extents[2]
+            + self.block_half_extents[2],
         )
-    
+
     @property
     def block_init_position_upper(self) -> tuple[float, float, float]:
         """Upper bounds for block position."""
         return (
-            self.table_pose.position[0] + self.table_half_extents[0] - self.block_half_extents[0],
-            self.table_pose.position[1] + self.table_half_extents[1] - self.block_half_extents[1],
-            self.table_pose.position[2] + self.table_half_extents[2] + self.block_half_extents[2],
+            self.table_pose.position[0]
+            + self.table_half_extents[0]
+            - self.block_half_extents[0],
+            self.table_pose.position[1]
+            + self.table_half_extents[1]
+            - self.block_half_extents[1],
+            self.table_pose.position[2]
+            + self.table_half_extents[2]
+            + self.block_half_extents[2],
         )
-    
+
     @property
     def target_init_position_lower(self) -> tuple[float, float, float]:
         """Lower bounds for target region position."""
         return (
-            self.table_pose.position[0] - self.table_half_extents[0] + self.target_half_extents[0],
-            self.table_pose.position[1] - self.table_half_extents[1] + self.target_half_extents[1],
-            self.table_pose.position[2] + self.table_half_extents[2] + self.target_half_extents[2],
+            self.table_pose.position[0]
+            - self.table_half_extents[0]
+            + self.target_half_extents[0],
+            self.table_pose.position[1]
+            - self.table_half_extents[1]
+            + self.target_half_extents[1],
+            self.table_pose.position[2]
+            + self.table_half_extents[2]
+            + self.target_half_extents[2],
         )
-    
+
     @property
     def target_init_position_upper(self) -> tuple[float, float, float]:
         """Upper bounds for target region position."""
         return (
-            self.table_pose.position[0] + self.table_half_extents[0] - self.target_half_extents[0],
-            self.table_pose.position[1] + self.table_half_extents[1] - self.target_half_extents[1],
-            self.table_pose.position[2] + self.table_half_extents[2] + self.target_half_extents[2],
+            self.table_pose.position[0]
+            + self.table_half_extents[0]
+            - self.target_half_extents[0],
+            self.table_pose.position[1]
+            + self.table_half_extents[1]
+            - self.target_half_extents[1],
+            self.table_pose.position[2]
+            + self.table_half_extents[2]
+            + self.target_half_extents[2],
         )
-    
+
     @property
     def camera_kwargs(self) -> dict[str, Any]:
         """Derived kwargs for taking images."""
@@ -141,7 +193,6 @@ class PickPlacePyBulletBlocksSceneDescription:
             "camera_distance": 1.5,
             "camera_pitch": -20,
         }
-
 
 
 class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
@@ -168,7 +219,12 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(7 + 7 + 9 + 8,), dtype=np.float32
         )
-        self.action_space = spaces.Box(low=-0.1, high=0.1, shape=(9,), dtype=np.float32)
+        self.action_space = spaces.Box(
+            low=np.array(
+                [-0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -0.1, -1], dtype=np.float32
+            ),
+            high=np.array([0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 1], dtype=np.float32),
+        )
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
@@ -245,12 +301,20 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         self,
         action: NDArray[np.float32],
     ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
-        
+
+        assert self.action_space.contains(action)
+        action_obj = PickPlacePyBulletBlocksAction.from_vec(action)
+
+        # Update robot arm joints.
+        joint_arr = np.array(self.robot.get_joint_positions())
+        # Assume that first 7 entries are arm.
+        joint_arr[:7] += action_obj.robot_arm_joint_delta
+
         # Set the robot joints.
-        new_joints = np.clip(self.robot.get_joint_positions() + action,
-                             self.robot.joint_lower_limits,
-                             self.robot.joint_upper_limits)
-        self.robot.set_joints(new_joints.tolist())
+        clipped_joints = np.clip(
+            joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
+        )
+        self.robot.set_joints(clipped_joints.tolist())
 
         reward = 0.0
         terminated = False
@@ -293,8 +357,9 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
                 (0, 0, 0, 1),
                 physicsClientId=self.physics_client_id,
             )
-            if not check_body_collisions(self._block_id, self._target_id,
-                                         self.physics_client_id):
+            if not check_body_collisions(
+                self._block_id, self._target_id, self.physics_client_id
+            ):
                 break
 
         # Reset the grasp transform.
@@ -310,15 +375,17 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         target_pose = get_pose(self._target_id, self.physics_client_id)
         robot_joints = self.robot.get_joint_positions()
         grasp_transform = self._current_grasp_transform
-        return PickPlacePyBulletBlocksState(block_pose, target_pose, robot_joints, grasp_transform)
-    
+        return PickPlacePyBulletBlocksState(
+            block_pose, target_pose, robot_joints, grasp_transform
+        )
+
     def get_collision_ids(self) -> set[int]:
         """Expose all pybullet IDs for collision checking."""
         ids = {self._table_id, self._target_id}
         if self._current_grasp_transform is None:
             ids.add(self._block_id)
         return ids
-    
+
     def set_state(self, obs: NDArray[np.float32]) -> None:
         """Reset the internal state to the given observation vector."""
         state = PickPlacePyBulletBlocksState.from_vec(obs)
@@ -338,4 +405,6 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         self._current_grasp_transform = state.grasp_transform
 
     def render(self) -> NDArray[np.uint8]:  # type: ignore
-        return capture_image(self.physics_client_id, **self.scene_description.camera_kwargs)
+        return capture_image(
+            self.physics_client_id, **self.scene_description.camera_kwargs
+        )
