@@ -24,8 +24,6 @@ def test_pick_place_pybullet_blocks_action():
     perceiver = PickPlacePyBulletBlocksPerceiver(sim)
     skills = {s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS}
 
-    obs, _ = env.reset(seed=123)
-
     # Create the planner.
     planner = TaskThenMotionPlanner(
         TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="pyperplan"
