@@ -277,7 +277,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
 
         # Create block.
         self.block_id = create_pybullet_block(
-            self.scene_description.block_rgba,
+            (1, 1, 1, 1),  # NOTE: important to default to white for texture
             half_extents=self.scene_description.block_half_extents,
             physics_client_id=self.physics_client_id,
         )
@@ -299,6 +299,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             self.block_id,
             -1,
             textureUniqueId=texture_id,
+            specularColor=[0, 0, 0],
             physicsClientId=self.physics_client_id,
         )
 

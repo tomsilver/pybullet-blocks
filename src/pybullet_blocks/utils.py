@@ -27,5 +27,6 @@ def create_texture_with_letter(
             text_y = y + tile_size[1] // 2
             d.text((text_x, text_y), letter, font=font, fill=text_color, anchor="mm")
     filepath = Path(tempfile.NamedTemporaryFile("w", delete=False, suffix=".jpg").name)
+    img = img.rotate(90)
     img.save(filepath)
     return filepath
