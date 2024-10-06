@@ -19,6 +19,8 @@ from pybullet_helpers.robots import create_pybullet_robot
 from pybullet_helpers.robots.single_arm import FingeredSingleArmPyBulletRobot
 from pybullet_helpers.utils import create_pybullet_block
 
+from pybullet_blocks.utils import create_texture_with_letter
+
 
 @dataclass(frozen=True)
 class PickPlacePyBulletBlocksState:
@@ -118,6 +120,8 @@ class PickPlacePyBulletBlocksSceneDescription:
     table_half_extents: tuple[float, float, float] = (0.25, 0.4, 0.25)
 
     block_rgba: tuple[float, float, float, float] = (0.5, 0.0, 0.5, 1.0)
+    block_text_rgba: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    block_text_letter: str = "A"
     block_half_extents: tuple[float, float, float] = (0.025, 0.025, 0.025)
 
     target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
@@ -276,6 +280,26 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             self.scene_description.block_rgba,
             half_extents=self.scene_description.block_half_extents,
             physics_client_id=self.physics_client_id,
+        )
+        text_color = tuple(
+            map(lambda x: int(255 * x), self.scene_description.block_text_rgba)
+        )
+        background_color = tuple(
+            map(lambda x: int(255 * x), self.scene_description.block_rgba)
+        )
+        filepath = create_texture_with_letter(
+            self.scene_description.block_text_letter,
+            text_color=text_color,
+            background_color=background_color,
+        )
+        texture_id = p.loadTexture(
+            str(filepath), physicsClientId=self.physics_client_id
+        )
+        p.changeVisualShape(
+            self.block_id,
+            -1,
+            textureUniqueId=texture_id,
+            physicsClientId=self.physics_client_id,
         )
 
         # Create target.
