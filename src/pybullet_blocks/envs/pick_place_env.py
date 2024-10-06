@@ -187,14 +187,35 @@ class PickPlacePyBulletBlocksSceneDescription:
             + self.target_half_extents[2],
         )
 
-    @property
-    def camera_kwargs(self) -> dict[str, Any]:
+    def get_camera_kwargs(self, timestep: int) -> dict[str, Any]:
         """Derived kwargs for taking images."""
+        # The following logic spins the camera around linearly, going back
+        # and forth from yaw_min to yaw_max, starting at the center.
+        period = 500
+        yaw_min = 20
+        yaw_max = 155
+        t = timestep % period
+        quarter_period = period // 4
+        if 0 <= t < quarter_period:
+            yaw = (yaw_max - yaw_min) / 2 + (
+                (yaw_max - (yaw_max - yaw_min) / 2) / quarter_period
+            ) * t
+        elif quarter_period <= t < 3 * quarter_period:
+            yaw = yaw_max - ((yaw_max - yaw_min) / (2 * quarter_period)) * (
+                t - quarter_period
+            )
+        else:
+            yaw = yaw_min + (((yaw_max - yaw_min) / 2 - yaw_min) / quarter_period) * (
+                t - 3 * quarter_period
+            )
         return {
             "camera_target": self.robot_base_pose.position,
-            "camera_yaw": 90,
+            "camera_yaw": yaw,
             "camera_distance": 1.5,
             "camera_pitch": -20,
+            # Use for fast testing.
+            # "image_width": 32,
+            # "image_height": 32,
         }
 
 
@@ -312,6 +333,8 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         # Initialize the grasp transform.
         self.current_grasp_transform: Pose | None = None
 
+        self._timestep = 0
+
     def _get_obs(self) -> NDArray[np.float32]:
         state = self._get_pick_place_pybullet_state()
         return state.to_vec()
@@ -378,6 +401,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         truncated = False
         observation = self._get_obs()
         info = self._get_info()
+        self._timestep += 1
 
         return observation, reward, terminated, truncated, info
 
@@ -426,6 +450,8 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
 
         observation = self._get_obs()
         info = self._get_info()
+
+        self._timestep = 0
 
         return observation, info
 
@@ -477,5 +503,6 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
 
     def render(self) -> NDArray[np.uint8]:  # type: ignore
         return capture_image(
-            self.physics_client_id, **self.scene_description.camera_kwargs
+            self.physics_client_id,
+            **self.scene_description.get_camera_kwargs(self._timestep),
         )
