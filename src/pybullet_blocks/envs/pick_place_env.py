@@ -109,7 +109,7 @@ class PickPlacePyBulletBlocksSceneDescription:
             0.04,
         ]
     )
-    robot_max_joint_delta: float = 0.25
+    robot_max_joint_delta: float = 0.5
 
     robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
     robot_stand_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
