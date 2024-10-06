@@ -299,7 +299,6 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             self.block_id,
             -1,
             textureUniqueId=texture_id,
-            specularColor=[0, 0, 0],
             physicsClientId=self.physics_client_id,
         )
 
