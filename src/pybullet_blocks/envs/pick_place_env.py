@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, SupportsFloat
 
 import gymnasium as gym
@@ -14,209 +14,59 @@ from pybullet_helpers.camera import capture_image
 from pybullet_helpers.geometry import Pose, get_pose, multiply_poses
 from pybullet_helpers.gui import create_gui_connection
 from pybullet_helpers.inverse_kinematics import check_body_collisions
-from pybullet_helpers.joint import JointPositions
 from pybullet_helpers.robots import create_pybullet_robot
 from pybullet_helpers.robots.single_arm import FingeredSingleArmPyBulletRobot
 from pybullet_helpers.utils import create_pybullet_block
 
+from pybullet_blocks.envs.base_env import (
+    BaseSceneDescription,
+    BlockState,
+    LetteredBlockState,
+    PyBulletBlocksAction,
+    PyBulletBlocksState,
+    RobotState,
+)
 from pybullet_blocks.utils import create_texture_with_letter
 
 
 @dataclass(frozen=True)
-class PickPlacePyBulletBlocksState:
+class PickPlacePyBulletBlocksState(PyBulletBlocksState):
     """A state in the PickPlacePyBulletBlocksEnv."""
 
-    block_pose: Pose
-    target_pose: Pose
-    robot_joints: JointPositions
-    grasp_transform: Pose | None
+    block_state: LetteredBlockState
+    target_state: BlockState
+    robot_state: RobotState
+
+    @classmethod
+    def get_dimension(cls) -> int:
+        """Get the dimension of this state."""
+        return (
+            LetteredBlockState.get_dimension()
+            + BlockState.get_dimension()
+            + RobotState.get_dimension()
+        )
 
     def to_vec(self) -> NDArray[np.float32]:
         """Create vector representation of the state."""
-        if self.grasp_transform is None:
-            # First entry indicates the absence of a grasp.
-            grasp_vec = np.zeros(8, dtype=np.float32)
-        else:
-            # First entry indicates the presence of a grasp.
-            grasp_vec = np.hstack(
-                [[1], self.grasp_transform.position, self.grasp_transform.orientation]
-            )
         inner_vecs: list[ArrayLike] = [
-            self.block_pose.position,
-            self.block_pose.orientation,
-            self.target_pose.position,
-            self.target_pose.orientation,
-            self.robot_joints,
-            grasp_vec,
+            self.block_state.to_vec(),
+            self.target_state.to_vec(),
+            self.robot_state.to_vec(),
         ]
         return np.hstack(inner_vecs)
 
     @classmethod
     def from_vec(cls, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksState:
         """Build a state from a vector."""
-        assert len(vec) == 7 + 7 + 9 + 8
-        block_pose_vec, target_pose_vec, robot_joints_vec, grasp_vec = np.split(
-            vec, [7, 14, 23]
+        block_dim = LetteredBlockState.get_dimension()
+        target_dim = BlockState.get_dimension()
+        block_vec, target_vec, robot_vec = np.split(
+            vec, [block_dim, block_dim + target_dim]
         )
-        block_pose = Pose(tuple(block_pose_vec[:3]), tuple(block_pose_vec[3:]))
-        target_pose = Pose(tuple(target_pose_vec[:3]), tuple(target_pose_vec[3:]))
-        robot_joints = robot_joints_vec.tolist()
-        if grasp_vec[0] < 0.5:  # no grasp
-            grasp_transform: Pose | None = None
-        else:
-            grasp_transform = Pose(tuple(grasp_vec[1:4]), tuple(grasp_vec[4:]))
-        return cls(block_pose, target_pose, robot_joints, grasp_transform)
-
-
-@dataclass(frozen=True)
-class PickPlacePyBulletBlocksAction:
-    """An action in the PickPlacePyBulletBlocksEnv."""
-
-    robot_arm_joint_delta: JointPositions
-    gripper_action: int  # -1 for close, 0 for no change, 1 for open
-
-    def to_vec(self) -> NDArray[np.float32]:
-        """Create vector representation of the action."""
-        return np.hstack([self.robot_arm_joint_delta, [self.gripper_action]])
-
-    @classmethod
-    def from_vec(cls, vec: NDArray[np.float32]) -> PickPlacePyBulletBlocksAction:
-        """Build an action from a vector."""
-        assert len(vec) == 7 + 1
-        robot_arm_joint_delta_vec, gripper_action_vec = np.split(vec, [7])
-        robot_arm_joint_delta = robot_arm_joint_delta_vec.tolist()
-        gripper_action = int(gripper_action_vec[0])
-        assert gripper_action in {-1, 0, 1}
-        return cls(robot_arm_joint_delta, gripper_action)
-
-
-@dataclass(frozen=True)
-class PickPlacePyBulletBlocksSceneDescription:
-    """Container for hyperparameters that define the PyBullet environment."""
-
-    robot_name: str = "panda"  # must be 7-dof and have fingers
-    robot_base_pose: Pose = Pose.identity()
-    initial_joints: JointPositions = field(
-        default_factory=lambda: [
-            -1.6760817784086874,
-            -0.8633617886115512,
-            1.0820023618960484,
-            -1.7862427129376002,
-            0.7563762599673787,
-            1.3595324116603988,
-            1.7604148617061273,
-            0.04,
-            0.04,
-        ]
-    )
-    robot_max_joint_delta: float = 0.5
-
-    robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
-    robot_stand_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
-    robot_stand_half_extents: tuple[float, float, float] = (0.2, 0.2, 0.225)
-
-    table_pose: Pose = Pose((0.5, 0.0, -0.175))
-    table_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
-    table_half_extents: tuple[float, float, float] = (0.25, 0.4, 0.25)
-
-    block_rgba: tuple[float, float, float, float] = (0.5, 0.0, 0.5, 1.0)
-    block_text_rgba: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
-    block_text_letter: str = "A"
-    block_half_extents: tuple[float, float, float] = (0.025, 0.025, 0.025)
-
-    target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
-    target_half_extents: tuple[float, float, float] = (0.05, 0.05, 0.001)
-
-    @property
-    def block_init_position_lower(self) -> tuple[float, float, float]:
-        """Lower bounds for block position."""
-        return (
-            self.table_pose.position[0]
-            - self.table_half_extents[0]
-            + self.block_half_extents[0],
-            self.table_pose.position[1]
-            - self.table_half_extents[1]
-            + self.block_half_extents[1],
-            self.table_pose.position[2]
-            + self.table_half_extents[2]
-            + self.block_half_extents[2],
-        )
-
-    @property
-    def block_init_position_upper(self) -> tuple[float, float, float]:
-        """Upper bounds for block position."""
-        return (
-            self.table_pose.position[0]
-            + self.table_half_extents[0]
-            - self.block_half_extents[0],
-            self.table_pose.position[1]
-            + self.table_half_extents[1]
-            - self.block_half_extents[1],
-            self.table_pose.position[2]
-            + self.table_half_extents[2]
-            + self.block_half_extents[2],
-        )
-
-    @property
-    def target_init_position_lower(self) -> tuple[float, float, float]:
-        """Lower bounds for target region position."""
-        return (
-            self.table_pose.position[0]
-            - self.table_half_extents[0]
-            + self.target_half_extents[0],
-            self.table_pose.position[1]
-            - self.table_half_extents[1]
-            + self.target_half_extents[1],
-            self.table_pose.position[2]
-            + self.table_half_extents[2]
-            + self.target_half_extents[2],
-        )
-
-    @property
-    def target_init_position_upper(self) -> tuple[float, float, float]:
-        """Upper bounds for target region position."""
-        return (
-            self.table_pose.position[0]
-            + self.table_half_extents[0]
-            - self.target_half_extents[0],
-            self.table_pose.position[1]
-            + self.table_half_extents[1]
-            - self.target_half_extents[1],
-            self.table_pose.position[2]
-            + self.table_half_extents[2]
-            + self.target_half_extents[2],
-        )
-
-    def get_camera_kwargs(self, timestep: int) -> dict[str, Any]:
-        """Derived kwargs for taking images."""
-        # The following logic spins the camera around linearly, going back
-        # and forth from yaw_min to yaw_max, starting at the center.
-        period = 500
-        yaw_min = 20
-        yaw_max = 155
-        t = timestep % period
-        quarter_period = period // 4
-        if 0 <= t < quarter_period:
-            yaw = (yaw_max - yaw_min) / 2 + (
-                (yaw_max - (yaw_max - yaw_min) / 2) / quarter_period
-            ) * t
-        elif quarter_period <= t < 3 * quarter_period:
-            yaw = yaw_max - ((yaw_max - yaw_min) / (2 * quarter_period)) * (
-                t - quarter_period
-            )
-        else:
-            yaw = yaw_min + (((yaw_max - yaw_min) / 2 - yaw_min) / quarter_period) * (
-                t - 3 * quarter_period
-            )
-        return {
-            "camera_target": self.robot_base_pose.position,
-            "camera_yaw": yaw,
-            "camera_distance": 1.5,
-            "camera_pitch": -20,
-            # Use for fast testing.
-            # "image_width": 32,
-            # "image_height": 32,
-        }
+        block_state = LetteredBlockState.from_vec(block_vec)
+        target_state = BlockState.from_vec(target_vec)
+        robot_state = RobotState.from_vec(robot_vec)
+        return cls(block_state, target_state, robot_state)
 
 
 class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32]]):
@@ -230,18 +80,19 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
 
     def __init__(
         self,
-        scene_description: PickPlacePyBulletBlocksSceneDescription | None = None,
+        scene_description: BaseSceneDescription | None = None,
         render_mode: str | None = "rgb_array",
         use_gui: bool = False,
     ) -> None:
         # Finalize the scene description.
         if scene_description is None:
-            scene_description = PickPlacePyBulletBlocksSceneDescription()
+            scene_description = BaseSceneDescription()
         self.scene_description = scene_description
 
         # Set up gym spaces.
+        obs_dim = PickPlacePyBulletBlocksState.get_dimension()
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(7 + 7 + 9 + 8,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
         dv = self.scene_description.robot_max_joint_delta
         self.action_space = spaces.Box(
@@ -309,7 +160,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
             map(lambda x: int(255 * x), self.scene_description.block_rgba)
         )
         filepath = create_texture_with_letter(
-            self.scene_description.block_text_letter,
+            "A",
             text_color=text_color,
             background_color=background_color,
         )
@@ -348,7 +199,7 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
     ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
 
         assert self.action_space.contains(action)
-        action_obj = PickPlacePyBulletBlocksAction.from_vec(action)
+        action_obj = PyBulletBlocksAction.from_vec(action)
 
         # Update robot arm joints.
         joint_arr = np.array(self.robot.get_joint_positions())
@@ -460,8 +311,14 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         target_pose = get_pose(self.target_id, self.physics_client_id)
         robot_joints = self.robot.get_joint_positions()
         grasp_transform = self.current_grasp_transform
+        held = bool(grasp_transform is not None)
+        block_state = LetteredBlockState(block_pose, "A", held)
+        target_state = BlockState(target_pose)
+        robot_state = RobotState(robot_joints, grasp_transform)
         return PickPlacePyBulletBlocksState(
-            block_pose, target_pose, robot_joints, grasp_transform
+            block_state,
+            target_state,
+            robot_state,
         )
 
     def get_collision_ids(self) -> set[int]:
@@ -484,18 +341,18 @@ class PickPlacePyBulletBlocksEnv(gym.Env[NDArray[np.float32], NDArray[np.float32
         state = PickPlacePyBulletBlocksState.from_vec(obs)
         p.resetBasePositionAndOrientation(
             self.block_id,
-            state.block_pose.position,
-            state.block_pose.orientation,
+            state.block_state.pose.position,
+            state.block_state.pose.orientation,
             physicsClientId=self.physics_client_id,
         )
         p.resetBasePositionAndOrientation(
             self.target_id,
-            state.target_pose.position,
-            state.target_pose.orientation,
+            state.target_state.pose.position,
+            state.target_state.pose.orientation,
             physicsClientId=self.physics_client_id,
         )
-        self.robot.set_joints(state.robot_joints)
-        self.current_grasp_transform = state.grasp_transform
+        self.robot.set_joints(state.robot_state.joint_positions)
+        self.current_grasp_transform = state.robot_state.grasp_transform
 
     def get_state(self) -> NDArray[np.float32]:
         """Expose the internal state vector."""

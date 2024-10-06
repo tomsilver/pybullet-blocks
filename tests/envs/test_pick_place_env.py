@@ -36,7 +36,7 @@ def test_pick_place_env():
         assert plan is not None
         plan = remap_joint_position_plan_to_constant_distance(plan, sim.robot)
         for joint_state in plan:
-            joint_delta = np.subtract(joint_state, state.robot_joints)
+            joint_delta = np.subtract(joint_state, state.robot_state.joint_positions)
             action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert env.action_space.contains(action)
             obs, _, _, _, _ = env.step(action)
@@ -50,7 +50,7 @@ def test_pick_place_env():
     # Move to above the block.
     sim.set_state(obs)
     state = PickPlacePyBulletBlocksState.from_vec(obs)
-    above_block_position = np.add(state.block_pose.position, (0.0, 0.0, 0.075))
+    above_block_position = np.add(state.block_state.pose.position, (0.0, 0.0, 0.075))
     above_block_pose = Pose(tuple(above_block_position), robot_grasp_orientation)
     plan = run_smooth_motion_planning_to_pose(
         above_block_pose,
@@ -67,14 +67,14 @@ def test_pick_place_env():
     end_effector_path = list(
         interpolate_poses(
             sim.robot.get_end_effector_pose(),
-            Pose(state.block_pose.position, robot_grasp_orientation),
+            Pose(state.block_state.pose.position, robot_grasp_orientation),
             include_start=False,
         )
     )
     pregrasp_to_grasp_plan = smoothly_follow_end_effector_path(
         sim.robot,
         end_effector_path,
-        state.robot_joints,
+        state.robot_state.joint_positions,
         sim.get_collision_ids(),
         joint_distance_fn,
         max_time=max_motion_planning_time,
@@ -94,7 +94,7 @@ def test_pick_place_env():
 
     # Move to above the target.
     sim.set_state(state.to_vec())
-    above_target_position = np.add(state.target_pose.position, (0.0, 0.0, 0.075))
+    above_target_position = np.add(state.target_state.pose.position, (0.0, 0.0, 0.075))
     above_target_pose = Pose(tuple(above_target_position), robot_grasp_orientation)
     plan = run_smooth_motion_planning_to_pose(
         above_target_pose,
@@ -114,7 +114,7 @@ def test_pick_place_env():
         sim.scene_description.target_half_extents[2]
         + sim.scene_description.block_half_extents[2]
     )
-    target_drop_position = np.add(state.target_pose.position, (0.0, 0.0, dz))
+    target_drop_position = np.add(state.target_state.pose.position, (0.0, 0.0, dz))
     end_effector_path = list(
         interpolate_poses(
             sim.robot.get_end_effector_pose(),
@@ -126,7 +126,7 @@ def test_pick_place_env():
     preplace_to_place_plan = smoothly_follow_end_effector_path(
         sim.robot,
         end_effector_path,
-        state.robot_joints,
+        state.robot_state.joint_positions,
         set(),  # disable collision checking between block and target
         joint_distance_fn,
         max_time=max_motion_planning_time,
