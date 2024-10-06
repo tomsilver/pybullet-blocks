@@ -130,7 +130,9 @@ class PickPlacePyBulletBlocksSkill(
         self._sim.set_state(self._rollout_sim_state.to_vec())
         plan = remap_joint_position_plan_to_constant_distance(plan, self._sim.robot)
         for joint_state in plan:
-            joint_delta = np.subtract(joint_state, self._rollout_sim_state.robot_joints)
+            joint_delta = np.subtract(
+                joint_state, self._rollout_sim_state.robot_state.joint_positions
+            )
             action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert self._sim.action_space.contains(action)
             rollout.append(action)
@@ -160,7 +162,7 @@ class PickSkill(PickPlacePyBulletBlocksSkill):
 
         # Move to above the block.
         above_block_position = np.add(
-            self._rollout_sim_state.block_pose.position, (0.0, 0.0, 0.075)
+            self._rollout_sim_state.block_state.pose.position, (0.0, 0.0, 0.075)
         )
         above_block_pose = Pose(
             tuple(above_block_position), self._robot_grasp_orientation
@@ -181,7 +183,7 @@ class PickSkill(PickPlacePyBulletBlocksSkill):
             interpolate_poses(
                 self._sim.robot.get_end_effector_pose(),
                 Pose(
-                    self._rollout_sim_state.block_pose.position,
+                    self._rollout_sim_state.block_state.pose.position,
                     self._robot_grasp_orientation,
                 ),
                 include_start=False,
@@ -190,7 +192,7 @@ class PickSkill(PickPlacePyBulletBlocksSkill):
         pregrasp_to_grasp_pybullet_helpers_plan = smoothly_follow_end_effector_path(
             self._sim.robot,
             end_effector_path,
-            self._rollout_sim_state.robot_joints,
+            self._rollout_sim_state.robot_state.joint_positions,
             self._sim.get_collision_ids(),
             self._joint_distance_fn,
             max_time=self._max_motion_planning_time,
@@ -233,7 +235,7 @@ class PlaceSkill(PickPlacePyBulletBlocksSkill):
 
         # Move to above the target.
         above_target_position = np.add(
-            self._rollout_sim_state.target_pose.position, (0.0, 0.0, 0.075)
+            self._rollout_sim_state.target_state.pose.position, (0.0, 0.0, 0.075)
         )
         above_target_pose = Pose(
             tuple(above_target_position), self._robot_grasp_orientation
@@ -257,7 +259,7 @@ class PlaceSkill(PickPlacePyBulletBlocksSkill):
             + self._sim.scene_description.block_half_extents[2]
         )
         target_drop_position = np.add(
-            self._rollout_sim_state.target_pose.position, (0.0, 0.0, dz)
+            self._rollout_sim_state.target_state.pose.position, (0.0, 0.0, dz)
         )
         end_effector_path = list(
             interpolate_poses(
@@ -270,7 +272,7 @@ class PlaceSkill(PickPlacePyBulletBlocksSkill):
         preplace_to_place_pybullet_plan = smoothly_follow_end_effector_path(
             self._sim.robot,
             end_effector_path,
-            self._rollout_sim_state.robot_joints,
+            self._rollout_sim_state.robot_state.joint_positions,
             set(),  # disable collision checking between block and target
             joint_distance_fn,
             max_time=self._max_motion_planning_time,
