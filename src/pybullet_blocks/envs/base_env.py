@@ -101,7 +101,7 @@ class LetteredBlockState(BlockState):
             vec,
             [1, 4, 8, 9],
         )
-        letter = chr(int(letter_vec[0] + 97))
+        letter = chr(int(letter_vec[0] + 97)).upper()
         held = bool(held_vec[0])
         pose = Pose(tuple(pos_vec), tuple(orn_vec))
         return cls(pose, letter, held)

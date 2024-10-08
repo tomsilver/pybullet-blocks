@@ -30,8 +30,8 @@ def test_pick_place_pybullet_blocks_action():
     )
 
     # Run an episode.
-    obs, _ = env.reset(seed=123)
-    planner.reset(obs)
+    obs, info = env.reset(seed=123)
+    planner.reset(obs, info)
     for _ in range(10000):  # should terminate earlier
         action = planner.step(obs)
         obs, reward, done, _, _ = env.step(action)
