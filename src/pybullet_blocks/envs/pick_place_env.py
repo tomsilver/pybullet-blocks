@@ -21,7 +21,7 @@ from pybullet_blocks.envs.base_env import (
     PyBulletBlocksState,
     RobotState,
 )
-from pybullet_blocks.utils import create_texture_with_letter
+from pybullet_blocks.utils import create_lettered_block
 
 
 @dataclass(frozen=True)
@@ -90,30 +90,12 @@ class PickPlacePyBulletBlocksEnv(
         )
 
         # Create block.
-        self.block_id = create_pybullet_block(
-            (1, 1, 1, 1),  # NOTE: important to default to white for texture
-            half_extents=self.scene_description.block_half_extents,
-            physics_client_id=self.physics_client_id,
-        )
-        text_color = tuple(
-            map(lambda x: int(255 * x), self.scene_description.block_text_rgba)
-        )
-        background_color = tuple(
-            map(lambda x: int(255 * x), self.scene_description.block_rgba)
-        )
-        filepath = create_texture_with_letter(
+        self.block_id = create_lettered_block(
             "A",
-            text_color=text_color,
-            background_color=background_color,
-        )
-        texture_id = p.loadTexture(
-            str(filepath), physicsClientId=self.physics_client_id
-        )
-        p.changeVisualShape(
-            self.block_id,
-            -1,
-            textureUniqueId=texture_id,
-            physicsClientId=self.physics_client_id,
+            self.scene_description.block_half_extents,
+            self.scene_description.block_rgba,
+            self.scene_description.block_text_rgba,
+            self.physics_client_id,
         )
 
         # Create target.
