@@ -115,8 +115,8 @@ class PickPlacePyBulletBlocksSkill(
     def _get_action_given_objects(
         self, objects: Sequence[Object], obs: NDArray[np.float32]
     ) -> NDArray[np.float32]:
-        self._sim.set_state(obs)
-        self._rollout_sim_state = PickPlacePyBulletBlocksState.from_vec(obs)
+        self._rollout_sim_state = PickPlacePyBulletBlocksState.from_observation(obs)
+        self._sim.set_state(self._rollout_sim_state)
         if not self._current_plan:
             self._current_plan = self._get_plan_given_objects(objects)
         return self._current_plan.pop(0)
@@ -127,7 +127,7 @@ class PickPlacePyBulletBlocksSkill(
         rollout = []
         assert plan is not None
         assert self._rollout_sim_state is not None
-        self._sim.set_state(self._rollout_sim_state.to_vec())
+        self._sim.set_state(self._rollout_sim_state)
         plan = remap_joint_position_plan_to_constant_distance(plan, self._sim.robot)
         for joint_state in plan:
             joint_delta = np.subtract(
@@ -137,7 +137,7 @@ class PickPlacePyBulletBlocksSkill(
             assert self._sim.action_space.contains(action)
             rollout.append(action)
             obs, _, _, _, _ = self._sim.step(action)
-            self._rollout_sim_state = PickPlacePyBulletBlocksState.from_vec(obs)
+            self._rollout_sim_state = PickPlacePyBulletBlocksState.from_observation(obs)
         return rollout
 
     @abc.abstractmethod
@@ -207,7 +207,7 @@ class PickSkill(PickPlacePyBulletBlocksSkill):
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0], dtype=np.float32)
         plan.append(action)
         obs, _, _, _, _ = self._sim.step(action)
-        self._rollout_sim_state = PickPlacePyBulletBlocksState.from_vec(obs)
+        self._rollout_sim_state = PickPlacePyBulletBlocksState.from_observation(obs)
 
         # Move up to remove contact between block and table. Can just reverse the
         # path that we took to get from pre-grasp to grasp.
@@ -287,7 +287,7 @@ class PlaceSkill(PickPlacePyBulletBlocksSkill):
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
         plan.append(action)
         obs, _, _, _, _ = self._sim.step(action)
-        self._rollout_sim_state = PickPlacePyBulletBlocksState.from_vec(obs)
+        self._rollout_sim_state = PickPlacePyBulletBlocksState.from_observation(obs)
 
         return plan
 

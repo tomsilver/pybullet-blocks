@@ -7,7 +7,10 @@ from pybullet_helpers.inverse_kinematics import check_body_collisions
 from relational_structs import GroundAtom, Object, Predicate, Type
 from task_then_motion_planning.structs import Perceiver
 
-from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
+from pybullet_blocks.envs.pick_place_env import (
+    PickPlacePyBulletBlocksEnv,
+    PickPlacePyBulletBlocksState,
+)
 
 # Create generic types.
 robot_type = Type("robot")
@@ -79,7 +82,7 @@ class PickPlacePyBulletBlocksPerceiver(Perceiver[NDArray[np.float32]]):
 
         # Sync the simulator so that interpretation functions can use PyBullet
         # direction.
-        self._sim.set_state(obs)
+        self._sim.set_state(PickPlacePyBulletBlocksState.from_observation(obs))
 
         # Compute which things are on which other things.
         self._on_relations = self._get_on_relations_from_sim()

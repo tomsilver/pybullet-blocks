@@ -40,7 +40,7 @@ def test_pick_place_env():
             action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert env.action_space.contains(action)
             obs, _, _, _, _ = env.step(action)
-            state = PickPlacePyBulletBlocksState.from_vec(obs)
+            state = PickPlacePyBulletBlocksState.from_observation(obs)
         return state
 
     # Assume that the initial orientation of the robot end effector works for
@@ -48,8 +48,8 @@ def test_pick_place_env():
     robot_grasp_orientation = sim.robot.get_end_effector_pose().orientation
 
     # Move to above the block.
-    sim.set_state(obs)
-    state = PickPlacePyBulletBlocksState.from_vec(obs)
+    state = PickPlacePyBulletBlocksState.from_observation(obs)
+    sim.set_state(state)
     above_block_position = np.add(state.block_state.pose.position, (0.0, 0.0, 0.075))
     above_block_pose = Pose(tuple(above_block_position), robot_grasp_orientation)
     plan = run_smooth_motion_planning_to_pose(
@@ -63,7 +63,7 @@ def test_pick_place_env():
     state = _execute_pybullet_helpers_plan(plan, state)
 
     # Move down to grasp the block.
-    sim.set_state(state.to_vec())
+    sim.set_state(state)
     end_effector_path = list(
         interpolate_poses(
             sim.robot.get_end_effector_pose(),
@@ -93,7 +93,7 @@ def test_pick_place_env():
     state = _execute_pybullet_helpers_plan(grasp_to_pregrasp_plan, state)
 
     # Move to above the target.
-    sim.set_state(state.to_vec())
+    sim.set_state(state)
     above_target_position = np.add(state.target_state.pose.position, (0.0, 0.0, 0.075))
     above_target_pose = Pose(tuple(above_target_position), robot_grasp_orientation)
     plan = run_smooth_motion_planning_to_pose(
@@ -109,7 +109,7 @@ def test_pick_place_env():
     state = _execute_pybullet_helpers_plan(plan, state)
 
     # Move down to prepare drop.
-    sim.set_state(state.to_vec())
+    sim.set_state(state)
     dz = (
         sim.scene_description.target_half_extents[2]
         + sim.scene_description.block_half_extents[2]
