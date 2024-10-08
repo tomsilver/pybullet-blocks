@@ -153,7 +153,7 @@ class BlockStackingPyBulletBlocksEnv(
         for block_id in self._active_block_ids:
             block_pose = get_pose(block_id, self.physics_client_id)
             letter = self._block_id_to_letter[block_id]
-            held = bool(self._current_held_object_id == block_id)
+            held = bool(self.current_held_object_id == block_id)
             block_state = LetteredBlockState(block_pose, letter, held)
             block_states.append(block_state)
         robot_joints = self.robot.get_joint_positions()
@@ -166,8 +166,8 @@ class BlockStackingPyBulletBlocksEnv(
 
     def get_collision_ids(self) -> set[int]:
         ids = {self.table_id} | self._active_block_ids
-        if self._current_held_object_id is not None:
-            ids.remove(self._current_held_object_id)
+        if self.current_held_object_id is not None:
+            ids.remove(self.current_held_object_id)
         return ids
 
     def _get_movable_block_ids(self) -> set[int]:

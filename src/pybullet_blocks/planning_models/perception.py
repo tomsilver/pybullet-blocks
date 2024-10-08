@@ -1,12 +1,16 @@
 """Perception models."""
 
+import abc
+
 import numpy as np
+from gymnasium.core import ObsType
 from numpy.typing import NDArray
 from pybullet_helpers.geometry import get_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 from relational_structs import GroundAtom, Object, Predicate, Type
 from task_then_motion_planning.structs import Perceiver
 
+from pybullet_blocks.envs.base_env import PyBulletBlocksEnv
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
     PickPlacePyBulletBlocksState,
@@ -32,27 +36,22 @@ PREDICATES = {
 }
 
 
-class PickPlacePyBulletBlocksPerceiver(Perceiver[NDArray[np.float32]]):
-    """A perceiver for the PickPlacePyBulletBlocksEnv."""
+class PyBulletBlocksPerceiver(Perceiver[ObsType]):
+    """A perceiver for the pybullet blocks envs."""
 
-    def __init__(self, sim: PickPlacePyBulletBlocksEnv) -> None:
+    def __init__(self, sim: PyBulletBlocksEnv) -> None:
         # Use the simulator for geometric computations.
         self._sim = sim
 
+        # Create constant robot object.
+        self._robot = Object("robot", robot_type)
+
+        # Map from symbolic objects to PyBullet IDs in simulator.
+        # Subclasses should populate this.
+        self._pybullet_ids: dict[Object, int] = {}
+
         # Store on relations for predicate interpretations.
         self._on_relations: set[tuple[Object, Object]] = set()
-
-        # Create constant objects.
-        self._robot = Object("robot", robot_type)
-        self._table = Object("table", object_type)
-        self._block = Object("block", object_type)
-        self._target = Object("target", object_type)
-        self._pybullet_ids = {
-            self._robot: self._sim.robot.robot_id,
-            self._table: self._sim.table_id,
-            self._block: self._sim.block_id,
-            self._target: self._sim.target_id,
-        }
 
         # Create predicate interpreters.
         self._predicate_interpreters = [
@@ -64,25 +63,36 @@ class PickPlacePyBulletBlocksPerceiver(Perceiver[NDArray[np.float32]]):
         ]
 
     def reset(
-        self, obs: NDArray[np.float32]
+        self, obs: ObsType
     ) -> tuple[set[Object], set[GroundAtom], set[GroundAtom]]:
         """Reset at the beginning of a new episode."""
-        objects = {self._robot, self._table, self._block, self._target}
-        atoms, goal = self._parse_observation(obs)
+        objects = self._get_objects(obs)
+        atoms = self._parse_observation(obs)
+        goal = self._get_goal(obs)
         return objects, atoms, goal
 
-    def step(self, obs: NDArray[np.float32]) -> set[GroundAtom]:
+    def step(self, obs: ObsType) -> set[GroundAtom]:
         """Get the current ground atoms and advance memory."""
-        atoms, _ = self._parse_observation(obs)
+        atoms = self._parse_observation(obs)
         return atoms
 
-    def _parse_observation(
-        self, obs: NDArray[np.float32]
-    ) -> tuple[set[GroundAtom], set[GroundAtom]]:
+    @abc.abstractmethod
+    def _get_objects(self, obs: ObsType) -> set[Object]:
+        """Get objects given the observation."""
+
+    @abc.abstractmethod
+    def _set_sim_from_obs(self, obs: ObsType) -> None:
+        """Update the simulator to be in sync with the observation."""
+
+    @abc.abstractmethod
+    def _get_goal(self, obs: ObsType) -> set[GroundAtom]:
+        """Determine the goal from an initial observation."""
+
+    def _parse_observation(self, obs: ObsType) -> set[GroundAtom]:
 
         # Sync the simulator so that interpretation functions can use PyBullet
         # direction.
-        self._sim.set_state(PickPlacePyBulletBlocksState.from_observation(obs))
+        self._set_sim_from_obs(obs)
 
         # Compute which things are on which other things.
         self._on_relations = self._get_on_relations_from_sim()
@@ -92,10 +102,7 @@ class PickPlacePyBulletBlocksPerceiver(Perceiver[NDArray[np.float32]]):
         for interpret_fn in self._predicate_interpreters:
             atoms.update(interpret_fn())
 
-        # Create goal atoms.
-        goal = {On([self._block, self._target])}
-
-        return atoms, goal
+        return atoms
 
     def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
         on_relations = set()
@@ -118,8 +125,9 @@ class PickPlacePyBulletBlocksPerceiver(Perceiver[NDArray[np.float32]]):
                     on_relations.add((obj1, obj2))
         return on_relations
 
+    @abc.abstractmethod
     def _interpret_IsMovable(self) -> set[GroundAtom]:
-        return {GroundAtom(IsMovable, [self._block])}
+        """Env-specific definition for now."""
 
     def _interpret_On(self) -> set[GroundAtom]:
         return {GroundAtom(On, r) for r in self._on_relations}
@@ -131,11 +139,46 @@ class PickPlacePyBulletBlocksPerceiver(Perceiver[NDArray[np.float32]]):
         return {GroundAtom(NothingOn, [o]) for o in objs}
 
     def _interpret_Holding(self) -> set[GroundAtom]:
-        if self._sim.current_grasp_transform:
-            return {GroundAtom(Holding, [self._robot, self._block])}
+        if self._sim.current_held_object_id is not None:
+            pybullet_id_to_obj = {v: k for k, v in self._pybullet_ids.items()}
+            held_obj = pybullet_id_to_obj[self._sim.current_held_object_id]
+            return {GroundAtom(Holding, [self._robot, held_obj])}
         return set()
 
     def _interpret_GripperEmpty(self) -> set[GroundAtom]:
         if not self._sim.current_grasp_transform:
             return {GroundAtom(GripperEmpty, [self._robot])}
         return set()
+
+
+class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float32]]):
+    """A perceiver for the PickPlacePyBulletBlocksEnv()."""
+
+    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+        super().__init__(sim)
+
+        # Create constant objects.
+        assert isinstance(self._sim, PickPlacePyBulletBlocksEnv)
+        self._table = Object("table", object_type)
+        self._block = Object("block", object_type)
+        self._target = Object("target", object_type)
+        self._pybullet_ids = {
+            self._robot: self._sim.robot.robot_id,
+            self._table: self._sim.table_id,
+            self._block: self._sim.block_id,
+            self._target: self._sim.target_id,
+        }
+
+    def _get_objects(self, obs: NDArray[np.float32]) -> set[Object]:
+        del obs
+        return set(self._pybullet_ids)
+
+    def _set_sim_from_obs(self, obs: NDArray[np.float32]) -> None:
+        self._sim.set_state(PickPlacePyBulletBlocksState.from_observation(obs))
+
+    def _get_goal(self, obs: NDArray[np.float32]) -> set[GroundAtom]:
+        del obs
+        return {On([self._block, self._target])}
+
+    def _interpret_IsMovable(self) -> set[GroundAtom]:
+        return {GroundAtom(IsMovable, [self._block])}
