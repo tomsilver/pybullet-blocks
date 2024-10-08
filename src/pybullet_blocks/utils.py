@@ -3,7 +3,9 @@
 import tempfile
 from pathlib import Path
 
+import pybullet as p
 from PIL import Image, ImageDraw, ImageFont
+from pybullet_helpers.utils import create_pybullet_block
 
 
 def create_texture_with_letter(
@@ -30,3 +32,33 @@ def create_texture_with_letter(
     img = img.rotate(90)
     img.save(filepath)
     return filepath
+
+
+def create_lettered_block(
+    letter: str,
+    half_extents: tuple[float, float, float],
+    face_rgba: tuple[float, float, float, float],
+    text_rgba: tuple[float, float, float, float],
+    physics_client_id: int,
+) -> int:
+    """Create a block with a letter on all sides."""
+    block_id = create_pybullet_block(
+        (1, 1, 1, 1),  # NOTE: important to default to white for texture
+        half_extents=half_extents,
+        physics_client_id=physics_client_id,
+    )
+    text_color = tuple(map(lambda x: int(255 * x), text_rgba))
+    background_color = tuple(map(lambda x: int(255 * x), face_rgba))
+    filepath = create_texture_with_letter(
+        letter,
+        text_color=text_color,
+        background_color=background_color,
+    )
+    texture_id = p.loadTexture(str(filepath), physicsClientId=physics_client_id)
+    p.changeVisualShape(
+        block_id,
+        -1,
+        textureUniqueId=texture_id,
+        physicsClientId=physics_client_id,
+    )
+    return block_id
