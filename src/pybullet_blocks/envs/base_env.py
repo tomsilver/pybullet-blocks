@@ -101,7 +101,7 @@ class LetteredBlockState(BlockState):
             vec,
             [1, 4, 8, 9],
         )
-        letter = chr(int(letter_vec[0] + 97))
+        letter = chr(int(letter_vec[0] + 97)).upper()
         held = bool(held_vec[0])
         pose = Pose(tuple(pos_vec), tuple(orn_vec))
         return cls(pose, letter, held)
@@ -372,7 +372,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
 
         # Initialize the grasp.
         self.current_grasp_transform: Pose | None = None
-        self._current_held_object_id: int | None = None
+        self.current_held_object_id: int | None = None
 
         self._timestep = 0
 
@@ -419,7 +419,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         # Update gripper if required.
         if action_obj.gripper_action == 1:
             self.current_grasp_transform = None
-            self._current_held_object_id = None
+            self.current_held_object_id = None
         elif action_obj.gripper_action == -1:
             # Check if any block is close enough to the end effector position
             # and grasp if so.
@@ -436,7 +436,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
                     self.current_grasp_transform = multiply_poses(
                         world_to_robot.invert(), world_to_block
                     )
-                    self._current_held_object_id = block_id
+                    self.current_held_object_id = block_id
 
         # Set the robot joints.
         clipped_joints = np.clip(
@@ -451,7 +451,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
                 world_to_robot, self.current_grasp_transform
             )
             p.resetBasePositionAndOrientation(
-                self._current_held_object_id,
+                self.current_held_object_id,
                 world_to_block.position,
                 world_to_block.orientation,
                 physicsClientId=self.physics_client_id,
@@ -480,7 +480,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
 
         # Reset the grasp.
         self.current_grasp_transform = None
-        self._current_held_object_id = None
+        self.current_held_object_id = None
 
         observation = self.get_state().to_observation()
         info = self._get_info()
@@ -491,7 +491,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
 
     def get_held_object_id(self) -> int | None:
         """Expose the pybullet ID of the held object, if it exists."""
-        return self._current_held_object_id
+        return self.current_held_object_id
 
     def get_held_object_tf(self) -> Pose | None:
         """Expose the grasp transform for the held object, if it exists."""

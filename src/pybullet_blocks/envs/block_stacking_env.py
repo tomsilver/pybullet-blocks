@@ -9,6 +9,7 @@ from typing import Any, Collection
 import numpy as np
 import pybullet as p
 from gymnasium import spaces
+from gymnasium.utils import seeding
 from numpy.typing import ArrayLike, NDArray
 from pybullet_helpers.geometry import get_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
@@ -112,7 +113,7 @@ class BlockStackingPyBulletBlocksEnv(
         )
 
         # Create blocks. For now, assume that we won't need more than 26.
-        self._letter_to_block_id: dict[str, int] = {
+        self.letter_to_block_id: dict[str, int] = {
             letter: create_lettered_block(
                 letter,
                 self.scene_description.block_half_extents,
@@ -122,13 +123,13 @@ class BlockStackingPyBulletBlocksEnv(
             )
             for letter in string.ascii_uppercase
         }
-        self._block_id_to_letter = {v: k for k, v in self._letter_to_block_id.items()}
+        self._block_id_to_letter = {v: k for k, v in self.letter_to_block_id.items()}
 
         # Put all of the blocks off screen by default.
         self._banish_all_blocks()
 
         # Keep track of the blocks that are currently active.
-        self._active_block_ids: set[int] = set()
+        self.active_block_ids: set[int] = set()
 
         # Keep track of the current goal in terms of letter piles.
         self._goal_piles: list[list[str]] | None = None
@@ -137,23 +138,23 @@ class BlockStackingPyBulletBlocksEnv(
         assert isinstance(state, BlockStackingPyBulletBlocksState)
         self._banish_all_blocks()
         for block_state in state.block_states:
-            block_id = self._letter_to_block_id[block_state.letter]
+            block_id = self.letter_to_block_id[block_state.letter]
             p.resetBasePositionAndOrientation(
                 block_id,
                 block_state.pose.position,
                 block_state.pose.orientation,
                 physicsClientId=self.physics_client_id,
             )
-            self._active_block_ids.add(block_id)
+            self.active_block_ids.add(block_id)
         self.robot.set_joints(state.robot_state.joint_positions)
         self.current_grasp_transform = state.robot_state.grasp_transform
 
     def get_state(self) -> BlockStackingPyBulletBlocksState:
         block_states = []
-        for block_id in self._active_block_ids:
+        for block_id in self.active_block_ids:
             block_pose = get_pose(block_id, self.physics_client_id)
             letter = self._block_id_to_letter[block_id]
-            held = bool(self._current_held_object_id == block_id)
+            held = bool(self.current_held_object_id == block_id)
             block_state = LetteredBlockState(block_pose, letter, held)
             block_states.append(block_state)
         robot_joints = self.robot.get_joint_positions()
@@ -165,13 +166,13 @@ class BlockStackingPyBulletBlocksEnv(
         )
 
     def get_collision_ids(self) -> set[int]:
-        ids = {self.table_id} | self._active_block_ids
-        if self._current_held_object_id is not None:
-            ids.remove(self._current_held_object_id)
+        ids = {self.table_id} | self.active_block_ids
+        if self.current_held_object_id is not None:
+            ids.remove(self.current_held_object_id)
         return ids
 
     def _get_movable_block_ids(self) -> set[int]:
-        return self._active_block_ids
+        return self.active_block_ids
 
     def _get_info(self) -> dict[str, Any]:
         info = super()._get_info()
@@ -186,8 +187,8 @@ class BlockStackingPyBulletBlocksEnv(
         assert self._goal_piles is not None
         for pile in self._goal_piles:
             for bottom, top in zip(pile[:-1], pile[1:], strict=True):
-                bottom_id = self._letter_to_block_id[bottom]
-                top_id = self._letter_to_block_id[top]
+                bottom_id = self.letter_to_block_id[bottom]
+                top_id = self.letter_to_block_id[top]
                 top_on_bottom = check_body_collisions(
                     bottom_id, top_id, self.physics_client_id
                 )
@@ -204,6 +205,10 @@ class BlockStackingPyBulletBlocksEnv(
         seed: int | None = None,
         options: dict[str, Any] | None = None,
     ) -> tuple[NDArray[np.float32], dict[str, Any]]:
+
+        # Need to set seed first because np_random is used in reset().
+        if seed is not None:
+            self._np_random, seed = seeding.np_random(seed)
 
         self._banish_all_blocks()
 
@@ -245,7 +250,7 @@ class BlockStackingPyBulletBlocksEnv(
         for pile in init_piles:
             # Sample position for the first block.
             letter = pile[0]
-            block_id = self._letter_to_block_id[letter]
+            block_id = self.letter_to_block_id[letter]
             block_position: ArrayLike | None = None
             for _ in range(10000):
                 block_position = self.np_random.uniform(
@@ -280,7 +285,7 @@ class BlockStackingPyBulletBlocksEnv(
             for i, letter in enumerate(pile[1:]):
                 dz = (i + 1) * block_height
                 position = np.add(block_position, (0, 0, dz))
-                block_id = self._letter_to_block_id[letter]
+                block_id = self.letter_to_block_id[letter]
                 p.resetBasePositionAndOrientation(
                     block_id,
                     position,
@@ -291,14 +296,14 @@ class BlockStackingPyBulletBlocksEnv(
         # Reset active blocks.
         for pile in init_piles:
             for letter in pile:
-                block_id = self._letter_to_block_id[letter]
-                self._active_block_ids.add(block_id)
+                block_id = self.letter_to_block_id[letter]
+                self.active_block_ids.add(block_id)
 
         return super().reset(seed=seed)
 
     def _banish_all_blocks(self) -> None:
-        self._active_block_ids = set()
-        for block_id in self._letter_to_block_id.values():
+        self.active_block_ids = set()
+        for block_id in self.letter_to_block_id.values():
             p.resetBasePositionAndOrientation(
                 block_id,
                 (-1000, -1000, -1000),
