@@ -46,7 +46,8 @@ class BlockStackingPyBulletBlocksState(PyBulletBlocksState):
         for vec in inner_vecs:
             padded_vec = np.zeros(self.get_node_dimension(), dtype=np.float32)
             padded_vec[: len(vec)] = vec
-        arr = np.hstack(padded_vecs)
+            padded_vecs.append(padded_vec)
+        arr = np.array(padded_vecs, dtype=np.float32)
         return spaces.GraphInstance(nodes=arr, edges=None, edge_links=None)
 
     @classmethod
@@ -78,6 +79,10 @@ class BlockStackingSceneDescription(BaseSceneDescription):
     max_num_blocks: int = 6
     new_initial_pile_prob: float = 0.25
 
+    min_num_goal_blocks: int = 2
+    max_num_goal_blocks: int = 4
+    new_goal_pile_prob: float = 0.25
+
 
 class BlockStackingPyBulletBlocksEnv(
     PyBulletBlocksEnv[spaces.GraphInstance, NDArray[np.float32]]
@@ -92,6 +97,9 @@ class BlockStackingPyBulletBlocksEnv(
         render_mode: str | None = "rgb_array",
         use_gui: bool = False,
     ) -> None:
+        if scene_description is None:
+            scene_description = BlockStackingSceneDescription()
+
         super().__init__(scene_description, render_mode, use_gui)
 
         # Set up observation space.
@@ -121,6 +129,9 @@ class BlockStackingPyBulletBlocksEnv(
 
         # Keep track of the blocks that are currently active.
         self._active_block_ids: set[int] = set()
+
+        # Keep track of the current goal in terms of letter piles.
+        self._goal_piles: list[list[str]] | None = None
 
     def set_state(self, state: PyBulletBlocksState) -> None:
         assert isinstance(state, BlockStackingPyBulletBlocksState)
@@ -162,9 +173,27 @@ class BlockStackingPyBulletBlocksEnv(
     def _get_movable_block_ids(self) -> set[int]:
         return self._active_block_ids
 
+    def _get_info(self) -> dict[str, Any]:
+        info = super()._get_info()
+        assert self._goal_piles is not None
+        info["goal_piles"] = list(self._goal_piles)
+        return info
+
     def _get_terminated(self) -> bool:
-        # TODO
-        return False
+        gripper_empty = self.current_grasp_transform is None
+        if not gripper_empty:
+            return False
+        assert self._goal_piles is not None
+        for pile in self._goal_piles:
+            for bottom, top in zip(pile[:-1], pile[1:], strict=True):
+                bottom_id = self._letter_to_block_id[bottom]
+                top_id = self._letter_to_block_id[top]
+                top_on_bottom = check_body_collisions(
+                    bottom_id, top_id, self.physics_client_id
+                )
+                if not top_on_bottom:
+                    return False
+        return True
 
     def _get_reward(self) -> float:
         return bool(self._get_terminated())
@@ -181,25 +210,39 @@ class BlockStackingPyBulletBlocksEnv(
         scene_description = self.scene_description
         assert isinstance(scene_description, BlockStackingSceneDescription)
 
-        # Sample initial piles.
-        num_blocks = self.np_random.integers(
-            scene_description.min_num_blocks, scene_description.max_num_blocks + 1
-        )
-        letters = self.np_random.choice(
-            list(string.ascii_uppercase), num_blocks, replace=False
-        )
-        piles: list[list[str]] = [[]]
-        for letter in letters:
-            if (
-                len(piles[-1]) > 0
-                and self.np_random.uniform() < scene_description.new_initial_pile_prob
-            ):
-                piles.append([])
-            piles[-1].append(letter)
+        # Allow user to manually specify piles.
+        if options is not None and "init_piles" in options:
+            init_piles: list[list[str]] = options["init_piles"]
+        else:
+            num_blocks = self.np_random.integers(
+                scene_description.min_num_blocks, scene_description.max_num_blocks + 1
+            )
+            letters = self.np_random.choice(
+                list(string.ascii_uppercase), num_blocks, replace=False
+            )
+            new_pile_prob = scene_description.new_initial_pile_prob
+            init_piles = self._sample_piles(letters, new_pile_prob)
+
+        # Allow user to manually specify goal.
+        if options is not None and "goal_piles" in options:
+            goal_piles: list[list[str]] = options["goal_piles"]
+        else:
+            num_goal_blocks = self.np_random.integers(
+                scene_description.min_num_goal_blocks,
+                scene_description.max_num_goal_blocks + 1,
+            )
+            all_letters = np.hstack(init_piles)
+            num_goal_blocks = min(num_goal_blocks, len(all_letters))
+            goal_letters = self.np_random.choice(
+                all_letters, num_goal_blocks, replace=False
+            )
+            new_pile_prob = scene_description.new_goal_pile_prob
+            goal_piles = self._sample_piles(goal_letters, new_pile_prob)
+        self._goal_piles = goal_piles
 
         # Sample positions.
         collision_ids: set[int] = set()
-        for pile in piles:
+        for pile in init_piles:
             # Sample position for the first block.
             letter = pile[0]
             block_id = self._letter_to_block_id[letter]
@@ -246,7 +289,7 @@ class BlockStackingPyBulletBlocksEnv(
                 )
 
         # Reset active blocks.
-        for pile in piles:
+        for pile in init_piles:
             for letter in pile:
                 block_id = self._letter_to_block_id[letter]
                 self._active_block_ids.add(block_id)
@@ -262,3 +305,13 @@ class BlockStackingPyBulletBlocksEnv(
                 (0, 0, 0, 1),
                 physicsClientId=self.physics_client_id,
             )
+
+    def _sample_piles(
+        self, letters: Collection[str], new_pile_prob: float
+    ) -> list[list[str]]:
+        piles: list[list[str]] = [[]]
+        for letter in letters:
+            if len(piles[-1]) > 0 and self.np_random.uniform() < new_pile_prob:
+                piles.append([])
+            piles[-1].append(letter)
+        return piles
