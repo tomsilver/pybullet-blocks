@@ -344,10 +344,7 @@ class PlaceSkill(PyBulletBlocksSkill):
         plan.extend(self._rollout_pybullet_helpers_plan(pybullet_helpers_plan))
 
         # Move down to prepare drop.
-        dz = (
-            self._get_block_half_extents(target)[2]
-            + self._get_block_half_extents(block)[2]
-        )
+        dz = 2 * self._get_block_half_extents(target)[2]
         target_drop_position = np.add(place_position, (0.0, 0.0, dz))
         end_effector_path = list(
             interpolate_poses(
