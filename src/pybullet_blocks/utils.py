@@ -4,7 +4,7 @@ import tempfile
 from pathlib import Path
 
 import pybullet as p
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pybullet_helpers.utils import create_pybullet_block
 
 
@@ -29,6 +29,7 @@ def create_texture_with_letter(
             text_y = y + tile_size[1] // 2
             d.text((text_x, text_y), letter, font=font, fill=text_color, anchor="mm")
     filepath = Path(tempfile.NamedTemporaryFile("w", delete=False, suffix=".jpg").name)
+    img = ImageOps.mirror(img)
     img = img.rotate(90)
     img.save(filepath)
     return filepath

@@ -10,8 +10,8 @@ import numpy as np
 import pybullet as p
 from gymnasium import spaces
 from gymnasium.utils import seeding
-from numpy.typing import ArrayLike, NDArray
-from pybullet_helpers.geometry import get_pose
+from numpy.typing import NDArray
+from pybullet_helpers.geometry import Pose, get_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 
 from pybullet_blocks.envs.base_env import (
@@ -176,13 +176,15 @@ class BlockStackingPyBulletBlocksEnv(
 
     def _get_info(self) -> dict[str, Any]:
         info = super()._get_info()
-        assert self._goal_piles is not None
-        info["goal_piles"] = list(self._goal_piles)
+        if self._goal_piles is not None:
+            info["goal_piles"] = list(self._goal_piles)
         return info
 
     def _get_terminated(self) -> bool:
         gripper_empty = self.current_grasp_transform is None
         if not gripper_empty:
+            return False
+        if self._goal_piles is None:
             return False
         assert self._goal_piles is not None
         for pile in self._goal_piles:
@@ -246,42 +248,14 @@ class BlockStackingPyBulletBlocksEnv(
         self._goal_piles = goal_piles
 
         # Sample positions.
-        collision_ids: set[int] = set()
         for pile in init_piles:
             # Sample position for the first block.
             letter = pile[0]
             block_id = self.letter_to_block_id[letter]
-            block_position: ArrayLike | None = None
-            for _ in range(10000):
-                block_position = self.np_random.uniform(
-                    self.scene_description.block_init_position_lower,
-                    self.scene_description.block_init_position_upper,
-                )
-                p.resetBasePositionAndOrientation(
-                    block_id,
-                    block_position,
-                    (0, 0, 0, 1),
-                    physicsClientId=self.physics_client_id,
-                )
-                collision_free = True
-                p.performCollisionDetection(physicsClientId=self.physics_client_id)
-                for collision_id in collision_ids:
-                    collision = check_body_collisions(
-                        block_id,
-                        collision_id,
-                        self.physics_client_id,
-                        perform_collision_detection=False,
-                    )
-                    if collision:
-                        collision_free = False
-                        break
-                if collision_free:
-                    break
-            else:
-                raise RuntimeError("Could not sample initial block positions.")
-            # Set positions for blocks above.
-            assert block_position is not None
+            block_pose = self.sample_free_block_pose(block_id)
+            block_position = block_pose.position
             block_height = 2 * scene_description.block_half_extents[2]
+            self.active_block_ids.add(block_id)
             for i, letter in enumerate(pile[1:]):
                 dz = (i + 1) * block_height
                 position = np.add(block_position, (0, 0, dz))
@@ -292,11 +266,6 @@ class BlockStackingPyBulletBlocksEnv(
                     (0, 0, 0, 1),
                     physicsClientId=self.physics_client_id,
                 )
-
-        # Reset active blocks.
-        for pile in init_piles:
-            for letter in pile:
-                block_id = self.letter_to_block_id[letter]
                 self.active_block_ids.add(block_id)
 
         return super().reset(seed=seed)
@@ -320,3 +289,35 @@ class BlockStackingPyBulletBlocksEnv(
                 piles.append([])
             piles[-1].append(letter)
         return piles
+
+    def sample_free_block_pose(self, block_id: int) -> Pose:
+        """Sample a free pose on the table."""
+        block_orn = (0, 0, 0, 1)
+        for _ in range(10000):
+            block_position = self.np_random.uniform(
+                self.scene_description.block_init_position_lower,
+                self.scene_description.block_init_position_upper,
+            )
+            p.resetBasePositionAndOrientation(
+                block_id,
+                block_position,
+                block_orn,
+                physicsClientId=self.physics_client_id,
+            )
+            collision_free = True
+            p.performCollisionDetection(physicsClientId=self.physics_client_id)
+            for collision_id in self.active_block_ids:
+                if collision_id == block_id:
+                    continue
+                collision = check_body_collisions(
+                    block_id,
+                    collision_id,
+                    self.physics_client_id,
+                    perform_collision_detection=False,
+                )
+                if collision:
+                    collision_free = False
+                    break
+            if collision_free:
+                return Pose(tuple(block_position), block_orn)
+        raise RuntimeError("Could not sample free block position.")

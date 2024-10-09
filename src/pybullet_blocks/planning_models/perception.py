@@ -29,12 +29,14 @@ TYPES = {robot_type, object_type}
 
 # Create predicates.
 IsMovable = Predicate("IsMovable", [object_type])
+NotIsMovable = Predicate("NotIsMovable", [object_type])
 On = Predicate("On", [object_type, object_type])
 NothingOn = Predicate("NothingOn", [object_type])
 Holding = Predicate("Holding", [robot_type, object_type])
 GripperEmpty = Predicate("GripperEmpty", [robot_type])
 PREDICATES = {
     IsMovable,
+    NotIsMovable,
     On,
     NothingOn,
     Holding,
@@ -62,6 +64,7 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
         # Create predicate interpreters.
         self._predicate_interpreters = [
             self._interpret_IsMovable,
+            self._interpret_NotIsMovable,
             self._interpret_On,
             self._interpret_NothingOn,
             self._interpret_Holding,
@@ -137,6 +140,13 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         """Env-specific definition for now."""
 
+    def _interpret_NotIsMovable(self) -> set[GroundAtom]:
+        objs = {o for o in self._get_objects() if o.is_instance(object_type)}
+        movable_atoms = self._interpret_IsMovable()
+        movable_objs = {a.objects[0] for a in movable_atoms}
+        not_movable_objs = objs - movable_objs
+        return {GroundAtom(NotIsMovable, [o]) for o in not_movable_objs}
+
     def _interpret_On(self) -> set[GroundAtom]:
         return {GroundAtom(On, r) for r in self._on_relations}
 
@@ -202,9 +212,11 @@ class BlockStackingPyBulletBlocksPerceiver(
         super().__init__(sim)
 
         # Create constant objects.
+        self._table = Object("table", object_type)
         assert isinstance(self._sim, BlockStackingPyBulletBlocksEnv)
         self._pybullet_ids = {
             self._robot: self._sim.robot.robot_id,
+            self._table: self._sim.table_id,
         }
         for letter, block_id in self._sim.letter_to_block_id.items():
             obj = Object(letter, object_type)
@@ -226,7 +238,7 @@ class BlockStackingPyBulletBlocksPerceiver(
         return super().reset(obs, info)
 
     def _get_objects(self) -> set[Object]:
-        return {self._robot} | self._active_blocks
+        return {self._robot, self._table} | self._active_blocks
 
     def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
         self._sim.set_state(BlockStackingPyBulletBlocksState.from_observation(obs))
