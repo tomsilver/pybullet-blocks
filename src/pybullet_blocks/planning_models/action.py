@@ -344,12 +344,10 @@ class PlaceSkill(PyBulletBlocksSkill):
         plan.extend(self._rollout_pybullet_helpers_plan(pybullet_helpers_plan))
 
         # Move down to prepare drop.
-        dz = 2 * self._get_block_half_extents(target)[2]
-        target_drop_position = np.add(place_position, (0.0, 0.0, dz))
         end_effector_path = list(
             interpolate_poses(
                 self._sim.robot.get_end_effector_pose(),
-                Pose(tuple(target_drop_position), self._robot_grasp_orientation),
+                Pose(place_position, self._robot_grasp_orientation),
                 include_start=False,
             )
         )
@@ -384,7 +382,16 @@ class PlaceSkill(PyBulletBlocksSkill):
             letter = held_obj.name
             block_id = self._sim.letter_to_block_id[letter]
             return self._sim.sample_free_block_pose(block_id)
-        return self._get_block_pose(target)
+        held_obj_half_height = self._get_block_half_extents(held_obj)[2]
+        target_half_height = self._get_block_half_extents(target)[2]
+        target_pose = self._get_block_pose(target)
+        dz = target_half_height + held_obj_half_height
+        target_position = (
+            target_pose.position[0],
+            target_pose.position[1],
+            target_pose.position[2] + dz,
+        )
+        return Pose(target_position, target_pose.orientation)
 
 
 class StackSkill(PlaceSkill):
