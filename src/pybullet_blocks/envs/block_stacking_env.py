@@ -176,13 +176,15 @@ class BlockStackingPyBulletBlocksEnv(
 
     def _get_info(self) -> dict[str, Any]:
         info = super()._get_info()
-        assert self._goal_piles is not None
-        info["goal_piles"] = list(self._goal_piles)
+        if self._goal_piles is not None:
+            info["goal_piles"] = list(self._goal_piles)
         return info
 
     def _get_terminated(self) -> bool:
         gripper_empty = self.current_grasp_transform is None
         if not gripper_empty:
+            return False
+        if self._goal_piles is None:
             return False
         assert self._goal_piles is not None
         for pile in self._goal_piles:
