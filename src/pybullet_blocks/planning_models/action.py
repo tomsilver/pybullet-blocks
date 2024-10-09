@@ -209,6 +209,9 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 return self._sim.scene_description.target_half_extents
             raise NotImplementedError
         if isinstance(self._rollout_sim_state, BlockStackingPyBulletBlocksState):
+            if block.name == "table":
+                w, h, _ = self._sim.scene_description.table_half_extents
+                return (w, h, 0.0)
             return self._sim.scene_description.block_half_extents
         raise NotImplementedError
 
@@ -322,9 +325,8 @@ class PlaceSkill(PyBulletBlocksSkill):
         assert self._rollout_sim_state is not None
 
         # Move to above the target.
-        above_target_position = np.add(
-            self._get_block_pose(target).position, (0.0, 0.0, 0.075)
-        )
+        place_position = self._sample_place_pose(block, target).position
+        above_target_position = np.add(place_position, (0.0, 0.0, 0.075))
         above_target_pose = Pose(
             tuple(above_target_position), self._robot_grasp_orientation
         )
@@ -346,9 +348,7 @@ class PlaceSkill(PyBulletBlocksSkill):
             self._get_block_half_extents(target)[2]
             + self._get_block_half_extents(block)[2]
         )
-        target_drop_position = np.add(
-            self._get_block_pose(target).position, (0.0, 0.0, dz)
-        )
+        target_drop_position = np.add(place_position, (0.0, 0.0, dz))
         end_effector_path = list(
             interpolate_poses(
                 self._sim.robot.get_end_effector_pose(),
@@ -378,6 +378,16 @@ class PlaceSkill(PyBulletBlocksSkill):
         self._rollout_sim_state = self._obs_to_sim_state(obs)
 
         return plan
+
+    def _sample_place_pose(self, held_obj: Object, surface: Object) -> Pose:
+        if surface.name == "table":
+            # Sample a free pose on the table.
+            assert isinstance(self._sim, BlockStackingPyBulletBlocksEnv)
+            assert len(held_obj.name) == 1
+            letter = held_obj.name
+            block_id = self._sim.letter_to_block_id[letter]
+            return self._sim.sample_free_block_pose(block_id)
+        return self._get_block_pose(surface)
 
 
 class StackSkill(PlaceSkill):

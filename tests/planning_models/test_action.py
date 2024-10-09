@@ -52,8 +52,7 @@ def test_block_stacking_pybullet_blocks_action():
     env = BlockStackingPyBulletBlocksEnv(use_gui=True)
     sim = BlockStackingPyBulletBlocksEnv(env.scene_description, use_gui=False)
 
-    from gymnasium.wrappers import RecordVideo
-
+    # from gymnasium.wrappers import RecordVideo
     # env = RecordVideo(env, "block-stacking-ttmp-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
@@ -62,11 +61,17 @@ def test_block_stacking_pybullet_blocks_action():
 
     # Create the planner.
     planner = TaskThenMotionPlanner(
-        TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="pyperplan"
+        TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="fd-sat"
     )
 
     # Run an episode.
-    obs, info = env.reset(seed=123)
+    obs, info = env.reset(
+        seed=123,
+        options={
+            "init_piles": [["B", "A", "L"], ["I"], ["S", "E"]],
+            "goal_piles": [["L", "E", "B", "A", "S", "I"]],
+        },
+    )
     planner.reset(obs, info)
     for _ in range(10000):  # should terminate earlier
         action = planner.step(obs)
