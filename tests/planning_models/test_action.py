@@ -61,7 +61,7 @@ def test_block_stacking_pybullet_blocks_action():
 
     # Create the planner.
     planner = TaskThenMotionPlanner(
-        TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="fd-sat"
+        TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="pyperplan"
     )
 
     # Run an episode.
