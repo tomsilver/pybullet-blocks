@@ -49,7 +49,7 @@ def test_pick_place_pybullet_blocks_action():
 def test_block_stacking_pybullet_blocks_action():
     """Tests task then motion planning in BlockStackingPyBulletBlocksEnv()."""
 
-    env = BlockStackingPyBulletBlocksEnv(use_gui=True)
+    env = BlockStackingPyBulletBlocksEnv(use_gui=False)
     sim = BlockStackingPyBulletBlocksEnv(env.scene_description, use_gui=False)
 
     # from gymnasium.wrappers import RecordVideo
@@ -67,18 +67,11 @@ def test_block_stacking_pybullet_blocks_action():
     # Run an episode.
     obs, info = env.reset(
         seed=123,
-        options={
-            "init_piles": [["B", "A", "L"], ["I"], ["S", "E"]],
-            "goal_piles": [["L", "E", "B", "A", "S", "I"]],
-        },
     )
     planner.reset(obs, info)
     for _ in range(10000):  # should terminate earlier
         action = planner.step(obs)
         obs, reward, done, _, _ = env.step(action)
-        import time
-
-        time.sleep(0.01)
         if done:  # goal reached!
             assert reward > 0
             break

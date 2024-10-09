@@ -376,15 +376,15 @@ class PlaceSkill(PyBulletBlocksSkill):
 
         return plan
 
-    def _sample_place_pose(self, held_obj: Object, surface: Object) -> Pose:
-        if surface.name == "table":
+    def _sample_place_pose(self, held_obj: Object, target: Object) -> Pose:
+        if target.name == "table":
             # Sample a free pose on the table.
             assert isinstance(self._sim, BlockStackingPyBulletBlocksEnv)
             assert len(held_obj.name) == 1
             letter = held_obj.name
             block_id = self._sim.letter_to_block_id[letter]
             return self._sim.sample_free_block_pose(block_id)
-        return self._get_block_pose(surface)
+        return self._get_block_pose(target)
 
 
 class StackSkill(PlaceSkill):

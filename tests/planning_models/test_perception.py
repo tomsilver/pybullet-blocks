@@ -20,7 +20,7 @@ def test_pick_place_pybullet_blocks_perceiver():
     assert len(objects) == 4
     assert (
         str(sorted(atoms))
-        == "[(GripperEmpty robot), (IsMovable block), (NothingOn block), (NothingOn target), (On block table), (On target table)]"  # pylint: disable=line-too-long
+        == "[(GripperEmpty robot), (IsMovable block), (NotIsMovable table), (NotIsMovable target), (NothingOn block), (NothingOn target), (On block table), (On target table)]"  # pylint: disable=line-too-long
     )
     assert str(sorted(goal)) == "[(On block target)]"
 
@@ -40,9 +40,9 @@ def test_block_stacking_pybullet_blocks_perceiver():
         },
     )
     objects, atoms, goal = perceiver.reset(obs, info)
-    assert len(objects) == 5
+    assert len(objects) == 6
     assert (
         str(sorted(atoms))
-        == "[(GripperEmpty robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable D), (NothingOn D), (On B A), (On C B), (On D C)]"  # pylint: disable=line-too-long
+        == "[(GripperEmpty robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable D), (NotIsMovable table), (NothingOn D), (On A table), (On B A), (On C B), (On D C)]"  # pylint: disable=line-too-long
     )
     assert str(sorted(goal)) == "[(On A C), (On B D)]"
