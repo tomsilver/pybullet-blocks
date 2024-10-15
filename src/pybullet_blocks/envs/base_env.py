@@ -345,13 +345,13 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         self.robot = robot
 
         # Create robot stand.
-        self._robot_stand_id = create_pybullet_block(
+        self.robot_stand_id = create_pybullet_block(
             self.scene_description.robot_stand_rgba,
             half_extents=self.scene_description.robot_stand_half_extents,
             physics_client_id=self.physics_client_id,
         )
         p.resetBasePositionAndOrientation(
-            self._robot_stand_id,
+            self.robot_stand_id,
             self.scene_description.robot_stand_pose.position,
             self.scene_description.robot_stand_pose.orientation,
             physicsClientId=self.physics_client_id,
