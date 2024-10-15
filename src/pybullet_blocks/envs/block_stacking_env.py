@@ -137,6 +137,7 @@ class BlockStackingPyBulletBlocksEnv(
     def set_state(self, state: PyBulletBlocksState) -> None:
         assert isinstance(state, BlockStackingPyBulletBlocksState)
         self._banish_all_blocks()
+        self.current_held_object_id = None
         for block_state in state.block_states:
             block_id = self.letter_to_block_id[block_state.letter]
             p.resetBasePositionAndOrientation(
@@ -146,6 +147,8 @@ class BlockStackingPyBulletBlocksEnv(
                 physicsClientId=self.physics_client_id,
             )
             self.active_block_ids.add(block_id)
+            if block_state.held:
+                self.current_held_object_id = block_id
         self.robot.set_joints(state.robot_state.joint_positions)
         self.current_grasp_transform = state.robot_state.grasp_transform
 
