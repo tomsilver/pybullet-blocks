@@ -121,6 +121,10 @@ class PickPlacePyBulletBlocksEnv(
         )
         self.robot.set_joints(state.robot_state.joint_positions)
         self.current_grasp_transform = state.robot_state.grasp_transform
+        if self.current_grasp_transform is not None:
+            self.current_held_object_id = self.block_id
+        else:
+            self.current_held_object_id = None
 
     def get_state(self) -> PickPlacePyBulletBlocksState:
         block_pose = get_pose(self.block_id, self.physics_client_id)

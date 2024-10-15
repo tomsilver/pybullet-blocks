@@ -177,9 +177,9 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
     ) -> NDArray[np.float32]:
         joint_delta = np.subtract(next_state.robot_joints, state.robot_joints)
         if next_state.attachments and not state.attachments:
-            gripper_action = 1.0
-        elif state.attachments and not next_state.attachments:
             gripper_action = -1.0
+        elif state.attachments and not next_state.attachments:
+            gripper_action = 1.0
         else:
             gripper_action = 0.0
         action = np.hstack([joint_delta[:7], [gripper_action]]).astype(np.float32)
@@ -191,6 +191,8 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 return self._sim.block_id
             if obj.name == "target":
                 return self._sim.target_id
+            if obj.name == "table":
+                return self._sim.table_id
             raise NotImplementedError
         if isinstance(self._sim, BlockStackingPyBulletBlocksEnv):
             if obj.name == "table":
@@ -221,7 +223,6 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 self._sim.block_id: sim_state.block_state.pose,
                 self._sim.target_id: sim_state.target_state.pose,
                 self._sim.table_id: self._sim.scene_description.table_pose,
-                self._sim.robot_stand_id: self._sim.scene_description.robot_stand_pose,
             }
             attachments: dict[int, Pose] = {}
             if sim_state.robot_state.grasp_transform is not None:
@@ -233,7 +234,6 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             robot_joints = sim_state.robot_state.joint_positions
             object_poses = {
                 self._sim.table_id: self._sim.scene_description.table_pose,
-                self._sim.robot_stand_id: self._sim.scene_description.robot_stand_pose,
             }
             held_block_id = -1
             for block_state in sim_state.block_states:
@@ -343,7 +343,7 @@ class PlaceSkill(PyBulletBlocksSkill):
 
     def _get_aabb_dimensions(self, obj_id: int) -> tuple[float, float, float]:
         (min_x, min_y, min_z), (max_x, max_y, max_z) = p.getAABB(
-            obj_id, self._sim.physics_client_id
+            obj_id, -1, self._sim.physics_client_id
         )
         return (max_x - min_x, max_y - min_y, max_z - min_z)
 
