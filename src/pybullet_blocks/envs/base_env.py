@@ -176,6 +176,8 @@ class PyBulletBlocksAction:
 class BaseSceneDescription:
     """Container for default hyperparameters."""
 
+    gravity: float = 9.80665
+
     robot_name: str = "panda"  # must be 7-dof and have fingers
     robot_base_pose: Pose = Pose.identity()
     initial_joints: JointPositions = field(
@@ -204,6 +206,8 @@ class BaseSceneDescription:
     block_rgba: tuple[float, float, float, float] = (0.5, 0.0, 0.5, 1.0)
     block_text_rgba: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
     block_half_extents: tuple[float, float, float] = (0.025, 0.025, 0.025)
+    block_mass: float = 0.5
+    block_friction: float = 0.9
 
     target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
     target_half_extents: tuple[float, float, float] = (0.05, 0.05, 0.001)
@@ -331,6 +335,9 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             self.physics_client_id = create_gui_connection(camera_yaw=180)
         else:
             self.physics_client_id = p.connect(p.DIRECT)
+
+        # Set gravity.
+        p.setGravity(0, 0, -self.scene_description.gravity, physicsClientId=self.physics_client_id)
 
         # Create robot.
         robot = create_pybullet_robot(
