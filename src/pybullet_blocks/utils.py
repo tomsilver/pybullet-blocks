@@ -41,12 +41,16 @@ def create_lettered_block(
     face_rgba: tuple[float, float, float, float],
     text_rgba: tuple[float, float, float, float],
     physics_client_id: int,
+    mass: float = 0.0,
+    friction: float | None = None,
 ) -> int:
     """Create a block with a letter on all sides."""
     block_id = create_pybullet_block(
         (1, 1, 1, 1),  # NOTE: important to default to white for texture
         half_extents=half_extents,
         physics_client_id=physics_client_id,
+        mass=mass,
+        friction=friction,
     )
     text_color = tuple(map(lambda x: int(255 * x), text_rgba))
     background_color = tuple(map(lambda x: int(255 * x), face_rgba))

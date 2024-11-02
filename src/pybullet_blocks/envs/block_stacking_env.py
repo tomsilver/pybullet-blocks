@@ -11,7 +11,7 @@ import pybullet as p
 from gymnasium import spaces
 from gymnasium.utils import seeding
 from numpy.typing import NDArray
-from pybullet_helpers.geometry import Pose, get_pose
+from pybullet_helpers.geometry import Pose, get_pose, set_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 
 from pybullet_blocks.envs.base_env import (
@@ -140,12 +140,7 @@ class BlockStackingPyBulletBlocksEnv(
         self.current_held_object_id = None
         for block_state in state.block_states:
             block_id = self.letter_to_block_id[block_state.letter]
-            p.resetBasePositionAndOrientation(
-                block_id,
-                block_state.pose.position,
-                block_state.pose.orientation,
-                physicsClientId=self.physics_client_id,
-            )
+            set_pose(block_id, block_state.pose, self.physics_client_id)
             self.active_block_ids.add(block_id)
             if block_state.held:
                 self.current_held_object_id = block_id
@@ -263,12 +258,7 @@ class BlockStackingPyBulletBlocksEnv(
                 dz = (i + 1) * block_height
                 position = np.add(block_position, (0, 0, dz))
                 block_id = self.letter_to_block_id[letter]
-                p.resetBasePositionAndOrientation(
-                    block_id,
-                    position,
-                    (0, 0, 0, 1),
-                    physicsClientId=self.physics_client_id,
-                )
+                set_pose(block_id, Pose(tuple(position)), self.physics_client_id)
                 self.active_block_ids.add(block_id)
 
         return super().reset(seed=seed)
@@ -276,12 +266,7 @@ class BlockStackingPyBulletBlocksEnv(
     def _banish_all_blocks(self) -> None:
         self.active_block_ids = set()
         for block_id in self.letter_to_block_id.values():
-            p.resetBasePositionAndOrientation(
-                block_id,
-                (-1000, -1000, -1000),
-                (0, 0, 0, 1),
-                physicsClientId=self.physics_client_id,
-            )
+            set_pose(block_id, Pose((-1000, -1000, -1000)), self.physics_client_id)
 
     def _sample_piles(
         self, letters: Collection[str], new_pile_prob: float
@@ -295,18 +280,12 @@ class BlockStackingPyBulletBlocksEnv(
 
     def sample_free_block_pose(self, block_id: int) -> Pose:
         """Sample a free pose on the table."""
-        block_orn = (0, 0, 0, 1)
         for _ in range(10000):
             block_position = self.np_random.uniform(
                 self.scene_description.block_init_position_lower,
                 self.scene_description.block_init_position_upper,
             )
-            p.resetBasePositionAndOrientation(
-                block_id,
-                block_position,
-                block_orn,
-                physicsClientId=self.physics_client_id,
-            )
+            set_pose(block_id, Pose(tuple(block_position)), self.physics_client_id)
             collision_free = True
             p.performCollisionDetection(physicsClientId=self.physics_client_id)
             for collision_id in self.active_block_ids:
@@ -322,5 +301,5 @@ class BlockStackingPyBulletBlocksEnv(
                     collision_free = False
                     break
             if collision_free:
-                return Pose(tuple(block_position), block_orn)
+                return Pose(tuple(block_position))
         raise RuntimeError("Could not sample free block position.")
