@@ -18,12 +18,15 @@ def test_push_env():
     """Tests for PushPyBulletBlocksEnv()."""
 
     env = PushPyBulletBlocksEnv(use_gui=False)
-    obs, _ = env.reset(seed=124)
 
+    # from gymnasium.wrappers import RecordVideo
+    # env = RecordVideo(env, "push-env-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
+    obs, _ = env.reset(seed=124)
+
     # Create a 'simulation' environment for kinematics, planning, etc.
-    sim = PushPyBulletBlocksEnv(env.scene_description, use_gui=False)
+    sim = PushPyBulletBlocksEnv(env.env.scene_description, use_gui=False)
     joint_distance_fn = create_joint_distance_fn(sim.robot)
 
     def _execute_pybullet_helpers_plan(plan, state):
