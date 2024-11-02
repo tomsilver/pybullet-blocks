@@ -464,6 +464,10 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
                 physicsClientId=self.physics_client_id,
             )
 
+        for _ in range(30):
+            p.stepSimulation(physicsClientId=self.physics_client_id)
+        self.robot.set_joints(clipped_joints.tolist())
+
         # Check goal.
         terminated = self._get_terminated()
         reward = self._get_reward()

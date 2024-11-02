@@ -18,15 +18,13 @@ def test_push_env():
     """Tests for PushPyBulletBlocksEnv()."""
 
     env = PushPyBulletBlocksEnv(use_gui=True)
-    obs, _ = env.reset(seed=123)
+    obs, _ = env.reset(seed=124)
 
     max_motion_planning_time = 0.1  # increase for prettier videos
 
     # Create a 'simulation' environment for kinematics, planning, etc.
     sim = PushPyBulletBlocksEnv(env.scene_description, use_gui=False)
     joint_distance_fn = create_joint_distance_fn(sim.robot)
-
-    obs, _ = env.reset(seed=123)
 
     def _execute_pybullet_helpers_plan(plan, state):
         assert plan is not None
@@ -59,7 +57,7 @@ def test_push_env():
 
     # Move forward to push the block.
     sim.set_state(state)
-    beyond_block_position = np.add(state.block_state.pose.position, (0.0, -0.075, -0.01))
+    beyond_block_position = np.add(state.block_state.pose.position, (0.0, -0.125, -0.01))
     beyond_block_pose = Pose(tuple(beyond_block_position), push_ee_orn)
     end_effector_path = list(
         iter_between_poses(
@@ -81,8 +79,28 @@ def test_push_env():
     assert push_plan is not None
     state = _execute_pybullet_helpers_plan(push_plan, state)
 
-    import pybullet as p
-    while True:
-        p.stepSimulation(env.physics_client_id)
+    # Move backward and up push.
+    sim.set_state(state)
+    post_push_position = np.add(state.block_state.pose.position, (0.0, 0.075, 0.075))
+    post_push_pose = Pose(tuple(post_push_position), push_ee_orn)
+    end_effector_path = list(
+        iter_between_poses(
+            sim.robot.get_end_effector_pose(),
+            post_push_pose,
+            include_start=False,
+            num_interp=25,  # slowish!
+        )
+    )
+    post_push_plan = smoothly_follow_end_effector_path(
+        sim.robot,
+        end_effector_path,
+        state.robot_state.joint_positions,
+        sim.get_collision_ids() - {sim.block_id},
+        joint_distance_fn,
+        max_time=max_motion_planning_time,
+        include_start=False,
+    )
+    assert post_push_plan is not None
+    state = _execute_pybullet_helpers_plan(post_push_plan, state)
 
     env.close()
