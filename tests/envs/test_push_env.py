@@ -1,9 +1,5 @@
 """Tests for push_env.py."""
 
-from pybullet_blocks.envs.push_env import (
-    PushPyBulletBlocksEnv,
-    PushPyBulletBlocksState,
-)
 import numpy as np
 from pybullet_helpers.geometry import Pose, iter_between_poses, multiply_poses
 from pybullet_helpers.motion_planning import (
@@ -12,12 +8,16 @@ from pybullet_helpers.motion_planning import (
     smoothly_follow_end_effector_path,
 )
 
+from pybullet_blocks.envs.push_env import (
+    PushPyBulletBlocksEnv,
+    PushPyBulletBlocksState,
+)
 
 
 def test_push_env():
     """Tests for PushPyBulletBlocksEnv()."""
 
-    env = PushPyBulletBlocksEnv(use_gui=True)
+    env = PushPyBulletBlocksEnv(use_gui=False)
     obs, _ = env.reset(seed=124)
 
     max_motion_planning_time = 0.1  # increase for prettier videos
@@ -34,16 +34,19 @@ def test_push_env():
             assert env.action_space.contains(action)
             obs, _, _, _, _ = env.step(action)
             state = PushPyBulletBlocksState.from_observation(obs)
-            import time; time.sleep(0.1)
         return state
 
     init_ee_orn = sim.robot.get_end_effector_pose().orientation
-    push_ee_orn = multiply_poses(Pose((0, 0, 0), init_ee_orn), Pose.from_rpy((0, 0, 0), (0.0, -np.pi / 4, 0.0))).orientation
+    push_ee_orn = multiply_poses(
+        Pose((0, 0, 0), init_ee_orn), Pose.from_rpy((0, 0, 0), (0.0, -np.pi / 4, 0.0))
+    ).orientation
 
     # Move next to the block.
     state = PushPyBulletBlocksState.from_observation(obs)
     sim.set_state(state)
-    next_to_block_position = np.add(state.block_state.pose.position, (0.0, 0.075, -0.01))
+    next_to_block_position = np.add(
+        state.block_state.pose.position, (0.0, 0.075, -0.01)
+    )
     next_to_block_pose = Pose(tuple(next_to_block_position), push_ee_orn)
     plan = run_smooth_motion_planning_to_pose(
         next_to_block_pose,
@@ -57,7 +60,9 @@ def test_push_env():
 
     # Move forward to push the block.
     sim.set_state(state)
-    beyond_block_position = np.add(state.block_state.pose.position, (0.0, -0.125, -0.01))
+    beyond_block_position = np.add(
+        state.block_state.pose.position, (0.0, -0.125, -0.01)
+    )
     beyond_block_pose = Pose(tuple(beyond_block_position), push_ee_orn)
     end_effector_path = list(
         iter_between_poses(

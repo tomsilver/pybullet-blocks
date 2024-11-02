@@ -337,7 +337,12 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             self.physics_client_id = p.connect(p.DIRECT)
 
         # Set gravity.
-        p.setGravity(0, 0, -self.scene_description.gravity, physicsClientId=self.physics_client_id)
+        p.setGravity(
+            0,
+            0,
+            -self.scene_description.gravity,
+            physicsClientId=self.physics_client_id,
+        )
 
         # Create robot.
         robot = create_pybullet_robot(

@@ -8,9 +8,8 @@ from typing import Any
 import numpy as np
 from gymnasium import spaces
 from gymnasium.utils import seeding
-
 from numpy.typing import ArrayLike, NDArray
-from pybullet_helpers.geometry import get_pose, set_pose, Pose
+from pybullet_helpers.geometry import Pose, get_pose, set_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.utils import create_pybullet_block
 
@@ -165,15 +164,18 @@ class PushPyBulletBlocksEnv(
             self.scene_description.target_init_position_lower,
             self.scene_description.target_init_position_upper,
         )
-        set_pose(self.target_id, Pose(target_position), self.physics_client_id)
+        set_pose(self.target_id, Pose(tuple(target_position)), self.physics_client_id)
 
         # Reset the block to be in the middle of the target.
-        dz = self.scene_description.block_half_extents[2] + self.scene_description.target_half_extents[2]
-        block_position = np.array([
+        dz = (
+            self.scene_description.block_half_extents[2]
+            + self.scene_description.target_half_extents[2]
+        )
+        block_position = (
             target_position[0],
             target_position[1],
-            target_position[2] + dz
-        ])
+            target_position[2] + dz,
+        )
         set_pose(self.block_id, Pose(block_position), self.physics_client_id)
 
         return super().reset(seed=seed)
