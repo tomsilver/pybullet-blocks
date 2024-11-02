@@ -1,7 +1,7 @@
 """Tests for pick_place_env.py."""
 
 import numpy as np
-from pybullet_helpers.geometry import Pose, interpolate_poses
+from pybullet_helpers.geometry import Pose, iter_between_poses
 from pybullet_helpers.motion_planning import (
     create_joint_distance_fn,
     remap_joint_position_plan_to_constant_distance,
@@ -65,7 +65,7 @@ def test_pick_place_env():
     # Move down to grasp the block.
     sim.set_state(state)
     end_effector_path = list(
-        interpolate_poses(
+        iter_between_poses(
             sim.robot.get_end_effector_pose(),
             Pose(state.block_state.pose.position, robot_grasp_orientation),
             include_start=False,
@@ -116,7 +116,7 @@ def test_pick_place_env():
     )
     target_drop_position = np.add(state.target_state.pose.position, (0.0, 0.0, dz))
     end_effector_path = list(
-        interpolate_poses(
+        iter_between_poses(
             sim.robot.get_end_effector_pose(),
             Pose(target_drop_position, robot_grasp_orientation),
             include_start=False,
