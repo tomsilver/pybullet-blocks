@@ -6,11 +6,10 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-import pybullet as p
 from gymnasium import spaces
 from gymnasium.utils import seeding
 from numpy.typing import ArrayLike, NDArray
-from pybullet_helpers.geometry import get_pose
+from pybullet_helpers.geometry import Pose, get_pose, set_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.utils import create_pybullet_block
 
@@ -110,18 +109,8 @@ class PickPlacePyBulletBlocksEnv(
 
     def set_state(self, state: PyBulletBlocksState) -> None:
         assert isinstance(state, PickPlacePyBulletBlocksState)
-        p.resetBasePositionAndOrientation(
-            self.block_id,
-            state.block_state.pose.position,
-            state.block_state.pose.orientation,
-            physicsClientId=self.physics_client_id,
-        )
-        p.resetBasePositionAndOrientation(
-            self.target_id,
-            state.target_state.pose.position,
-            state.target_state.pose.orientation,
-            physicsClientId=self.physics_client_id,
-        )
+        set_pose(self.block_id, state.block_state.pose, self.physics_client_id)
+        set_pose(self.target_id, state.target_state.pose, self.physics_client_id)
         self.robot.set_joints(state.robot_state.joint_positions)
         self.current_grasp_transform = state.robot_state.grasp_transform
         if self.current_grasp_transform is not None:
@@ -179,12 +168,7 @@ class PickPlacePyBulletBlocksEnv(
             self.scene_description.block_init_position_lower,
             self.scene_description.block_init_position_upper,
         )
-        p.resetBasePositionAndOrientation(
-            self.block_id,
-            block_position,
-            (0, 0, 0, 1),
-            physicsClientId=self.physics_client_id,
-        )
+        set_pose(self.block_id, Pose(tuple(block_position)), self.physics_client_id)
 
         # Reset the position of the target (avoiding collision with block).
         while True:
@@ -192,11 +176,8 @@ class PickPlacePyBulletBlocksEnv(
                 self.scene_description.target_init_position_lower,
                 self.scene_description.target_init_position_upper,
             )
-            p.resetBasePositionAndOrientation(
-                self.target_id,
-                target_position,
-                (0, 0, 0, 1),
-                physicsClientId=self.physics_client_id,
+            set_pose(
+                self.target_id, Pose(tuple(target_position)), self.physics_client_id
             )
             if not check_body_collisions(
                 self.block_id, self.target_id, self.physics_client_id

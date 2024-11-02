@@ -13,7 +13,7 @@ from gymnasium import spaces
 from gymnasium.core import ActType, ObsType
 from numpy.typing import NDArray
 from pybullet_helpers.camera import capture_image
-from pybullet_helpers.geometry import Pose, get_pose, multiply_poses
+from pybullet_helpers.geometry import Pose, get_pose, multiply_poses, set_pose
 from pybullet_helpers.gui import create_gui_connection
 from pybullet_helpers.joint import JointPositions
 from pybullet_helpers.robots import create_pybullet_robot
@@ -314,7 +314,10 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         scene_description: BaseSceneDescription | None = None,
         render_mode: str | None = "rgb_array",
         use_gui: bool = False,
+        num_sim_steps_per_step: int = 30,
     ) -> None:
+        self._num_sim_steps_per_step = num_sim_steps_per_step
+
         # Finalize the scene description.
         if scene_description is None:
             scene_description = BaseSceneDescription()
@@ -362,11 +365,10 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             half_extents=self.scene_description.robot_stand_half_extents,
             physics_client_id=self.physics_client_id,
         )
-        p.resetBasePositionAndOrientation(
+        set_pose(
             self.robot_stand_id,
-            self.scene_description.robot_stand_pose.position,
-            self.scene_description.robot_stand_pose.orientation,
-            physicsClientId=self.physics_client_id,
+            self.scene_description.robot_stand_pose,
+            self.physics_client_id,
         )
 
         # Create table.
@@ -375,11 +377,8 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             half_extents=self.scene_description.table_half_extents,
             physics_client_id=self.physics_client_id,
         )
-        p.resetBasePositionAndOrientation(
-            self.table_id,
-            self.scene_description.table_pose.position,
-            self.scene_description.table_pose.orientation,
-            physicsClientId=self.physics_client_id,
+        set_pose(
+            self.table_id, self.scene_description.table_pose, self.physics_client_id
         )
 
         # Initialize the grasp.
@@ -450,12 +449,16 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
                     )
                     self.current_held_object_id = block_id
 
+        # Manually set the robot positions once, effectively forcing position
+        # control, and apply any held object transform. Then run physics for a
+        # certain number of iterations (may need to be tuned). Then reset the
+        # robot and held object again after physics to ensure that position
+        # control is exact. For example, consider pushing a non-held object.
+        clipped_joints = np.clip(
+            joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
+        )
         for i in range(2):
-
             # Set the robot joints.
-            clipped_joints = np.clip(
-                joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
-            )
             self.robot.set_joints(clipped_joints.tolist())
 
             # Apply the grasp transform if it exists.
@@ -464,15 +467,15 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
                 world_to_block = multiply_poses(
                     world_to_robot, self.current_grasp_transform
                 )
-                p.resetBasePositionAndOrientation(
+                assert self.current_held_object_id is not None
+                set_pose(
                     self.current_held_object_id,
-                    world_to_block.position,
-                    world_to_block.orientation,
-                    physicsClientId=self.physics_client_id,
+                    world_to_block,
+                    self.physics_client_id,
                 )
 
             if i == 0:
-                for _ in range(30):
+                for _ in range(self._num_sim_steps_per_step):
                     p.stepSimulation(physicsClientId=self.physics_client_id)
 
         # Check goal.
