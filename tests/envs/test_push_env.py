@@ -26,7 +26,7 @@ def test_push_env():
     obs, _ = env.reset(seed=124)
 
     # Create a 'simulation' environment for kinematics, planning, etc.
-    sim = PushPyBulletBlocksEnv(env.env.scene_description, use_gui=False)
+    sim = PushPyBulletBlocksEnv(env.scene_description, use_gui=False)
     joint_distance_fn = create_joint_distance_fn(sim.robot)
 
     def _execute_pybullet_helpers_plan(plan, state):
