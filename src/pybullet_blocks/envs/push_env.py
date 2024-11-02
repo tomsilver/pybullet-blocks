@@ -70,7 +70,7 @@ class PushPyBulletBlocksEnv(
 ):
     """A PyBullet environment with a single block and target area.
 
-    Observations are flattened PushPyBulletBlockStates and actions
+    Observations are flattened PushPyBulletBlocksStates and actions
     are changes in robot joint states.
 
     TODO: update docstring if action space changes.
@@ -112,8 +112,8 @@ class PushPyBulletBlocksEnv(
 
     def set_state(self, state: PyBulletBlocksState) -> None:
         assert isinstance(state, PushPyBulletBlocksState)
-        set_pose(self.block_id, state.block_state, self.physics_client_id)
-        set_pose(self.target_id, state.target_state, self.physics_client_id)
+        set_pose(self.block_id, state.block_state.pose, self.physics_client_id)
+        set_pose(self.target_id, state.target_state.pose, self.physics_client_id)
         self.robot.set_joints(state.robot_state.joint_positions)
         assert state.robot_state.grasp_transform is None
         self.current_held_object_id = None
