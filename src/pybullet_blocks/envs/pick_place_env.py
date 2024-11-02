@@ -97,6 +97,8 @@ class PickPlacePyBulletBlocksEnv(
             self.scene_description.block_rgba,
             self.scene_description.block_text_rgba,
             self.physics_client_id,
+            mass=self.scene_description.block_mass,
+            friction=self.scene_description.block_friction,
         )
 
         # Create target.

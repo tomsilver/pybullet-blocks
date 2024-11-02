@@ -445,28 +445,30 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
                     )
                     self.current_held_object_id = block_id
 
-        # Set the robot joints.
-        clipped_joints = np.clip(
-            joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
-        )
-        self.robot.set_joints(clipped_joints.tolist())
+        for i in range(2):
 
-        # Apply the grasp transform if it exists.
-        if self.current_grasp_transform:
-            world_to_robot = self.robot.get_end_effector_pose()
-            world_to_block = multiply_poses(
-                world_to_robot, self.current_grasp_transform
+            # Set the robot joints.
+            clipped_joints = np.clip(
+                joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
             )
-            p.resetBasePositionAndOrientation(
-                self.current_held_object_id,
-                world_to_block.position,
-                world_to_block.orientation,
-                physicsClientId=self.physics_client_id,
-            )
+            self.robot.set_joints(clipped_joints.tolist())
 
-        for _ in range(30):
-            p.stepSimulation(physicsClientId=self.physics_client_id)
-        self.robot.set_joints(clipped_joints.tolist())
+            # Apply the grasp transform if it exists.
+            if self.current_grasp_transform:
+                world_to_robot = self.robot.get_end_effector_pose()
+                world_to_block = multiply_poses(
+                    world_to_robot, self.current_grasp_transform
+                )
+                p.resetBasePositionAndOrientation(
+                    self.current_held_object_id,
+                    world_to_block.position,
+                    world_to_block.orientation,
+                    physicsClientId=self.physics_client_id,
+                )
+
+            if i == 0:
+                for _ in range(30):
+                    p.stepSimulation(physicsClientId=self.physics_client_id)
 
         # Check goal.
         terminated = self._get_terminated()
