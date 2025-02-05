@@ -131,7 +131,10 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
                     continue
                 # Check for contact.
                 if check_body_collisions(
-                    obj1_pybullet_id, obj2_pybullet_id, self._sim.physics_client_id
+                    obj1_pybullet_id,
+                    obj2_pybullet_id,
+                    self._sim.physics_client_id,
+                    distance_threshold=1e-3,
                 ):
                     on_relations.add((obj1, obj2))
         return on_relations

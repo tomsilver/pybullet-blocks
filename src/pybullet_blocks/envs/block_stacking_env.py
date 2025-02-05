@@ -190,7 +190,10 @@ class BlockStackingPyBulletBlocksEnv(
                 bottom_id = self.letter_to_block_id[bottom]
                 top_id = self.letter_to_block_id[top]
                 top_on_bottom = check_body_collisions(
-                    bottom_id, top_id, self.physics_client_id
+                    bottom_id,
+                    top_id,
+                    self.physics_client_id,
+                    distance_threshold=1e-3,
                 )
                 if not top_on_bottom:
                     return False

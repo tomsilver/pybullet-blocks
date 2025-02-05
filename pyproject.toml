@@ -12,7 +12,7 @@ dependencies = [
    "numpy",
    "pybullet_helpers@git+https://github.com/tomsilver/pybullet-helpers.git",
    "task_then_motion_planning@git+https://github.com/tomsilver/task-then-motion-planning.git",
-   "gymnasium",
+   "gymnasium==1.0.0",
    "moviepy",
 ]
 
