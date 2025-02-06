@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 from pybullet_helpers.camera import capture_image
 from pybullet_helpers.geometry import Pose, get_pose, multiply_poses, set_pose
 from pybullet_helpers.gui import create_gui_connection
+from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.joint import JointPositions
 from pybullet_helpers.robots import create_pybullet_robot
 from pybullet_helpers.robots.single_arm import FingeredSingleArmPyBulletRobot
@@ -517,6 +518,35 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
     def get_held_object_tf(self) -> Pose | None:
         """Expose the grasp transform for the held object, if it exists."""
         return self.current_grasp_transform
+
+    def get_collision_check_ids(self, _block_id: int) -> set[int]:
+        """Get all PyBullet IDs that should be checked for collisions during
+        free pose sampling."""
+        return set()
+
+    def sample_free_block_pose(self, block_id: int) -> Pose:
+        """Sample a free pose on the table."""
+        for _ in range(10000):
+            block_position = self.np_random.uniform(
+                self.scene_description.block_init_position_lower,
+                self.scene_description.block_init_position_upper,
+            )
+            set_pose(block_id, Pose(tuple(block_position)), self.physics_client_id)
+            collision_free = True
+            p.performCollisionDetection(physicsClientId=self.physics_client_id)
+            for collision_id in self.get_collision_check_ids(block_id):
+                collision = check_body_collisions(
+                    block_id,
+                    collision_id,
+                    self.physics_client_id,
+                    perform_collision_detection=False,
+                )
+                if collision:
+                    collision_free = False
+                    break
+            if collision_free:
+                return Pose(tuple(block_position))
+        raise RuntimeError("Could not sample free block position.")
 
     def render(self) -> NDArray[np.uint8]:  # type: ignore
         return capture_image(
