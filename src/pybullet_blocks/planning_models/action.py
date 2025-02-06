@@ -27,6 +27,10 @@ from pybullet_blocks.envs.block_stacking_env import (
     BlockStackingPyBulletBlocksEnv,
     BlockStackingPyBulletBlocksState,
 )
+from pybullet_blocks.envs.clear_and_place_env import (
+    ClearAndPlacePyBulletBlocksEnv,
+    ClearAndPlacePyBulletBlocksState,
+)
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
     PickPlacePyBulletBlocksState,
@@ -35,8 +39,10 @@ from pybullet_blocks.planning_models.perception import (
     GripperEmpty,
     Holding,
     IsMovable,
+    IsTarget,
     NothingOn,
     NotIsMovable,
+    NotIsTarget,
     On,
     object_type,
     robot_type,
@@ -55,9 +61,31 @@ PickOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NothingOn, [Obj]),
         LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(NotIsTarget, [Surface]),
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(On, [Obj, Surface]),
+    },
+)
+
+PickFromTargetOperator = LiftedOperator(
+    "PickFromTarget",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NothingOn, [Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(IsTarget, [Surface]),
+    },
+    add_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NothingOn, [Surface]),
     },
     delete_effects={
         LiftedAtom(GripperEmpty, [Robot]),
@@ -91,6 +119,7 @@ PlaceOperator = LiftedOperator(
     preconditions={
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(NotIsTarget, [Surface]),
     },
     add_effects={
         LiftedAtom(On, [Obj, Surface]),
@@ -98,6 +127,25 @@ PlaceOperator = LiftedOperator(
     },
     delete_effects={
         LiftedAtom(Holding, [Robot, Obj]),
+    },
+)
+
+PlaceInTargetOperator = LiftedOperator(
+    "PlaceInTarget",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(NothingOn, [Surface]),
+        LiftedAtom(IsTarget, [Surface]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NothingOn, [Surface]),
     },
 )
 
@@ -120,7 +168,14 @@ StackOperator = LiftedOperator(
 )
 
 
-OPERATORS = {PickOperator, PlaceOperator, UnstackOperator, StackOperator}
+OPERATORS = {
+    PickOperator,
+    PickFromTargetOperator,
+    PlaceOperator,
+    PlaceInTargetOperator,
+    UnstackOperator,
+    StackOperator,
+}
 
 
 # Create skills.
@@ -200,6 +255,16 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             assert len(obj.name) == 1
             letter = obj.name
             return self._sim.letter_to_block_id[letter]
+        if isinstance(self._sim, ClearAndPlacePyBulletBlocksEnv):
+            if obj.name == "table":
+                return self._sim.table_id
+            if obj.name == "target":
+                return self._sim.target_area_id
+            if obj.name == "T":
+                return self._sim.target_block_id
+            assert len(obj.name) == 1
+            letter = obj.name
+            return self._sim.obstacle_block_ids[ord(letter) - 65]
         raise NotImplementedError
 
     def _obs_to_kinematic_state(self, obs: ObsType) -> KinematicState:
@@ -211,6 +276,8 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             return PickPlacePyBulletBlocksState.from_observation(obs)  # type: ignore
         if isinstance(self._sim, BlockStackingPyBulletBlocksEnv):
             return BlockStackingPyBulletBlocksState.from_observation(obs)  # type: ignore
+        if isinstance(self._sim, ClearAndPlacePyBulletBlocksEnv):
+            return ClearAndPlacePyBulletBlocksState.from_observation(obs)  # type: ignore
         raise NotImplementedError
 
     def _sim_state_to_kinematic_state(
@@ -248,6 +315,35 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 attachments[held_block_id] = sim_state.robot_state.grasp_transform
             return KinematicState(robot_joints, object_poses, attachments)
 
+        if isinstance(sim_state, ClearAndPlacePyBulletBlocksState):
+            assert isinstance(self._sim, ClearAndPlacePyBulletBlocksEnv)
+            robot_points = sim_state.robot_state.joint_positions
+            object_poses = {
+                self._sim.table_id: self._sim.scene_description.table_pose,
+                self._sim.target_area_id: sim_state.target_state.pose,
+                self._sim.target_block_id: sim_state.target_block_state.pose,
+            }
+            for block_state in sim_state.obstacle_block_states:
+                block_id = self._sim.obstacle_block_ids[ord(block_state.letter) - 65]
+                object_poses[block_id] = block_state.pose
+            attachments = {}
+            if sim_state.robot_state.grasp_transform is not None:
+                if sim_state.target_block_state.held:
+                    attachments[self._sim.target_block_id] = (
+                        sim_state.robot_state.grasp_transform
+                    )
+                else:
+                    for block_state in sim_state.obstacle_block_states:
+                        if block_state.held:
+                            block_id = self._sim.obstacle_block_ids[
+                                ord(block_state.letter) - 65
+                            ]
+                            attachments[block_id] = (
+                                sim_state.robot_state.grasp_transform
+                            )
+                            break
+            return KinematicState(robot_points, object_poses, attachments)
+
         raise NotImplementedError
 
 
@@ -278,6 +374,13 @@ class PickSkill(PyBulletBlocksSkill):
         )
         assert kinematic_plan is not None
         return kinematic_plan
+
+
+class PickFromTargetSkill(PickSkill):
+    """Skill for picking from target area."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PickFromTargetOperator
 
 
 class UnstackSkill(PickSkill):
@@ -323,14 +426,18 @@ class PlaceSkill(PyBulletBlocksSkill):
     def _generate_table_placements(
         self, held_obj_id: int, table_id: int, state: KinematicState
     ) -> Iterator[Pose]:
-        assert isinstance(self._sim, BlockStackingPyBulletBlocksEnv)
-        while True:
-            world_to_placement = self._sim.sample_free_block_pose(held_obj_id)
-            world_to_table = state.object_poses[table_id]
-            table_to_placement = multiply_poses(
-                world_to_table.invert(), world_to_placement
-            )
-            yield table_to_placement
+        if isinstance(
+            self._sim, (BlockStackingPyBulletBlocksEnv, ClearAndPlacePyBulletBlocksEnv)
+        ):
+            while True:
+                world_to_placement = self._sim.sample_free_block_pose(held_obj_id)
+                world_to_table = state.object_poses[table_id]
+                table_to_placement = multiply_poses(
+                    world_to_table.invert(), world_to_placement
+                )
+                yield table_to_placement
+        else:
+            raise NotImplementedError
 
     def _generate_block_placements(
         self, held_obj_id: int, target_id: int, state: KinematicState
@@ -348,6 +455,13 @@ class PlaceSkill(PyBulletBlocksSkill):
         return (max_x - min_x, max_y - min_y, max_z - min_z)
 
 
+class PlaceInTargetSkill(PlaceSkill):
+    """Skill for placing in target area."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceInTargetOperator
+
+
 class StackSkill(PlaceSkill):
     """Skill for stacking."""
 
@@ -355,4 +469,11 @@ class StackSkill(PlaceSkill):
         return StackOperator
 
 
-SKILLS = {PickSkill, PlaceSkill, UnstackSkill, StackSkill}
+SKILLS = {
+    PickSkill,
+    PickFromTargetSkill,
+    PlaceSkill,
+    PlaceInTargetSkill,
+    UnstackSkill,
+    StackSkill,
+}

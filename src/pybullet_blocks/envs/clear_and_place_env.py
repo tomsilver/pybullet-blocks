@@ -345,3 +345,12 @@ class ClearAndPlacePyBulletBlocksEnv(
                 break
 
         return super().reset(seed=seed)
+
+    def get_collision_check_ids(self, block_id: int) -> set[int]:
+        collision_ids = (
+            {self.target_area_id}
+            | set(self.obstacle_block_ids)
+            | {self.target_block_id}
+        )
+        collision_ids.discard(block_id)  # Don't check collision with self
+        return collision_ids
