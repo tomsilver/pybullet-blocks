@@ -63,6 +63,7 @@ PickOperator = LiftedOperator(
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(Clear, [Surface]),
     },
     delete_effects={
         LiftedAtom(GripperEmpty, [Robot]),
@@ -83,6 +84,7 @@ UnstackOperator = LiftedOperator(
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NothingOn, [Surface]),
+        LiftedAtom(Clear, [Surface]),
     },
     delete_effects={
         LiftedAtom(GripperEmpty, [Robot]),
@@ -113,6 +115,7 @@ StackOperator = LiftedOperator(
     preconditions={
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NothingOn, [Surface]),
+        LiftedAtom(Clear, [Surface]),
         LiftedAtom(IsMovable, [Surface]),
     },
     add_effects={
@@ -121,6 +124,7 @@ StackOperator = LiftedOperator(
     },
     delete_effects={
         LiftedAtom(NothingOn, [Surface]),
+        LiftedAtom(Clear, [Surface]),
         LiftedAtom(Holding, [Robot, Obj]),
     },
 )

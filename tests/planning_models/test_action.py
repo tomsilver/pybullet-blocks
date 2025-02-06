@@ -96,7 +96,7 @@ def test_clear_and_place_pybullet_blocks_action():
     )
 
     env = ClearAndPlacePyBulletBlocksEnv(
-        scene_description=scene_description, use_gui=True
+        scene_description=scene_description, use_gui=False
     )
     sim = ClearAndPlacePyBulletBlocksEnv(
         scene_description=scene_description, use_gui=False
