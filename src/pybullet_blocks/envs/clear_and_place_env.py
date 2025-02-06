@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Collection
 
 import numpy as np
+import pybullet as p
 from gymnasium import spaces
 from gymnasium.utils import seeding
 from numpy.typing import ArrayLike, NDArray
@@ -345,3 +346,34 @@ class ClearAndPlacePyBulletBlocksEnv(
                 break
 
         return super().reset(seed=seed)
+
+    def sample_free_block_pose(self, block_id: int) -> Pose:
+        """Sample a free pose on the table."""
+        for _ in range(10000):
+            block_position = self.np_random.uniform(
+                self.scene_description.block_init_position_lower,
+                self.scene_description.block_init_position_upper,
+            )
+            set_pose(block_id, Pose(tuple(block_position)), self.physics_client_id)
+            collision_free = True
+            p.performCollisionDetection(physicsClientId=self.physics_client_id)
+            # Check collisions with active blocks and target area
+            collision_ids = (
+                {self.target_area_id}
+                | set(self.obstacle_block_ids)
+                | {self.target_block_id}
+            )
+            collision_ids.discard(block_id)  # Don't check collision with self
+            for collision_id in collision_ids:
+                collision = check_body_collisions(
+                    block_id,
+                    collision_id,
+                    self.physics_client_id,
+                    perform_collision_detection=False,
+                )
+                if collision:
+                    collision_free = False
+                    break
+            if collision_free:
+                return Pose(tuple(block_position))
+        raise RuntimeError("Could not sample free block position.")

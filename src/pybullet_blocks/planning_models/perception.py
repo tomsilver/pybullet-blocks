@@ -17,6 +17,10 @@ from pybullet_blocks.envs.block_stacking_env import (
     BlockStackingPyBulletBlocksEnv,
     BlockStackingPyBulletBlocksState,
 )
+from pybullet_blocks.envs.clear_and_place_env import (
+    ClearAndPlacePyBulletBlocksEnv,
+    ClearAndPlacePyBulletBlocksState,
+)
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
     PickPlacePyBulletBlocksState,
@@ -34,6 +38,7 @@ On = Predicate("On", [object_type, object_type])
 NothingOn = Predicate("NothingOn", [object_type])
 Holding = Predicate("Holding", [robot_type, object_type])
 GripperEmpty = Predicate("GripperEmpty", [robot_type])
+Clear = Predicate("Clear", [object_type])
 PREDICATES = {
     IsMovable,
     NotIsMovable,
@@ -41,6 +46,7 @@ PREDICATES = {
     NothingOn,
     Holding,
     GripperEmpty,
+    Clear,
 }
 
 
@@ -51,8 +57,9 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
         # Use the simulator for geometric computations.
         self._sim = sim
 
-        # Create constant robot object.
+        # Create constant robot and table object.
         self._robot = Object("robot", robot_type)
+        self._table = Object("table", object_type)
 
         # Map from symbolic objects to PyBullet IDs in simulator.
         # Subclasses should populate this.
@@ -69,6 +76,7 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
             self._interpret_NothingOn,
             self._interpret_Holding,
             self._interpret_GripperEmpty,
+            self._interpret_Clear,
         ]
 
     def reset(
@@ -100,7 +108,6 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
         """Determine the goal from an initial observation."""
 
     def _parse_observation(self, obs: ObsType) -> set[GroundAtom]:
-
         # Sync the simulator so that interpretation functions can use PyBullet
         # direction.
         self._set_sim_from_obs(obs)
@@ -171,6 +178,14 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
             return {GroundAtom(GripperEmpty, [self._robot])}
         return set()
 
+    def _interpret_Clear(self) -> set[GroundAtom]:
+        clear_objects = {
+            self._table
+        }  # Table always clear since we can sample free spots
+        nothing_on_atoms = self._interpret_NothingOn()
+        clear_objects.update(atom.objects[0] for atom in nothing_on_atoms)
+        return {GroundAtom(Clear, [obj]) for obj in clear_objects}
+
 
 class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float32]]):
     """A perceiver for the PickPlacePyBulletBlocksEnv()."""
@@ -180,7 +195,6 @@ class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float3
 
         # Create constant objects.
         assert isinstance(self._sim, PickPlacePyBulletBlocksEnv)
-        self._table = Object("table", object_type)
         self._block = Object("block", object_type)
         self._target = Object("target", object_type)
         self._pybullet_ids = {
@@ -215,7 +229,6 @@ class BlockStackingPyBulletBlocksPerceiver(
         super().__init__(sim)
 
         # Create constant objects.
-        self._table = Object("table", object_type)
         assert isinstance(self._sim, BlockStackingPyBulletBlocksEnv)
         self._pybullet_ids = {
             self._robot: self._sim.robot.robot_id,
@@ -267,3 +280,52 @@ class BlockStackingPyBulletBlocksPerceiver(
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         return {GroundAtom(IsMovable, [block]) for block in self._active_blocks}
+
+
+class ClearAndPlacePyBulletBlocksPerceiver(
+    PyBulletBlocksPerceiver[NDArray[np.float32]]
+):
+    """A perceiver for the ClearAndPlacePyBulletBlocksEnv()."""
+
+    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+        super().__init__(sim)
+
+        # Create constant objects
+        assert isinstance(self._sim, ClearAndPlacePyBulletBlocksEnv)
+        self._target_block = Object("T", object_type)
+        self._target_area = Object("target", object_type)
+        self._obstacle_blocks = sorted(
+            [
+                Object(chr(65 + i), object_type)
+                for i in range(self._sim.scene_description.num_obstacle_blocks)
+            ],
+            key=lambda x: x.name,
+        )
+
+        # Set up PyBullet ID mappings
+        self._pybullet_ids = {
+            self._robot: self._sim.robot.robot_id,
+            self._table: self._sim.table_id,
+            self._target_block: self._sim.target_block_id,
+            self._target_area: self._sim.target_area_id,
+        }
+        for i, block in enumerate(self._obstacle_blocks):
+            self._pybullet_ids[block] = self._sim.obstacle_block_ids[i]
+
+    def _get_objects(self) -> set[Object]:
+        return {self._robot, self._table, self._target_block, self._target_area} | set(
+            self._obstacle_blocks
+        )
+
+    def _set_sim_from_obs(self, obs: NDArray[np.float32]) -> None:
+        self._sim.set_state(ClearAndPlacePyBulletBlocksState.from_observation(obs))
+
+    def _get_goal(
+        self, obs: NDArray[np.float32], info: dict[str, Any]
+    ) -> set[GroundAtom]:
+        del obs, info
+        return {GroundAtom(On, [self._target_block, self._target_area])}
+
+    def _interpret_IsMovable(self) -> set[GroundAtom]:
+        movable_objects = {self._target_block} | set(self._obstacle_blocks)
+        return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
