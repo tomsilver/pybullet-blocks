@@ -38,7 +38,8 @@ On = Predicate("On", [object_type, object_type])
 NothingOn = Predicate("NothingOn", [object_type])
 Holding = Predicate("Holding", [robot_type, object_type])
 GripperEmpty = Predicate("GripperEmpty", [robot_type])
-Clear = Predicate("Clear", [object_type])
+IsTarget = Predicate("IsTarget", [object_type])
+NotIsTarget = Predicate("IsNotTarget", [object_type])
 PREDICATES = {
     IsMovable,
     NotIsMovable,
@@ -46,7 +47,8 @@ PREDICATES = {
     NothingOn,
     Holding,
     GripperEmpty,
-    Clear,
+    IsTarget,
+    NotIsTarget,
 }
 
 
@@ -76,7 +78,8 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
             self._interpret_NothingOn,
             self._interpret_Holding,
             self._interpret_GripperEmpty,
-            self._interpret_Clear,
+            self._interpret_IsTarget,
+            self._interpret_NotIsTarget,
         ]
 
     def reset(
@@ -178,13 +181,15 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
             return {GroundAtom(GripperEmpty, [self._robot])}
         return set()
 
-    def _interpret_Clear(self) -> set[GroundAtom]:
-        clear_objects = {
-            self._table
-        }  # Table always clear since we can sample free spots
-        nothing_on_atoms = self._interpret_NothingOn()
-        clear_objects.update(atom.objects[0] for atom in nothing_on_atoms)
-        return {GroundAtom(Clear, [obj]) for obj in clear_objects}
+    def _interpret_IsTarget(self) -> set[GroundAtom]:
+        return set()
+
+    def _interpret_NotIsTarget(self) -> set[GroundAtom]:
+        objects = {o for o in self._get_objects() if o.is_instance(object_type)}
+        is_target_atoms = self._interpret_IsTarget()
+        target_objects = {a.objects[0] for a in is_target_atoms}
+        not_target_objects = objects - target_objects
+        return {GroundAtom(NotIsTarget, [o]) for o in not_target_objects}
 
 
 class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float32]]):
@@ -218,6 +223,9 @@ class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float3
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         return {GroundAtom(IsMovable, [self._block])}
+
+    def _interpret_IsTarget(self) -> set[GroundAtom]:
+        return {GroundAtom(IsTarget, [self._target])}
 
 
 class BlockStackingPyBulletBlocksPerceiver(
@@ -329,3 +337,6 @@ class ClearAndPlacePyBulletBlocksPerceiver(
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = {self._target_block} | set(self._obstacle_blocks)
         return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
+
+    def _interpret_IsTarget(self) -> set[GroundAtom]:
+        return {GroundAtom(IsTarget, [self._target_area])}

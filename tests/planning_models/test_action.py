@@ -1,6 +1,5 @@
 """Tests for action.py."""
 
-import pytest
 from task_then_motion_planning.planning import TaskThenMotionPlanner
 
 from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletBlocksEnv
@@ -87,7 +86,6 @@ def test_block_stacking_pybullet_blocks_action():
     env.close()
 
 
-@pytest.mark.skip(reason="No plan generated")
 def test_clear_and_place_pybullet_blocks_action():
     """Tests task then motion planning in ClearAndPlacePyBulletBlocksEnv()."""
     scene_description = ClearAndPlaceSceneDescription(

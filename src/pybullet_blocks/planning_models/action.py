@@ -36,12 +36,13 @@ from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksState,
 )
 from pybullet_blocks.planning_models.perception import (
-    Clear,
     GripperEmpty,
     Holding,
     IsMovable,
+    IsTarget,
     NothingOn,
     NotIsMovable,
+    NotIsTarget,
     On,
     object_type,
     robot_type,
@@ -60,10 +61,31 @@ PickOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NothingOn, [Obj]),
         LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(NotIsTarget, [Surface]),
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
-        LiftedAtom(Clear, [Surface]),
+    },
+    delete_effects={
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(On, [Obj, Surface]),
+    },
+)
+
+PickFromTargetOperator = LiftedOperator(
+    "PickFromTarget",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NothingOn, [Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(IsTarget, [Surface]),
+    },
+    add_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NothingOn, [Surface]),
     },
     delete_effects={
         LiftedAtom(GripperEmpty, [Robot]),
@@ -84,7 +106,6 @@ UnstackOperator = LiftedOperator(
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NothingOn, [Surface]),
-        LiftedAtom(Clear, [Surface]),
     },
     delete_effects={
         LiftedAtom(GripperEmpty, [Robot]),
@@ -98,7 +119,7 @@ PlaceOperator = LiftedOperator(
     preconditions={
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
-        LiftedAtom(Clear, [Surface]),
+        LiftedAtom(NotIsTarget, [Surface]),
     },
     add_effects={
         LiftedAtom(On, [Obj, Surface]),
@@ -106,6 +127,25 @@ PlaceOperator = LiftedOperator(
     },
     delete_effects={
         LiftedAtom(Holding, [Robot, Obj]),
+    },
+)
+
+PlaceInTargetOperator = LiftedOperator(
+    "PlaceInTarget",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(NothingOn, [Surface]),
+        LiftedAtom(IsTarget, [Surface]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NothingOn, [Surface]),
     },
 )
 
@@ -115,7 +155,6 @@ StackOperator = LiftedOperator(
     preconditions={
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NothingOn, [Surface]),
-        LiftedAtom(Clear, [Surface]),
         LiftedAtom(IsMovable, [Surface]),
     },
     add_effects={
@@ -124,13 +163,19 @@ StackOperator = LiftedOperator(
     },
     delete_effects={
         LiftedAtom(NothingOn, [Surface]),
-        LiftedAtom(Clear, [Surface]),
         LiftedAtom(Holding, [Robot, Obj]),
     },
 )
 
 
-OPERATORS = {PickOperator, PlaceOperator, UnstackOperator, StackOperator}
+OPERATORS = {
+    PickOperator,
+    PickFromTargetOperator,
+    PlaceOperator,
+    PlaceInTargetOperator,
+    UnstackOperator,
+    StackOperator,
+}
 
 
 # Create skills.
@@ -331,6 +376,13 @@ class PickSkill(PyBulletBlocksSkill):
         return kinematic_plan
 
 
+class PickFromTargetSkill(PickSkill):
+    """Skill for picking from target area."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PickFromTargetOperator
+
+
 class UnstackSkill(PickSkill):
     """Skill for unstacking."""
 
@@ -403,6 +455,13 @@ class PlaceSkill(PyBulletBlocksSkill):
         return (max_x - min_x, max_y - min_y, max_z - min_z)
 
 
+class PlaceInTargetSkill(PlaceSkill):
+    """Skill for placing in target area."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceInTargetOperator
+
+
 class StackSkill(PlaceSkill):
     """Skill for stacking."""
 
@@ -410,4 +469,11 @@ class StackSkill(PlaceSkill):
         return StackOperator
 
 
-SKILLS = {PickSkill, PlaceSkill, UnstackSkill, StackSkill}
+SKILLS = {
+    PickSkill,
+    PickFromTargetSkill,
+    PlaceSkill,
+    PlaceInTargetSkill,
+    UnstackSkill,
+    StackSkill,
+}

@@ -25,7 +25,7 @@ def test_pick_place_pybullet_blocks_perceiver():
     assert len(objects) == 4
     assert (
         str(sorted(atoms))
-        == "[(Clear block), (Clear table), (Clear target), (GripperEmpty robot), (IsMovable block), (NotIsMovable table), (NotIsMovable target), (NothingOn block), (NothingOn target), (On block table), (On target table)]"  # pylint: disable=line-too-long
+        == "[(GripperEmpty robot), (IsMovable block), (IsNotTarget block), (IsNotTarget table), (IsTarget target), (NotIsMovable table), (NotIsMovable target), (NothingOn block), (NothingOn target), (On block table), (On target table)]"  # pylint: disable=line-too-long
     )
     assert str(sorted(goal)) == "[(On block target)]"
 
@@ -48,7 +48,7 @@ def test_block_stacking_pybullet_blocks_perceiver():
     assert len(objects) == 6
     assert (
         str(sorted(atoms))
-        == "[(Clear D), (Clear table), (GripperEmpty robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable D), (NotIsMovable table), (NothingOn D), (On A table), (On B A), (On C B), (On D C)]"  # pylint: disable=line-too-long
+        == "[(GripperEmpty robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable D), (IsNotTarget A), (IsNotTarget B), (IsNotTarget C), (IsNotTarget D), (IsNotTarget table), (NotIsMovable table), (NothingOn D), (On A table), (On B A), (On C B), (On D C)]"  # pylint: disable=line-too-long
     )
     assert str(sorted(goal)) == "[(On A C), (On B D)]"
 
@@ -71,6 +71,6 @@ def test_clear_and_place_pybullet_blocks_perceiver():
     assert len(objects) == 7
     assert (
         str(sorted(atoms))
-        == "[(Clear C), (Clear T), (Clear table), (GripperEmpty robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable T), (NotIsMovable table), (NotIsMovable target), (NothingOn C), (NothingOn T), (On A target), (On B A), (On C B), (On T table), (On target table)]"  # pylint: disable=line-too-long
+        == "[(GripperEmpty robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable T), (IsNotTarget A), (IsNotTarget B), (IsNotTarget C), (IsNotTarget T), (IsNotTarget table), (IsTarget target), (NotIsMovable table), (NotIsMovable target), (NothingOn C), (NothingOn T), (On A target), (On B A), (On C B), (On T table), (On target table)]"  # pylint: disable=line-too-long
     )
     assert str(sorted(goal)) == "[(On T target)]"
