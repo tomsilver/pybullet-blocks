@@ -20,7 +20,7 @@ def test_push_env():
     env = PushPyBulletBlocksEnv(use_gui=False)
 
     # from gymnasium.wrappers import RecordVideo
-    # env = RecordVideo(env, "push-env-test")
+    # env = RecordVideo(base_env, "videos/push-env-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
     obs, _ = env.reset(seed=124)

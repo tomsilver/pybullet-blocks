@@ -21,9 +21,8 @@ def test_pick_place_env():
     # Create the real environment.
     env = PickPlacePyBulletBlocksEnv(use_gui=False)
 
-    # Uncomment to debug.
     # from gymnasium.wrappers import RecordVideo
-    # env = RecordVideo(env, "pick-place-env-test")
+    # env = RecordVideo(base_env, "videos/pick-place-env-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
     # Create a 'simulation' environment for kinematics, planning, etc.
