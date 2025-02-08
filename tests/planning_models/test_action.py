@@ -8,7 +8,7 @@ from pybullet_blocks.envs.clear_and_place_env import (
     ClearAndPlaceSceneDescription,
 )
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
-from pybullet_blocks.planning_models.action import OPERATORS, SKILLS
+from pybullet_blocks.planning_models.action import get_active_operators_and_skills
 from pybullet_blocks.planning_models.perception import (
     PREDICATES,
     TYPES,
@@ -29,11 +29,14 @@ def test_pick_place_pybullet_blocks_action():
     max_motion_planning_time = 0.1  # increase for prettier videos
 
     perceiver = PickPlacePyBulletBlocksPerceiver(sim)
-    skills = {s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS}
+    operators, skill_types = get_active_operators_and_skills()
+    skills = {
+        s(sim, max_motion_planning_time=max_motion_planning_time) for s in skill_types
+    }
 
     # Create the planner.
     planner = TaskThenMotionPlanner(
-        TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="pyperplan"
+        TYPES, PREDICATES, perceiver, operators, skills, planner_id="pyperplan"
     )
 
     # Run an episode.
@@ -62,11 +65,14 @@ def test_block_stacking_pybullet_blocks_action():
     max_motion_planning_time = 0.1  # increase for prettier videos
 
     perceiver = BlockStackingPyBulletBlocksPerceiver(sim)
-    skills = {s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS}
+    operators, skill_types = get_active_operators_and_skills()
+    skills = {
+        s(sim, max_motion_planning_time=max_motion_planning_time) for s in skill_types
+    }
 
     # Create the planner.
     planner = TaskThenMotionPlanner(
-        TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="pyperplan"
+        TYPES, PREDICATES, perceiver, operators, skills, planner_id="pyperplan"
     )
 
     # Run an episode.
@@ -105,11 +111,16 @@ def test_clear_and_place_pybullet_blocks_action():
     max_motion_planning_time = 0.1  # increase for prettier videos
 
     perceiver = ClearAndPlacePyBulletBlocksPerceiver(sim)
-    skills = {s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS}
+    operators, skill_types = get_active_operators_and_skills(
+        include_improvisational_models=True
+    )
+    skills = {
+        s(sim, max_motion_planning_time=max_motion_planning_time) for s in skill_types
+    }
 
     # Create the planner
     planner = TaskThenMotionPlanner(
-        TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="pyperplan"
+        TYPES, PREDICATES, perceiver, operators, skills, planner_id="pyperplan"
     )
 
     # Run an episode
