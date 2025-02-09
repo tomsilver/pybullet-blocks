@@ -359,7 +359,7 @@ class ClearAndPlacePyBulletBlocksEnv(
             state = ClearAndPlacePyBulletBlocksState.from_observation(state)
 
         self.set_state(state)
-        return self._get_obs(), self._get_info()
+        return self.get_state().to_observation(), self._get_info()
 
     def get_collision_check_ids(self, block_id: int) -> set[int]:
         collision_ids = (
