@@ -346,6 +346,21 @@ class ClearAndPlacePyBulletBlocksEnv(
 
         return super().reset(seed=seed)
 
+    def reset_from_state(
+        self,
+        state: NDArray[np.float32] | ClearAndPlacePyBulletBlocksState,
+        *,
+        seed: int | None = None,
+    ) -> tuple[NDArray[np.float32], dict[str, Any]]:
+        """Reset environment to specific state."""
+        super().reset(seed=seed)
+
+        if isinstance(state, np.ndarray):
+            state = ClearAndPlacePyBulletBlocksState.from_observation(state)
+
+        self.set_state(state)
+        return self._get_obs(), self._get_info()
+
     def get_collision_check_ids(self, block_id: int) -> set[int]:
         collision_ids = (
             {self.target_area_id}
