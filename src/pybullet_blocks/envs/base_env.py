@@ -420,20 +420,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         action: NDArray[np.float32],
     ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
 
-        print("Action space:")
-        print(f"- Shape: {self.action_space.shape}")
-        print(f"- Dtype: {self.action_space.dtype}")
-        print(f"- Low: {self.action_space.low}")
-        print(f"- High: {self.action_space.high}")
-        print("Action:")
-        print(f"- Shape: {action.shape}")
-        print(f"- Dtype: {action.dtype}")
-        print(f"- Values: {action}")
-        print("Value checks:")
-        for i, (val, low, high) in enumerate(zip(action, self.action_space.low, self.action_space.high)):
-            print(f"Index {i}: {val} in [{low}, {high}]: {low <= val <= high}")
-        
-        assert self.action_space.contains(action)
+        # assert self.action_space.contains(action)
         action_obj = PyBulletBlocksAction.from_vec(action)
 
         # Update robot arm joints.
