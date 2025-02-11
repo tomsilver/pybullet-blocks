@@ -354,3 +354,9 @@ class ClearAndPlacePyBulletBlocksEnv(
         )
         collision_ids.discard(block_id)  # Don't check collision with self
         return collision_ids
+
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self.target_area_id:
+            return self.scene_description.target_half_extents
+        assert object_id in set(self.obstacle_block_ids) | {self.target_block_id}
+        return self.scene_description.block_half_extents

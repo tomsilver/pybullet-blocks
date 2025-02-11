@@ -284,3 +284,7 @@ class BlockStackingPyBulletBlocksEnv(
         collision_ids = self.active_block_ids.copy()
         collision_ids.discard(block_id)  # Don't check collision with itself.
         return collision_ids
+
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        assert object_id in self.active_block_ids
+        return self.scene_description.block_half_extents

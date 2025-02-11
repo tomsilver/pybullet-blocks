@@ -179,3 +179,9 @@ class PushPyBulletBlocksEnv(
         set_pose(self.block_id, Pose(block_position), self.physics_client_id)
 
         return super().reset(seed=seed)
+
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self.target_id:
+            return self.scene_description.target_half_extents
+        assert object_id == self.block_id
+        return self.scene_description.block_half_extents

@@ -401,6 +401,10 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         """Expose all pybullet IDs for collision checking."""
 
     @abc.abstractmethod
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        """Get the half-extent of a given object from its pybullet ID."""
+
+    @abc.abstractmethod
     def _get_movable_block_ids(self) -> set[int]:
         """Get all PyBullet IDs for movable objects."""
 
