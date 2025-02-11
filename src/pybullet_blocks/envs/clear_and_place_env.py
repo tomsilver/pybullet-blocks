@@ -293,14 +293,22 @@ class ClearAndPlacePyBulletBlocksEnv(
         scene_description = self.scene_description
         assert isinstance(scene_description, ClearAndPlaceSceneDescription)
 
-        # Place target area
-        target_position = self.np_random.uniform(
-            self.scene_description.target_init_position_lower,
-            self.scene_description.target_init_position_upper,
+        # Place target area at random position
+        # target_position = self.np_random.uniform(
+        #     self.scene_description.target_init_position_lower,
+        #     self.scene_description.target_init_position_upper,
+        # )
+        # set_pose(
+        #     self.target_area_id, Pose(tuple(target_position)), self.physics_client_id
+        # )
+
+        # Place target area at fixed position
+        target_position = (
+            0.5,  # x position (middle of the table)
+            0.0,  # y position (middle of the table)
+            0.076,  # z position (just above the table)
         )
-        set_pose(
-            self.target_area_id, Pose(tuple(target_position)), self.physics_client_id
-        )
+        set_pose(self.target_area_id, Pose(target_position), self.physics_client_id)
 
         # Stack obstacle blocks in the middle of the target area
         base_dz = (
@@ -327,22 +335,34 @@ class ClearAndPlacePyBulletBlocksEnv(
                 )
             set_pose(block_id, Pose(position), self.physics_client_id)
 
-        # Place target block away from target area
-        while True:
-            target_block_position = self.np_random.uniform(
-                self.scene_description.block_init_position_lower,
-                self.scene_description.block_init_position_upper,
-            )
-            set_pose(
-                self.target_block_id,
-                Pose(tuple(target_block_position)),
-                self.physics_client_id,
-            )
-            # Ensure target block is not in target area
-            if not check_body_collisions(
-                self.target_block_id, self.target_area_id, self.physics_client_id
-            ):
-                break
+        # # Place target block away from target area at random position
+        # while True:
+        #     target_block_position = self.np_random.uniform(
+        #         self.scene_description.block_init_position_lower,
+        #         self.scene_description.block_init_position_upper,
+        #     )
+        #     set_pose(
+        #         self.target_block_id,
+        #         Pose(tuple(target_block_position)),
+        #         self.physics_client_id,
+        #     )
+        #     # Ensure target block is not in target area
+        #     if not check_body_collisions(
+        #         self.target_block_id, self.target_area_id, self.physics_client_id
+        #     ):
+        #         break
+
+        # Place target block at fixed position
+        target_block_position = (
+            0.5,  # x position
+            -0.2,  # y position (left from target area)
+            0.1,
+        )
+        set_pose(
+            self.target_block_id,
+            Pose(target_block_position),
+            self.physics_client_id,
+        )
 
         return super().reset(seed=seed)
 
