@@ -121,12 +121,13 @@ class ClearAndPlacePyBulletBlocksEnv(
         scene_description: BaseSceneDescription | None = None,
         render_mode: str | None = "rgb_array",
         use_gui: bool = False,
+        seed: int = 0,
     ) -> None:
         if scene_description is None:
             scene_description = ClearAndPlaceSceneDescription()
         assert isinstance(scene_description, ClearAndPlaceSceneDescription)
 
-        super().__init__(scene_description, render_mode, use_gui)
+        super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space
         obs_dim = ClearAndPlacePyBulletBlocksState.get_dimension()
