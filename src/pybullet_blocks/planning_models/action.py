@@ -4,7 +4,6 @@ import abc
 from typing import Iterator, Sequence
 
 import numpy as np
-import pybullet as p
 from gymnasium.core import ObsType
 from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, multiply_poses
@@ -442,17 +441,11 @@ class PlaceSkill(PyBulletBlocksSkill):
     def _generate_block_placements(
         self, held_obj_id: int, target_id: int, state: KinematicState
     ) -> Iterator[Pose]:
-        held_obj_half_height = self._get_aabb_dimensions(held_obj_id)[2] / 2
-        target_half_height = self._get_aabb_dimensions(target_id)[2] / 2
+        held_obj_half_height = self._sim.get_object_half_extents(held_obj_id)[2]
+        target_half_height = self._sim.get_object_half_extents(target_id)[2]
         dz = target_half_height + held_obj_half_height
         target_orientation = state.object_poses[target_id].orientation
         yield Pose((0, 0, dz), target_orientation)
-
-    def _get_aabb_dimensions(self, obj_id: int) -> tuple[float, float, float]:
-        (min_x, min_y, min_z), (max_x, max_y, max_z) = p.getAABB(
-            obj_id, -1, self._sim.physics_client_id
-        )
-        return (max_x - min_x, max_y - min_y, max_z - min_z)
 
 
 class PlaceInTargetSkill(PlaceSkill):

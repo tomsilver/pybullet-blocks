@@ -11,6 +11,7 @@ import numpy as np
 import pybullet as p
 from gymnasium import spaces
 from gymnasium.core import ActType, ObsType
+from gymnasium.utils import seeding
 from numpy.typing import NDArray
 from pybullet_helpers.camera import capture_image
 from pybullet_helpers.geometry import Pose, get_pose, multiply_poses, set_pose
@@ -316,6 +317,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         render_mode: str | None = "rgb_array",
         use_gui: bool = False,
         num_sim_steps_per_step: int = 30,
+        seed: int = 0,
     ) -> None:
         self._num_sim_steps_per_step = num_sim_steps_per_step
 
@@ -388,6 +390,8 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
 
         self._timestep = 0
 
+        self._np_random, seed = seeding.np_random(seed)
+
     @abc.abstractmethod
     def set_state(self, state: PyBulletBlocksState) -> None:
         """Reset the internal state to the given state."""
@@ -399,6 +403,10 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
     @abc.abstractmethod
     def get_collision_ids(self) -> set[int]:
         """Expose all pybullet IDs for collision checking."""
+
+    @abc.abstractmethod
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        """Get the half-extent of a given object from its pybullet ID."""
 
     @abc.abstractmethod
     def _get_movable_block_ids(self) -> set[int]:

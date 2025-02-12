@@ -88,16 +88,23 @@ def test_block_stacking_pybullet_blocks_action():
 
 def test_clear_and_place_pybullet_blocks_action():
     """Tests task then motion planning in ClearAndPlacePyBulletBlocksEnv()."""
+
+    seed = 123
+
     scene_description = ClearAndPlaceSceneDescription(
         num_obstacle_blocks=3,
         stack_blocks=True,
     )
 
     env = ClearAndPlacePyBulletBlocksEnv(
-        scene_description=scene_description, use_gui=False
+        scene_description=scene_description,
+        use_gui=False,
+        seed=seed,
     )
     sim = ClearAndPlacePyBulletBlocksEnv(
-        scene_description=scene_description, use_gui=False
+        scene_description=scene_description,
+        use_gui=False,
+        seed=seed,
     )
 
     # from gymnasium.wrappers import RecordVideo
@@ -113,7 +120,7 @@ def test_clear_and_place_pybullet_blocks_action():
     )
 
     # Run an episode
-    obs, info = env.reset(seed=124)
+    obs, info = env.reset(seed=seed)
     planner.reset(obs, info)
     for _ in range(10000):  # should terminate earlier
         action = planner.step(obs)
