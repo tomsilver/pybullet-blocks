@@ -39,10 +39,8 @@ from pybullet_blocks.planning_models.perception import (
     GripperEmpty,
     Holding,
     IsMovable,
-    IsTarget,
     NothingOn,
     NotIsMovable,
-    NotIsTarget,
     On,
     object_type,
     robot_type,
@@ -78,7 +76,6 @@ PickOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NothingOn, [Obj]),
         LiftedAtom(On, [Obj, Surface]),
-        LiftedAtom(NotIsTarget, [Surface]),
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),

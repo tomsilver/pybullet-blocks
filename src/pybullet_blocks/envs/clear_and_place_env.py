@@ -293,7 +293,7 @@ class ClearAndPlacePyBulletBlocksEnv(
 
         scene_description = self.scene_description
         assert isinstance(scene_description, ClearAndPlaceSceneDescription)
-        
+
         # Place target area at fixed position
         target_position = (
             0.5,  # x position (middle of the table)
