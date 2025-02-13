@@ -211,6 +211,9 @@ class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float3
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         return {GroundAtom(IsMovable, [self._block])}
 
+    def _interpret_IsTarget(self) -> set[GroundAtom]:
+        return {GroundAtom(IsTarget, [self._target])}
+
 
 class BlockStackingPyBulletBlocksPerceiver(
     PyBulletBlocksPerceiver[gym.spaces.GraphInstance]

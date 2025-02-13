@@ -293,16 +293,7 @@ class ClearAndPlacePyBulletBlocksEnv(
 
         scene_description = self.scene_description
         assert isinstance(scene_description, ClearAndPlaceSceneDescription)
-
-        # Place target area at random position
-        # target_position = self.np_random.uniform(
-        #     self.scene_description.target_init_position_lower,
-        #     self.scene_description.target_init_position_upper,
-        # )
-        # set_pose(
-        #     self.target_area_id, Pose(tuple(target_position)), self.physics_client_id
-        # )
-
+        
         # Place target area at fixed position
         target_position = (
             0.5,  # x position (middle of the table)
@@ -335,23 +326,6 @@ class ClearAndPlacePyBulletBlocksEnv(
                     target_position[2] + base_dz,
                 )
             set_pose(block_id, Pose(position), self.physics_client_id)
-
-        # # Place target block away from target area at random position
-        # while True:
-        #     target_block_position = self.np_random.uniform(
-        #         self.scene_description.block_init_position_lower,
-        #         self.scene_description.block_init_position_upper,
-        #     )
-        #     set_pose(
-        #         self.target_block_id,
-        #         Pose(tuple(target_block_position)),
-        #         self.physics_client_id,
-        #     )
-        #     # Ensure target block is not in target area
-        #     if not check_body_collisions(
-        #         self.target_block_id, self.target_area_id, self.physics_client_id
-        #     ):
-        #         break
 
         # Place target block at fixed position
         target_block_position = (
