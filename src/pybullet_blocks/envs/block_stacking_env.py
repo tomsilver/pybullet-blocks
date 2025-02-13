@@ -96,11 +96,12 @@ class BlockStackingPyBulletBlocksEnv(
         scene_description: BaseSceneDescription | None = None,
         render_mode: str | None = "rgb_array",
         use_gui: bool = False,
+        seed: int = 0,
     ) -> None:
         if scene_description is None:
             scene_description = BlockStackingSceneDescription()
 
-        super().__init__(scene_description, render_mode, use_gui)
+        super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space.
         obs_dim = BlockStackingPyBulletBlocksState.get_node_dimension()
@@ -284,3 +285,7 @@ class BlockStackingPyBulletBlocksEnv(
         collision_ids = self.active_block_ids.copy()
         collision_ids.discard(block_id)  # Don't check collision with itself.
         return collision_ids
+
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        assert object_id in self.active_block_ids
+        return self.scene_description.block_half_extents

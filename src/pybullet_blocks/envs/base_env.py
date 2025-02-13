@@ -11,6 +11,7 @@ import numpy as np
 import pybullet as p
 from gymnasium import spaces
 from gymnasium.core import ActType, ObsType
+from gymnasium.utils import seeding
 from numpy.typing import NDArray
 from pybullet_helpers.camera import capture_image
 from pybullet_helpers.geometry import Pose, get_pose, multiply_poses, set_pose
@@ -316,6 +317,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         render_mode: str | None = "rgb_array",
         use_gui: bool = False,
         num_sim_steps_per_step: int = 30,
+        seed: int = 0,
     ) -> None:
         self._num_sim_steps_per_step = num_sim_steps_per_step
 
@@ -388,6 +390,8 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
 
         self._timestep = 0
 
+        self._np_random, seed = seeding.np_random(seed)
+
     @abc.abstractmethod
     def set_state(self, state: PyBulletBlocksState) -> None:
         """Reset the internal state to the given state."""
@@ -399,6 +403,10 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
     @abc.abstractmethod
     def get_collision_ids(self) -> set[int]:
         """Expose all pybullet IDs for collision checking."""
+
+    @abc.abstractmethod
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        """Get the half-extent of a given object from its pybullet ID."""
 
     @abc.abstractmethod
     def _get_movable_block_ids(self) -> set[int]:
@@ -419,16 +427,51 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         self,
         action: NDArray[np.float32],
     ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
-
-        # assert self.action_space.contains(action)
+        """Take a step in the environment."""
+        assert self.action_space.contains(action)
         action_obj = PyBulletBlocksAction.from_vec(action)
 
         # Update robot arm joints.
         joint_arr = np.array(self.robot.get_joint_positions())
         # Assume that first 7 entries are arm.
         joint_arr[:7] += action_obj.robot_arm_joint_delta
+        clipped_joints = np.clip(
+            joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
+        )
 
-        # Update gripper if required.
+        # Set new robot position.
+        self.robot.set_joints(clipped_joints.tolist())
+
+        # Update held object if exists.
+        if self.current_grasp_transform:
+            world_to_robot = self.robot.get_end_effector_pose()
+            world_to_block = multiply_poses(
+                world_to_robot, self.current_grasp_transform
+            )
+            assert self.current_held_object_id is not None
+            set_pose(
+                self.current_held_object_id,
+                world_to_block,
+                self.physics_client_id,
+            )
+
+        # Get observation after movement.
+        observation = self.get_state().to_observation()
+        info = self._get_info()
+
+        # Check for collisions with table in new state.
+        has_collision = check_body_collisions(
+            self.robot.robot_id,
+            self.table_id,
+            self.physics_client_id,
+            distance_threshold=1e-6,
+        )
+
+        # Return with negative reward if collision.
+        if has_collision:
+            return observation, -0.1, False, False, info
+
+        # No collisions - update gripper (if required).
         if action_obj.gripper_action == 1:
             self.current_grasp_transform = None
             self.current_held_object_id = None
@@ -455,9 +498,6 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         # certain number of iterations (may need to be tuned). Then reset the
         # robot and held object again after physics to ensure that position
         # control is exact. For example, consider pushing a non-held object.
-        clipped_joints = np.clip(
-            joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
-        )
         for i in range(2):
             # Set the robot joints.
             self.robot.set_joints(clipped_joints.tolist())

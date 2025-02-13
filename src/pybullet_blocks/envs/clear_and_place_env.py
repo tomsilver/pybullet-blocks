@@ -121,12 +121,13 @@ class ClearAndPlacePyBulletBlocksEnv(
         scene_description: BaseSceneDescription | None = None,
         render_mode: str | None = "rgb_array",
         use_gui: bool = False,
+        seed: int = 0,
     ) -> None:
         if scene_description is None:
             scene_description = ClearAndPlaceSceneDescription()
         assert isinstance(scene_description, ClearAndPlaceSceneDescription)
 
-        super().__init__(scene_description, render_mode, use_gui)
+        super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space
         obs_dim = ClearAndPlacePyBulletBlocksState.get_dimension()
@@ -389,3 +390,9 @@ class ClearAndPlacePyBulletBlocksEnv(
         )
         collision_ids.discard(block_id)  # Don't check collision with self
         return collision_ids
+
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self.target_area_id:
+            return self.scene_description.target_half_extents
+        assert object_id in set(self.obstacle_block_ids) | {self.target_block_id}
+        return self.scene_description.block_half_extents

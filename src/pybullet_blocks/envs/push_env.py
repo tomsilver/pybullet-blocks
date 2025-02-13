@@ -82,8 +82,9 @@ class PushPyBulletBlocksEnv(
         scene_description: BaseSceneDescription | None = None,
         render_mode: str | None = "rgb_array",
         use_gui: bool = False,
+        seed: int = 0,
     ) -> None:
-        super().__init__(scene_description, render_mode, use_gui)
+        super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space.
         obs_dim = PushPyBulletBlocksState.get_dimension()
@@ -179,3 +180,9 @@ class PushPyBulletBlocksEnv(
         set_pose(self.block_id, Pose(block_position), self.physics_client_id)
 
         return super().reset(seed=seed)
+
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self.target_id:
+            return self.scene_description.target_half_extents
+        assert object_id == self.block_id
+        return self.scene_description.block_half_extents
