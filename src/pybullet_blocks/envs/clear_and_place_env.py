@@ -294,14 +294,15 @@ class ClearAndPlacePyBulletBlocksEnv(
         scene_description = self.scene_description
         assert isinstance(scene_description, ClearAndPlaceSceneDescription)
 
-        # Place target area
-        target_position = self.np_random.uniform(
-            self.scene_description.target_init_position_lower,
-            self.scene_description.target_init_position_upper,
+        # Place target area at fixed position, in middle of table
+        target_position = (
+            scene_description.table_pose.position[0],
+            scene_description.table_pose.position[1],
+            scene_description.table_pose.position[2]
+            + scene_description.table_half_extents[2]
+            + scene_description.target_half_extents[2],
         )
-        set_pose(
-            self.target_area_id, Pose(tuple(target_position)), self.physics_client_id
-        )
+        set_pose(self.target_area_id, Pose(target_position), self.physics_client_id)
 
         # Stack obstacle blocks in the middle of the target area
         base_dz = (
@@ -328,24 +329,36 @@ class ClearAndPlacePyBulletBlocksEnv(
                 )
             set_pose(block_id, Pose(position), self.physics_client_id)
 
-        # Place target block away from target area
-        while True:
-            target_block_position = self.np_random.uniform(
-                self.scene_description.block_init_position_lower,
-                self.scene_description.block_init_position_upper,
-            )
-            set_pose(
-                self.target_block_id,
-                Pose(tuple(target_block_position)),
-                self.physics_client_id,
-            )
-            # Ensure target block is not in target area
-            if not check_body_collisions(
-                self.target_block_id, self.target_area_id, self.physics_client_id
-            ):
-                break
+        # Place target block at fixed position, to the side of target area
+        target_block_position = (
+            target_position[0],
+            target_position[1] - scene_description.table_half_extents[1] / 2,
+            scene_description.table_pose.position[2]
+            + scene_description.table_half_extents[2]
+            + scene_description.block_half_extents[2],
+        )
+        set_pose(
+            self.target_block_id,
+            Pose(target_block_position),
+            self.physics_client_id,
+        )
 
         return super().reset(seed=seed)
+
+    def reset_from_state(
+        self,
+        state: NDArray[np.float32] | ClearAndPlacePyBulletBlocksState,
+        *,
+        seed: int | None = None,
+    ) -> tuple[NDArray[np.float32], dict[str, Any]]:
+        """Reset environment to specific state."""
+        super().reset(seed=seed)
+
+        if isinstance(state, np.ndarray):
+            state = ClearAndPlacePyBulletBlocksState.from_observation(state)
+
+        self.set_state(state)
+        return self.get_state().to_observation(), self._get_info()
 
     def get_collision_check_ids(self, block_id: int) -> set[int]:
         collision_ids = (

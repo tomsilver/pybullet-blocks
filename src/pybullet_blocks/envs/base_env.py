@@ -427,7 +427,6 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         self,
         action: NDArray[np.float32],
     ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
-
         assert self.action_space.contains(action)
         action_obj = PyBulletBlocksAction.from_vec(action)
 
@@ -466,6 +465,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         clipped_joints = np.clip(
             joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
         )
+
         for i in range(2):
             # Set the robot joints.
             self.robot.set_joints(clipped_joints.tolist())
@@ -486,6 +486,13 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             if i == 0:
                 for _ in range(self._num_sim_steps_per_step):
                     p.stepSimulation(physicsClientId=self.physics_client_id)
+                    if check_body_collisions(
+                        self.robot.robot_id,
+                        self.table_id,
+                        self.physics_client_id,
+                    ):
+                        observation = self.get_state().to_observation()
+                        return observation, -0.1, False, False, self._get_info()
 
         # Check goal.
         terminated = self._get_terminated()
