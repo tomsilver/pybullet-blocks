@@ -294,11 +294,13 @@ class ClearAndPlacePyBulletBlocksEnv(
         scene_description = self.scene_description
         assert isinstance(scene_description, ClearAndPlaceSceneDescription)
 
-        # Place target area at fixed position
+        # Place target area at fixed position, in middle of table
         target_position = (
-            0.5,  # x position (middle of the table)
-            0.0,  # y position (middle of the table)
-            0.076,  # z position (just above the table)
+            scene_description.table_pose.position[0],
+            scene_description.table_pose.position[1],
+            scene_description.table_pose.position[2]
+            + scene_description.table_half_extents[2]
+            + scene_description.target_half_extents[2],
         )
         set_pose(self.target_area_id, Pose(target_position), self.physics_client_id)
 
@@ -327,11 +329,13 @@ class ClearAndPlacePyBulletBlocksEnv(
                 )
             set_pose(block_id, Pose(position), self.physics_client_id)
 
-        # Place target block at fixed position
+        # Place target block at fixed position, to the side of target area
         target_block_position = (
-            0.5,  # x position
-            -0.2,  # y position (left from target area)
-            0.1,
+            target_position[0],
+            target_position[1] - scene_description.table_half_extents[1] / 2,
+            scene_description.table_pose.position[2]
+            + scene_description.table_half_extents[2]
+            + scene_description.block_half_extents[2],
         )
         set_pose(
             self.target_block_id,
