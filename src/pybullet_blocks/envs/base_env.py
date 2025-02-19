@@ -505,7 +505,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             ):
                 has_collision = True
 
-        # If collision detected, revert and return.
+        # If collision detected, revert to original state and return.
         if has_collision:
             self.robot.set_joints(original_joints)
             if (
