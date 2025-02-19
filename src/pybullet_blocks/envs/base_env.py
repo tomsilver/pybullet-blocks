@@ -457,42 +457,87 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
                     )
                     self.current_held_object_id = block_id
 
-        # Manually set the robot positions once, effectively forcing position
-        # control, and apply any held object transform. Then run physics for a
-        # certain number of iterations (may need to be tuned). Then reset the
-        # robot and held object again after physics to ensure that position
-        # control is exact. For example, consider pushing a non-held object.
+        # Store original state.
+        original_joints = self.robot.get_joint_positions()
+        original_held_pose = None
+        if self.current_held_object_id is not None:
+            original_held_pose = get_pose(
+                self.current_held_object_id, self.physics_client_id
+            )
+
+        # Set the robot joints.
         clipped_joints = np.clip(
             joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
         )
+        self.robot.set_joints(clipped_joints.tolist())
 
-        for i in range(2):
-            # Set the robot joints.
-            self.robot.set_joints(clipped_joints.tolist())
+        # Apply the grasp transform if it exists.
+        if self.current_grasp_transform:
+            world_to_robot = self.robot.get_end_effector_pose()
+            world_to_block = multiply_poses(
+                world_to_robot, self.current_grasp_transform
+            )
+            assert self.current_held_object_id is not None
+            set_pose(
+                self.current_held_object_id,
+                world_to_block,
+                self.physics_client_id,
+            )
 
-            # Apply the grasp transform if it exists.
-            if self.current_grasp_transform:
-                world_to_robot = self.robot.get_end_effector_pose()
-                world_to_block = multiply_poses(
-                    world_to_robot, self.current_grasp_transform
-                )
-                assert self.current_held_object_id is not None
+        has_collision = False
+
+        # Check robot-table penetration.
+        if check_body_collisions(
+            self.robot.robot_id,
+            self.table_id,
+            self.physics_client_id,
+            distance_threshold=-0.01,  # tuned value
+        ):
+            has_collision = True
+
+        # Check held object-table penetration.
+        if self.current_held_object_id is not None:
+            if check_body_collisions(
+                self.current_held_object_id,
+                self.table_id,
+                self.physics_client_id,
+                distance_threshold=-0.02,  # tuned value
+            ):
+                has_collision = True
+
+        # If collision detected, revert and return.
+        if has_collision:
+            self.robot.set_joints(original_joints)
+            if (
+                original_held_pose is not None
+                and self.current_held_object_id is not None
+            ):
                 set_pose(
                     self.current_held_object_id,
-                    world_to_block,
+                    original_held_pose,
                     self.physics_client_id,
                 )
+            observation = self.get_state().to_observation()
+            return observation, -0.1, False, False, self._get_info()
 
-            if i == 0:
-                for _ in range(self._num_sim_steps_per_step):
-                    p.stepSimulation(physicsClientId=self.physics_client_id)
-                    if check_body_collisions(
-                        self.robot.robot_id,
-                        self.table_id,
-                        self.physics_client_id,
-                    ):
-                        observation = self.get_state().to_observation()
-                        return observation, -0.1, False, False, self._get_info()
+        # Run physics simulation.
+        for _ in range(self._num_sim_steps_per_step):
+            p.stepSimulation(physicsClientId=self.physics_client_id)
+
+        # Reset the robot and held object again after physics to ensure that position
+        # control is exact.
+        self.robot.set_joints(clipped_joints.tolist())
+        if self.current_grasp_transform:
+            world_to_robot = self.robot.get_end_effector_pose()
+            world_to_block = multiply_poses(
+                world_to_robot, self.current_grasp_transform
+            )
+            assert self.current_held_object_id is not None
+            set_pose(
+                self.current_held_object_id,
+                world_to_block,
+                self.physics_client_id,
+            )
 
         # Check goal.
         terminated = self._get_terminated()
