@@ -214,6 +214,10 @@ class BaseSceneDescription:
     target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
     target_half_extents: tuple[float, float, float] = (0.05, 0.05, 0.001)
 
+    robot_table_penetration_dist: float = 0.01
+    grasped_object_table_penetration_dist: float = 0.02
+    penetration_reward: float = -0.1
+
     @property
     def block_init_position_lower(self) -> tuple[float, float, float]:
         """Lower bounds for block position."""
@@ -459,30 +463,12 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
 
         # Store original state.
         original_joints = self.robot.get_joint_positions()
-        original_held_pose = None
-        if self.current_held_object_id is not None:
-            original_held_pose = get_pose(
-                self.current_held_object_id, self.physics_client_id
-            )
 
-        # Set the robot joints.
+        # Update the robot position and held objects.
         clipped_joints = np.clip(
             joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
         )
-        self.robot.set_joints(clipped_joints.tolist())
-
-        # Apply the grasp transform if it exists.
-        if self.current_grasp_transform:
-            world_to_robot = self.robot.get_end_effector_pose()
-            world_to_block = multiply_poses(
-                world_to_robot, self.current_grasp_transform
-            )
-            assert self.current_held_object_id is not None
-            set_pose(
-                self.current_held_object_id,
-                world_to_block,
-                self.physics_client_id,
-            )
+        self._set_robot_and_held_object_state(clipped_joints.tolist())
 
         has_collision = False
 
@@ -491,34 +477,27 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             self.robot.robot_id,
             self.table_id,
             self.physics_client_id,
-            distance_threshold=-0.01,  # tuned value
+            distance_threshold=-self.scene_description.robot_table_penetration_dist,
         ):
             has_collision = True
 
         # Check held object-table penetration.
         if self.current_held_object_id is not None:
+            thresh = self.scene_description.grasped_object_table_penetration_dist
             if check_body_collisions(
                 self.current_held_object_id,
                 self.table_id,
                 self.physics_client_id,
-                distance_threshold=-0.02,  # tuned value
+                distance_threshold=-thresh,
             ):
                 has_collision = True
 
         # If collision detected, revert to original state and return.
         if has_collision:
-            self.robot.set_joints(original_joints)
-            if (
-                original_held_pose is not None
-                and self.current_held_object_id is not None
-            ):
-                set_pose(
-                    self.current_held_object_id,
-                    original_held_pose,
-                    self.physics_client_id,
-                )
+            self._set_robot_and_held_object_state(original_joints)
             observation = self.get_state().to_observation()
-            return observation, -0.1, False, False, self._get_info()
+            penetration_reward = self.scene_description.penetration_reward
+            return observation, penetration_reward, False, False, self._get_info()
 
         # Run physics simulation.
         for _ in range(self._num_sim_steps_per_step):
@@ -526,18 +505,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
 
         # Reset the robot and held object again after physics to ensure that position
         # control is exact.
-        self.robot.set_joints(clipped_joints.tolist())
-        if self.current_grasp_transform:
-            world_to_robot = self.robot.get_end_effector_pose()
-            world_to_block = multiply_poses(
-                world_to_robot, self.current_grasp_transform
-            )
-            assert self.current_held_object_id is not None
-            set_pose(
-                self.current_held_object_id,
-                world_to_block,
-                self.physics_client_id,
-            )
+        self._set_robot_and_held_object_state(clipped_joints.tolist())
 
         # Check goal.
         terminated = self._get_terminated()
@@ -613,3 +581,18 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             self.physics_client_id,
             **self.scene_description.get_camera_kwargs(self._timestep),
         )
+
+    def _set_robot_and_held_object_state(self, robot_joints: JointPositions) -> None:
+        self.robot.set_joints(robot_joints)
+        # Apply the grasp transform if it exists.
+        if self.current_grasp_transform is not None:
+            world_to_robot = self.robot.get_end_effector_pose()
+            world_to_block = multiply_poses(
+                world_to_robot, self.current_grasp_transform
+            )
+            assert self.current_held_object_id is not None
+            set_pose(
+                self.current_held_object_id,
+                world_to_block,
+                self.physics_client_id,
+            )
