@@ -1,5 +1,7 @@
 """Tests for clear_and_place_env.py."""
 
+from dataclasses import dataclass
+
 import numpy as np
 from pybullet_helpers.geometry import Pose, iter_between_poses, multiply_poses
 from pybullet_helpers.motion_planning import (
@@ -19,11 +21,30 @@ from pybullet_blocks.envs.clear_and_place_env import (
 def test_clear_and_place_env():
     """Tests for ClearAndPlacePyBulletBlocksEnv()."""
 
-    scene_description = ClearAndPlaceSceneDescription(
+    # For the sake of this test with hardcoded motion, force the block to start
+    # out in a "safe" location where the pushing shouldn't impact it at all.
+
+    @dataclass(frozen=True)
+    class _CustomClearAndPlaceSceneDescription(ClearAndPlaceSceneDescription):
+
+        @property
+        def target_block_init_position(self) -> tuple[float, float, float]:
+            return (
+                self.target_area_position[0] - self.table_half_extents[0] / 2,
+                self.target_area_position[1],
+                self.table_pose.position[2]
+                + self.table_half_extents[2]
+                + self.block_half_extents[2],
+            )
+
+    scene_description = _CustomClearAndPlaceSceneDescription(
         num_obstacle_blocks=3,
         stack_blocks=True,
     )
-    env = ClearAndPlacePyBulletBlocksEnv(use_gui=False)
+
+    env = ClearAndPlacePyBulletBlocksEnv(
+        scene_description=scene_description, use_gui=False
+    )
 
     # from gymnasium.wrappers import RecordVideo
     # env = RecordVideo(env, "videos/clear-and-place-env-test")
@@ -171,6 +192,8 @@ def test_clear_and_place_env():
     action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0], dtype=np.float32)
     obs, _, _, _, _ = env.step(action)
     state = ClearAndPlacePyBulletBlocksState.from_observation(obs)
+    assert isinstance(state, ClearAndPlacePyBulletBlocksState)
+    assert state.robot_state.grasp_transform is not None
 
     # Lift block
     sim.set_state(state)

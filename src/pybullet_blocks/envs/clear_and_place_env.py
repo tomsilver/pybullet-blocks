@@ -34,6 +34,28 @@ class ClearAndPlaceSceneDescription(BaseSceneDescription):
         True  # Whether to stack blocks in target area or place them side by side
     )
 
+    @property
+    def target_area_position(self) -> tuple[float, float, float]:
+        """Fixed position of the target area."""
+        return (
+            self.table_pose.position[0],
+            self.table_pose.position[1],
+            self.table_pose.position[2]
+            + self.table_half_extents[2]
+            + self.target_half_extents[2],
+        )
+
+    @property
+    def target_block_init_position(self) -> tuple[float, float, float]:
+        """Fixed initial position of the target block."""
+        return (
+            self.target_area_position[0],
+            self.target_area_position[1] - self.table_half_extents[1] / 2,
+            self.table_pose.position[2]
+            + self.table_half_extents[2]
+            + self.block_half_extents[2],
+        )
+
 
 @dataclass(frozen=True)
 class ClearAndPlacePyBulletBlocksState(PyBulletBlocksState):
@@ -295,14 +317,11 @@ class ClearAndPlacePyBulletBlocksEnv(
         assert isinstance(scene_description, ClearAndPlaceSceneDescription)
 
         # Place target area at fixed position, in middle of table
-        target_position = (
-            scene_description.table_pose.position[0],
-            scene_description.table_pose.position[1],
-            scene_description.table_pose.position[2]
-            + scene_description.table_half_extents[2]
-            + scene_description.target_half_extents[2],
+        set_pose(
+            self.target_area_id,
+            Pose(self.scene_description.target_area_position),
+            self.physics_client_id,
         )
-        set_pose(self.target_area_id, Pose(target_position), self.physics_client_id)
 
         # Stack obstacle blocks in the middle of the target area
         base_dz = (
@@ -313,33 +332,26 @@ class ClearAndPlacePyBulletBlocksEnv(
             if scene_description.stack_blocks:
                 # Stack blocks vertically
                 position = (
-                    target_position[0],
-                    target_position[1],
-                    target_position[2]
+                    self.scene_description.target_area_position[0],
+                    self.scene_description.target_area_position[1],
+                    self.scene_description.target_area_position[2]
                     + base_dz
                     + (i * 2 * self.scene_description.block_half_extents[2]),
                 )
             else:
                 # Place blocks side by side
                 position = (
-                    target_position[0]
+                    self.scene_description.target_area_position[0]
                     + (i - 1) * 3 * scene_description.block_half_extents[0],
-                    target_position[1],
-                    target_position[2] + base_dz,
+                    self.scene_description.target_area_position[1],
+                    self.scene_description.target_area_position[2] + base_dz,
                 )
             set_pose(block_id, Pose(position), self.physics_client_id)
 
-        # Place target block at fixed position, to the side of target area
-        target_block_position = (
-            target_position[0],
-            target_position[1] - scene_description.table_half_extents[1] / 2,
-            scene_description.table_pose.position[2]
-            + scene_description.table_half_extents[2]
-            + scene_description.block_half_extents[2],
-        )
+        # Place target block at fixed position.
         set_pose(
             self.target_block_id,
-            Pose(target_block_position),
+            Pose(self.scene_description.target_block_init_position),
             self.physics_client_id,
         )
 
