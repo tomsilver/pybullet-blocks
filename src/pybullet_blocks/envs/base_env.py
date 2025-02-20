@@ -216,7 +216,7 @@ class BaseSceneDescription:
 
     robot_table_penetration_dist: float = 0.01
     grasped_object_table_penetration_dist: float = 0.02
-    penetration_reward: float = -0.1
+    penetration_penalty: float = 0.1
 
     @property
     def block_init_position_lower(self) -> tuple[float, float, float]:
@@ -473,11 +473,12 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         has_collision = False
 
         # Check robot-table penetration.
+        thresh = self.scene_description.robot_table_penetration_dist
         if check_body_collisions(
             self.robot.robot_id,
             self.table_id,
             self.physics_client_id,
-            distance_threshold=-self.scene_description.robot_table_penetration_dist,
+            distance_threshold=-thresh,
         ):
             has_collision = True
 
@@ -496,8 +497,9 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         if has_collision:
             self._set_robot_and_held_object_state(original_joints)
             observation = self.get_state().to_observation()
-            penetration_reward = self.scene_description.penetration_reward
-            return observation, penetration_reward, False, False, self._get_info()
+            penetration_penalty = self.scene_description.penetration_penalty
+            reward = -1 * penetration_penalty
+            return observation, reward, False, False, self._get_info()
 
         # Run physics simulation.
         for _ in range(self._num_sim_steps_per_step):
