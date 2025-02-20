@@ -27,7 +27,7 @@ def test_clear_and_place_env():
 
     # from gymnasium.wrappers import RecordVideo
     # env = RecordVideo(env, "videos/clear-and-place-env-test")
-    max_motion_planning_time = 0.1  # increase for prettier videos
+    max_motion_planning_time = 1.0  # increase for prettier videos
 
     # Create a 'simulation' environment for kinematics, planning, etc.
     sim = ClearAndPlacePyBulletBlocksEnv(
