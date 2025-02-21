@@ -455,7 +455,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
                     np.square(np.subtract(end_effector_position, block_position))
                 )
                 # Grasp successful.
-                if dist < 1e-6:
+                if dist < 1e-4:
                     self.current_grasp_transform = multiply_poses(
                         world_to_robot.invert(), world_to_block
                     )
