@@ -411,7 +411,7 @@ class PlaceSkill(PyBulletBlocksSkill):
         dz = target_half_height + held_obj_half_height
 
         # Sample from 90-degree rotations
-        yaw_choices = [-np.pi/2, 0, np.pi/2, np.pi]
+        yaw_choices = [-np.pi / 2, 0, np.pi / 2, np.pi]
         while True:
             yaw = np.random.choice(yaw_choices)
             rot = p.getQuaternionFromEuler([0, 0, yaw])
