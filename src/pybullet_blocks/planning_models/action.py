@@ -4,6 +4,7 @@ import abc
 from typing import Iterator, Sequence
 
 import numpy as np
+import pybullet as p
 from gymnasium.core import ObsType
 from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, multiply_poses
@@ -403,13 +404,18 @@ class PlaceSkill(PyBulletBlocksSkill):
             raise NotImplementedError
 
     def _generate_block_placements(
-        self, held_obj_id: int, target_id: int, state: KinematicState
+        self, held_obj_id: int, target_id: int, _state: KinematicState
     ) -> Iterator[Pose]:
         held_obj_half_height = self._sim.get_object_half_extents(held_obj_id)[2]
         target_half_height = self._sim.get_object_half_extents(target_id)[2]
         dz = target_half_height + held_obj_half_height
-        target_orientation = state.object_poses[target_id].orientation
-        yield Pose((0, 0, dz), target_orientation)
+
+        # Sample from 90-degree rotations
+        yaw_choices = [-np.pi / 2, 0, np.pi / 2, np.pi]
+        while True:
+            yaw = np.random.choice(yaw_choices)
+            rot = p.getQuaternionFromEuler([0, 0, yaw])
+            yield Pose((0, 0, dz), rot)
 
 
 class UnstackSkill(PickSkill):
