@@ -5,6 +5,7 @@ from typing import Iterator, Sequence
 
 import numpy as np
 from gymnasium.core import ObsType
+import pybullet as p
 from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, multiply_poses
 from pybullet_helpers.manipulation import (
@@ -408,8 +409,12 @@ class PlaceSkill(PyBulletBlocksSkill):
         held_obj_half_height = self._sim.get_object_half_extents(held_obj_id)[2]
         target_half_height = self._sim.get_object_half_extents(target_id)[2]
         dz = target_half_height + held_obj_half_height
-        target_orientation = state.object_poses[target_id].orientation
-        yield Pose((0, 0, dz), target_orientation)
+
+        # Sample rotated orientations
+        while True:
+            yaw = np.random.uniform(-np.pi, np.pi)
+            rot = p.getQuaternionFromEuler([0, 0, yaw])
+            yield Pose((0, 0, dz), rot)
 
 
 class UnstackSkill(PickSkill):
