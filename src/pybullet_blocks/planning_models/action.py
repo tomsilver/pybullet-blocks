@@ -4,8 +4,8 @@ import abc
 from typing import Iterator, Sequence
 
 import numpy as np
-from gymnasium.core import ObsType
 import pybullet as p
+from gymnasium.core import ObsType
 from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, multiply_poses
 from pybullet_helpers.manipulation import (
@@ -404,7 +404,7 @@ class PlaceSkill(PyBulletBlocksSkill):
             raise NotImplementedError
 
     def _generate_block_placements(
-        self, held_obj_id: int, target_id: int, state: KinematicState
+        self, held_obj_id: int, target_id: int, _state: KinematicState
     ) -> Iterator[Pose]:
         held_obj_half_height = self._sim.get_object_half_extents(held_obj_id)[2]
         target_half_height = self._sim.get_object_half_extents(target_id)[2]
