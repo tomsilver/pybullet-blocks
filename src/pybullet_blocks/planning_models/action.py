@@ -36,12 +36,14 @@ from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksState,
 )
 from pybullet_blocks.planning_models.perception import (
-    Clear,
     GripperEmpty,
     Holding,
     IsMovable,
+    IsTarget,
     NothingOn,
+    NotHolding,
     NotIsMovable,
+    NotIsTarget,
     On,
     object_type,
     robot_type,
@@ -51,23 +53,6 @@ from pybullet_blocks.planning_models.perception import (
 Robot = Variable("?robot", robot_type)
 Obj = Variable("?obj", object_type)
 Surface = Variable("?surface", object_type)
-
-
-def add_clear_effects(
-    operator: LiftedOperator, surface_var: Variable
-) -> LiftedOperator:
-    """Add Clear predicate effects to an operator."""
-    if operator.name == "Place":
-        return LiftedOperator(
-            operator.name,
-            operator.parameters,
-            operator.preconditions | {LiftedAtom(Clear, [surface_var])},
-            operator.add_effects,
-            operator.delete_effects,
-        )
-    return operator
-
-
 PickOperator = LiftedOperator(
     "Pick",
     [Robot, Obj, Surface],
@@ -77,6 +62,7 @@ PickOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NothingOn, [Obj]),
         LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(NotIsTarget, [Surface]),
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
@@ -84,6 +70,29 @@ PickOperator = LiftedOperator(
     delete_effects={
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+    },
+)
+
+PickFromTargetOperator = LiftedOperator(
+    "PickFromTarget",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NothingOn, [Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(IsTarget, [Surface]),
+    },
+    add_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NothingOn, [Surface]),
+    },
+    delete_effects={
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
     },
 )
 
@@ -93,13 +102,35 @@ PlaceOperator = LiftedOperator(
     preconditions={
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(NotIsTarget, [Surface]),
     },
     add_effects={
         LiftedAtom(On, [Obj, Surface]),
         LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
     },
     delete_effects={
         LiftedAtom(Holding, [Robot, Obj]),
+    },
+)
+
+PlaceInTargetOperator = LiftedOperator(
+    "PlaceInTarget",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(NothingOn, [Surface]),
+        LiftedAtom(IsTarget, [Surface]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NothingOn, [Surface]),
     },
 )
 
@@ -112,6 +143,7 @@ UnstackOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NothingOn, [Obj]),
         LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(NotHolding, [Robot, Surface]),
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
@@ -120,6 +152,7 @@ UnstackOperator = LiftedOperator(
     delete_effects={
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
     },
 )
 
@@ -130,10 +163,12 @@ StackOperator = LiftedOperator(
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NothingOn, [Surface]),
         LiftedAtom(IsMovable, [Surface]),
+        LiftedAtom(NotHolding, [Robot, Surface]),
     },
     add_effects={
         LiftedAtom(On, [Obj, Surface]),
         LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
     },
     delete_effects={
         LiftedAtom(NothingOn, [Surface]),
@@ -141,16 +176,11 @@ StackOperator = LiftedOperator(
     },
 )
 
-BASE_OPERATORS = {
+OPERATORS = {
     PickOperator,
+    PickFromTargetOperator,
     PlaceOperator,
-    UnstackOperator,
-    StackOperator,
-}
-
-IMPROV_OPERATORS = {
-    PickOperator,
-    add_clear_effects(PlaceOperator, Surface),
+    PlaceInTargetOperator,
     UnstackOperator,
     StackOperator,
 }
@@ -354,6 +384,13 @@ class PickSkill(PyBulletBlocksSkill):
         return kinematic_plan
 
 
+class PickFromTargetSkill(PickSkill):
+    """Skill for picking from target area."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PickFromTargetOperator
+
+
 class PlaceSkill(PyBulletBlocksSkill):
     """Skill for placing."""
 
@@ -418,6 +455,13 @@ class PlaceSkill(PyBulletBlocksSkill):
             yield Pose((0, 0, dz), rot)
 
 
+class PlaceInTargetSkill(PlaceSkill):
+    """Skill for placing in target area."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceInTargetOperator
+
+
 class UnstackSkill(PickSkill):
     """Skill for unstacking."""
 
@@ -434,16 +478,9 @@ class StackSkill(PlaceSkill):
 
 SKILLS = {
     PickSkill,
+    PickFromTargetSkill,
     PlaceSkill,
+    PlaceInTargetSkill,
     UnstackSkill,
     StackSkill,
 }
-
-
-def get_active_operators_and_skills(
-    include_improvisational_models: bool = False,
-) -> tuple[set[LiftedOperator], set[type[PyBulletBlocksSkill]]]:
-    """Get the active operator and skill sets based on mode."""
-    if include_improvisational_models:
-        return IMPROV_OPERATORS, SKILLS
-    return BASE_OPERATORS, SKILLS
