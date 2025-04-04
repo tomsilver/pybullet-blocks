@@ -170,12 +170,6 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
         objs = {o for o in self._get_objects() if o.is_instance(object_type)}
         for _, bot in self._on_relations:
             objs.discard(bot)
-        held_objs = set()
-        if self._sim.current_held_object_id is not None:
-            pybullet_id_to_obj = {v: k for k, v in self._pybullet_ids.items()}
-            held_obj = pybullet_id_to_obj[self._sim.current_held_object_id]
-            held_objs.add(held_obj)
-        objs -= held_objs
         return {GroundAtom(NothingOn, [o]) for o in objs}
 
     def _interpret_Holding(self) -> set[GroundAtom]:
