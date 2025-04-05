@@ -386,3 +386,13 @@ class ClearAndPlacePyBulletBlocksEnv(
             return self.scene_description.target_half_extents
         assert object_id in set(self.obstacle_block_ids) | {self.target_block_id}
         return self.scene_description.block_half_extents
+
+    def clone(self) -> ClearAndPlacePyBulletBlocksEnv:
+        """Clone the environment."""
+        clone_env = ClearAndPlacePyBulletBlocksEnv(
+            scene_description=self.scene_description,
+            render_mode=self.render_mode,
+            use_gui=False,
+        )
+        clone_env.set_state(self.get_state())
+        return clone_env
