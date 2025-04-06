@@ -203,32 +203,36 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
         # Assume that the initial orientation of the robot end effector works for
         # picking and placing.
         self._robot_grasp_orientation = sim.robot.get_end_effector_pose().orientation
-        self._current_plan: list[NDArray[np.float32]] = []
+        self._current_plan: list[NDArray[np.float32]] | None = []
 
     def reset(self, ground_operator: GroundOperator) -> None:
         self._current_plan = []
         return super().reset(ground_operator)
 
-    def _get_action_given_objects(
+    def _get_action_given_objects(  # type: ignore[override]
         self, objects: Sequence[Object], obs: ObsType
-    ) -> NDArray[np.float32]:
+    ) -> NDArray[np.float32] | None:
         if not self._current_plan:
             kinematic_state = self._obs_to_kinematic_state(obs)
             kinematic_plan = self._get_kinematic_plan_given_objects(
                 objects, kinematic_state
             )
             self._current_plan = self._kinematic_plan_to_action_plan(kinematic_plan)
+            if self._current_plan is None:
+                return None
         return self._current_plan.pop(0)
 
     @abc.abstractmethod
     def _get_kinematic_plan_given_objects(
         self, objects: Sequence[Object], state: KinematicState
-    ) -> list[KinematicState]:
+    ) -> list[KinematicState] | None:
         """Generate a plan given an initial kinematic state and objects."""
 
     def _kinematic_plan_to_action_plan(
-        self, kinematic_plan: list[KinematicState]
-    ) -> list[NDArray[np.float32]]:
+        self, kinematic_plan: list[KinematicState] | None
+    ) -> list[NDArray[np.float32]] | None:
+        if kinematic_plan is None:
+            return None
         action_plan: list[NDArray[np.float32]] = []
         for s0, s1 in zip(kinematic_plan[:-1], kinematic_plan[1:], strict=True):
             action = self._kinematic_transition_to_action(s0, s1)
@@ -365,7 +369,7 @@ class PickSkill(PyBulletBlocksSkill):
         self,
         objects: Sequence[Object],
         state: KinematicState,
-    ) -> list[KinematicState]:
+    ) -> list[KinematicState] | None:
         _, block, surface = objects
         block_id = self._object_to_pybullet_id(block)
         surface_id = self._object_to_pybullet_id(surface)
@@ -380,7 +384,6 @@ class PickSkill(PyBulletBlocksSkill):
             collision_ids,
             grasp_generator=grasp_generator,
         )
-        assert kinematic_plan is not None
         return kinematic_plan
 
 
@@ -399,7 +402,7 @@ class PlaceSkill(PyBulletBlocksSkill):
 
     def _get_kinematic_plan_given_objects(
         self, objects: Sequence[Object], state: KinematicState
-    ) -> list[KinematicState]:
+    ) -> list[KinematicState] | None:
         _, block, surface = objects
 
         block_id = self._object_to_pybullet_id(block)
@@ -421,7 +424,6 @@ class PlaceSkill(PyBulletBlocksSkill):
             collision_ids,
             placement_generator=placement_generator,
         )
-        assert kinematic_plan is not None
         return kinematic_plan
 
     def _generate_table_placements(

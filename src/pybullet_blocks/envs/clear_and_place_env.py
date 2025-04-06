@@ -49,7 +49,7 @@ class ClearAndPlaceSceneDescription(BaseSceneDescription):
     def target_block_init_position(self) -> tuple[float, float, float]:
         """Fixed initial position of the target block."""
         return (
-            self.target_area_position[0],
+            self.target_area_position[0] - self.table_half_extents[0] / 2,
             self.target_area_position[1] - self.table_half_extents[1] / 2,
             self.table_pose.position[2]
             + self.table_half_extents[2]
