@@ -383,6 +383,7 @@ class PickSkill(PyBulletBlocksSkill):
             surface_id,
             collision_ids,
             grasp_generator=grasp_generator,
+            grasp_generator_iters=5,
         )
         return kinematic_plan
 
@@ -423,6 +424,7 @@ class PlaceSkill(PyBulletBlocksSkill):
             surface_id,
             collision_ids,
             placement_generator=placement_generator,
+            placement_generator_iters=5,
         )
         return kinematic_plan
 
