@@ -20,7 +20,7 @@ def test_table_penetration_prevention():
     # Move robot arm down toward table (negative z-direction)
     penetration_joint_delta = np.zeros(7)
     # Move joint that causes downward motion (specific to Panda robot)
-    penetration_joint_delta[1] = 10.0  # Joint 2 controls up/down movement
+    penetration_joint_delta[1] = 3.0  # Joint 2 controls up/down movement
 
     penetration_action = np.hstack([penetration_joint_delta, [0]]).astype(np.float32)
 

@@ -140,7 +140,7 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
                 obj2_pybullet_id = self._pybullet_ids[obj2]
                 # Check if obj1 pose is above obj2 pose.
                 pose2 = get_pose(obj2_pybullet_id, self._sim.physics_client_id)
-                if pose1.position[2] < pose2.position[2]:
+                if pose1.position[2] <= pose2.position[2] + 1e-4:
                     continue
                 # Check for contact.
                 if check_body_collisions(

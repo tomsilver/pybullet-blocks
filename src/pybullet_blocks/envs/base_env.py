@@ -195,7 +195,6 @@ class BaseSceneDescription:
             0.04,
         ]
     )
-    robot_max_joint_delta: float = np.inf
 
     robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
     robot_stand_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
@@ -212,7 +211,7 @@ class BaseSceneDescription:
     block_friction: float = 0.9
 
     target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
-    target_half_extents: tuple[float, float, float] = (0.05, 0.05, 0.001)
+    target_half_extents: tuple[float, float, float] = (0.03, 0.03, 0.001)
 
     robot_table_penetration_dist: float = 0.01
     grasped_object_table_penetration_dist: float = 0.02
@@ -330,13 +329,6 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             scene_description = BaseSceneDescription()
         self.scene_description = scene_description
 
-        # Set up common gym spaces.
-        dv = self.scene_description.robot_max_joint_delta
-        self.action_space = spaces.Box(
-            low=np.array([-dv, -dv, -dv, -dv, -dv, -dv, -dv, -1], dtype=np.float32),
-            high=np.array([dv, dv, dv, dv, dv, dv, dv, 1], dtype=np.float32),
-        )
-
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
@@ -365,6 +357,16 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         assert isinstance(robot, FingeredSingleArmPyBulletRobot)
         robot.close_fingers()
         self.robot = robot
+
+        # Set up common gym spaces.
+        joint_lower_limits = np.array(self.robot.joint_lower_limits[:7])
+        joint_upper_limits = np.array(self.robot.joint_upper_limits[:7])
+        dv = joint_upper_limits - joint_lower_limits
+        self.action_space = spaces.Box(
+            low=np.concatenate([-dv, [-1]]),
+            high=np.concatenate([dv, [1]]),
+            dtype=np.float32,
+        )
 
         # Create robot stand.
         self.robot_stand_id = create_pybullet_block(

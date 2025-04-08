@@ -373,7 +373,7 @@ class PickSkill(PyBulletBlocksSkill):
         _, block, surface = objects
         block_id = self._object_to_pybullet_id(block)
         surface_id = self._object_to_pybullet_id(surface)
-        collision_ids = set(state.object_poses) - {block_id}
+        collision_ids = set(state.object_poses)
         relative_grasp = Pose((0, 0, 0), self._robot_grasp_orientation)
         grasp_generator = iter([relative_grasp])
         kinematic_plan = get_kinematic_plan_to_pick_object(
