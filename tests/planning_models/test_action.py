@@ -1,11 +1,13 @@
 """Tests for action.py."""
 
+import pytest
 from task_then_motion_planning.planning import TaskThenMotionPlanner
 
 from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletBlocksEnv
 from pybullet_blocks.envs.clear_and_place_env import (
     ClearAndPlacePyBulletBlocksEnv,
     ClearAndPlaceSceneDescription,
+    GraphClearAndPlacePyBulletBlocksEnv,
 )
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
 from pybullet_blocks.planning_models.action import OPERATORS, SKILLS
@@ -14,6 +16,7 @@ from pybullet_blocks.planning_models.perception import (
     TYPES,
     BlockStackingPyBulletBlocksPerceiver,
     ClearAndPlacePyBulletBlocksPerceiver,
+    GraphClearAndPlacePyBulletBlocksPerceiver,
     PickPlacePyBulletBlocksPerceiver,
 )
 
@@ -86,7 +89,17 @@ def test_block_stacking_pybullet_blocks_action():
     env.close()
 
 
-def test_clear_and_place_pybullet_blocks_action():
+@pytest.mark.parametrize(
+    "env_cls,perceiver_cls",
+    [
+        (
+            GraphClearAndPlacePyBulletBlocksEnv,
+            GraphClearAndPlacePyBulletBlocksPerceiver,
+        ),
+        (ClearAndPlacePyBulletBlocksEnv, ClearAndPlacePyBulletBlocksPerceiver),
+    ],
+)
+def test_clear_and_place_pybullet_blocks_action(env_cls, perceiver_cls):
     """Tests task then motion planning in ClearAndPlacePyBulletBlocksEnv()."""
     seed = 123
 
@@ -95,12 +108,12 @@ def test_clear_and_place_pybullet_blocks_action():
         stack_blocks=True,
     )
 
-    env = ClearAndPlacePyBulletBlocksEnv(
+    env = env_cls(
         scene_description=scene_description,
         use_gui=False,
         seed=seed,
     )
-    sim = ClearAndPlacePyBulletBlocksEnv(
+    sim = env_cls(
         scene_description=scene_description,
         use_gui=False,
         seed=seed,
@@ -110,7 +123,7 @@ def test_clear_and_place_pybullet_blocks_action():
     # env = RecordVideo(env, "videos/clear-and-place-ttmp-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
-    perceiver = ClearAndPlacePyBulletBlocksPerceiver(sim)
+    perceiver = perceiver_cls(sim)
     skills = {s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS}
 
     # Create the planner

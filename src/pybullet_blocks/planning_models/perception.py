@@ -20,6 +20,8 @@ from pybullet_blocks.envs.block_stacking_env import (
 from pybullet_blocks.envs.clear_and_place_env import (
     ClearAndPlacePyBulletBlocksEnv,
     ClearAndPlacePyBulletBlocksState,
+    GraphClearAndPlacePyBulletBlocksEnv,
+    GraphClearAndPlacePyBulletBlocksState,
 )
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
@@ -318,7 +320,7 @@ class ClearAndPlacePyBulletBlocksPerceiver(
         self._target_area = Object("target", object_type)
         self._obstacle_blocks = sorted(
             [
-                Object(chr(65 + i), object_type)
+                Object(chr(65 + 1 + i), object_type)
                 for i in range(self._sim.scene_description.num_obstacle_blocks)
             ],
             key=lambda x: x.name,
@@ -344,6 +346,58 @@ class ClearAndPlacePyBulletBlocksPerceiver(
 
     def _get_goal(
         self, obs: NDArray[np.float32], info: dict[str, Any]
+    ) -> set[GroundAtom]:
+        del obs, info
+        return {GroundAtom(On, [self._target_block, self._target_area])}
+
+    def _interpret_IsMovable(self) -> set[GroundAtom]:
+        movable_objects = {self._target_block} | set(self._obstacle_blocks)
+        return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
+
+    def _interpret_IsTarget(self) -> set[GroundAtom]:
+        return {GroundAtom(IsTarget, [self._target_area])}
+
+
+class GraphClearAndPlacePyBulletBlocksPerceiver(
+    PyBulletBlocksPerceiver[gym.spaces.GraphInstance]
+):
+    """A perceiver for the GraphClearAndPlacePyBulletBlocksEnv."""
+
+    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+        super().__init__(sim)
+
+        # Create constant objects
+        assert isinstance(self._sim, GraphClearAndPlacePyBulletBlocksEnv)
+        self._target_block = Object("T", object_type)
+        self._target_area = Object("target", object_type)
+        self._obstacle_blocks = sorted(
+            [
+                Object(chr(65 + 1 + i), object_type)
+                for i in range(self._sim.scene_description.num_obstacle_blocks)
+            ],
+            key=lambda x: x.name,
+        )
+
+        # Set up PyBullet ID mappings
+        self._pybullet_ids = {
+            self._robot: self._sim.robot.robot_id,
+            self._table: self._sim.table_id,
+            self._target_block: self._sim.target_block_id,
+            self._target_area: self._sim.target_area_id,
+        }
+        for i, block in enumerate(self._obstacle_blocks):
+            self._pybullet_ids[block] = self._sim.obstacle_block_ids[i]
+
+    def _get_objects(self) -> set[Object]:
+        return {self._robot, self._table, self._target_block, self._target_area} | set(
+            self._obstacle_blocks
+        )
+
+    def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
+        self._sim.set_state(GraphClearAndPlacePyBulletBlocksState.from_observation(obs))
+
+    def _get_goal(
+        self, obs: gym.spaces.GraphInstance, info: dict[str, Any]
     ) -> set[GroundAtom]:
         del obs, info
         return {GroundAtom(On, [self._target_block, self._target_area])}

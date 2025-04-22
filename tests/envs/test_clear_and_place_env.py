@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+import pytest
 from pybullet_helpers.geometry import Pose, iter_between_poses, multiply_poses
 from pybullet_helpers.motion_planning import (
     create_joint_distance_fn,
@@ -15,11 +16,20 @@ from pybullet_blocks.envs.clear_and_place_env import (
     ClearAndPlacePyBulletBlocksEnv,
     ClearAndPlacePyBulletBlocksState,
     ClearAndPlaceSceneDescription,
+    GraphClearAndPlacePyBulletBlocksEnv,
+    GraphClearAndPlacePyBulletBlocksState,
 )
 
 
-def test_clear_and_place_env():
-    """Tests for ClearAndPlacePyBulletBlocksEnv()."""
+@pytest.mark.parametrize(
+    "env_cls,state_cls",
+    [
+        (GraphClearAndPlacePyBulletBlocksEnv, GraphClearAndPlacePyBulletBlocksState),
+        (ClearAndPlacePyBulletBlocksEnv, ClearAndPlacePyBulletBlocksState),
+    ],
+)
+def test_clear_and_place_env(env_cls, state_cls):
+    """Tests for ClearAndPlace environment."""
 
     # For the sake of this test with hardcoded motion, force the block to start
     # out in a "safe" location where the pushing shouldn't impact it at all.
@@ -42,18 +52,14 @@ def test_clear_and_place_env():
         stack_blocks=True,
     )
 
-    env = ClearAndPlacePyBulletBlocksEnv(
-        scene_description=scene_description, use_gui=False
-    )
+    env = env_cls(scene_description=scene_description, use_gui=False)
 
     # from gymnasium.wrappers import RecordVideo
     # env = RecordVideo(env, "videos/clear-and-place-env-test")
     max_motion_planning_time = 1.0  # increase for prettier videos
 
     # Create a 'simulation' environment for kinematics, planning, etc.
-    sim = ClearAndPlacePyBulletBlocksEnv(
-        scene_description=scene_description, use_gui=False
-    )
+    sim = env_cls(scene_description=scene_description, use_gui=False)
     joint_distance_fn = create_joint_distance_fn(sim.robot)
 
     obs, _ = env.reset(seed=125)
@@ -66,11 +72,11 @@ def test_clear_and_place_env():
             action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert env.action_space.contains(action)
             obs, _, _, _, _ = env.step(action)
-            state = ClearAndPlacePyBulletBlocksState.from_observation(obs)
+            state = state_cls.from_observation(obs)
         return state
 
     # Get initial state and orientations
-    state = ClearAndPlacePyBulletBlocksState.from_observation(obs)
+    state = state_cls.from_observation(obs)
     sim.set_state(state)
     # Assume that the initial orientation of the robot end effector
     # works for picking and placing
@@ -191,8 +197,8 @@ def test_clear_and_place_env():
     # Close gripper
     action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0], dtype=np.float32)
     obs, _, _, _, _ = env.step(action)
-    state = ClearAndPlacePyBulletBlocksState.from_observation(obs)
-    assert isinstance(state, ClearAndPlacePyBulletBlocksState)
+    state = state_cls.from_observation(obs)
+    assert isinstance(state, state_cls)
     assert state.robot_state.grasp_transform is not None
 
     # Lift block
@@ -245,7 +251,7 @@ def test_clear_and_place_env():
     # Open gripper
     action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
     obs, _, _, _, _ = env.step(action)
-    state = ClearAndPlacePyBulletBlocksState.from_observation(obs)
+    state = state_cls.from_observation(obs)
 
     # Lift gripper away
     sim.set_state(state)

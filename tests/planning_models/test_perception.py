@@ -1,14 +1,18 @@
 """Tests for perception.py."""
 
+import pytest
+
 from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletBlocksEnv
 from pybullet_blocks.envs.clear_and_place_env import (
     ClearAndPlacePyBulletBlocksEnv,
     ClearAndPlaceSceneDescription,
+    GraphClearAndPlacePyBulletBlocksEnv,
 )
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
 from pybullet_blocks.planning_models.perception import (
     BlockStackingPyBulletBlocksPerceiver,
     ClearAndPlacePyBulletBlocksPerceiver,
+    GraphClearAndPlacePyBulletBlocksPerceiver,
     PickPlacePyBulletBlocksPerceiver,
 )
 
@@ -53,24 +57,30 @@ def test_block_stacking_pybullet_blocks_perceiver():
     assert str(sorted(goal)) == "[(On A C), (On B D)]"
 
 
-def test_clear_and_place_pybullet_blocks_perceiver():
+@pytest.mark.parametrize(
+    "env_cls,perceiver_cls",
+    [
+        (
+            GraphClearAndPlacePyBulletBlocksEnv,
+            GraphClearAndPlacePyBulletBlocksPerceiver,
+        ),
+        (ClearAndPlacePyBulletBlocksEnv, ClearAndPlacePyBulletBlocksPerceiver),
+    ],
+)
+def test_clear_and_place_pybullet_blocks_perceiver(env_cls, perceiver_cls):
     """Tests for ClearAndPlacePyBulletBlocksPerceiver()."""
     scene_description = ClearAndPlaceSceneDescription(
         num_obstacle_blocks=3,
         stack_blocks=True,
     )
-    env = ClearAndPlacePyBulletBlocksEnv(
-        scene_description=scene_description, use_gui=False
-    )
-    sim = ClearAndPlacePyBulletBlocksEnv(
-        scene_description=scene_description, use_gui=False
-    )
-    perceiver = ClearAndPlacePyBulletBlocksPerceiver(sim)
+    env = env_cls(scene_description=scene_description, use_gui=False)
+    sim = env_cls(scene_description=scene_description, use_gui=False)
+    perceiver = perceiver_cls(sim)
     obs, info = env.reset(seed=124)
     objects, atoms, goal = perceiver.reset(obs, info)
     assert len(objects) == 7
     assert (
         str(sorted(atoms))
-        == "[(GripperEmpty robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable T), (IsTarget target), (NotHolding robot A), (NotHolding robot B), (NotHolding robot C), (NotHolding robot T), (NotHolding robot table), (NotHolding robot target), (NotIsMovable table), (NotIsMovable target), (NotIsTarget A), (NotIsTarget B), (NotIsTarget C), (NotIsTarget T), (NotIsTarget table), (NothingOn C), (NothingOn T), (On A target), (On B A), (On C B), (On T table), (On target table)]"  # pylint: disable=line-too-long
+        == "[(GripperEmpty robot), (IsMovable B), (IsMovable C), (IsMovable D), (IsMovable T), (IsTarget target), (NotHolding robot B), (NotHolding robot C), (NotHolding robot D), (NotHolding robot T), (NotHolding robot table), (NotHolding robot target), (NotIsMovable table), (NotIsMovable target), (NotIsTarget B), (NotIsTarget C), (NotIsTarget D), (NotIsTarget T), (NotIsTarget table), (NothingOn D), (NothingOn T), (On B target), (On C B), (On D C), (On T table), (On target table)]"  # pylint: disable=line-too-long
     )
     assert str(sorted(goal)) == "[(On T target)]"
