@@ -30,6 +30,8 @@ from pybullet_blocks.envs.block_stacking_env import (
 from pybullet_blocks.envs.clear_and_place_env import (
     ClearAndPlacePyBulletBlocksEnv,
     ClearAndPlacePyBulletBlocksState,
+    GraphClearAndPlacePyBulletBlocksEnv,
+    GraphClearAndPlacePyBulletBlocksState,
 )
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
@@ -267,7 +269,10 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             assert len(obj.name) == 1
             letter = obj.name
             return self._sim.letter_to_block_id[letter]
-        if isinstance(self._sim, ClearAndPlacePyBulletBlocksEnv):
+        if isinstance(
+            self._sim,
+            (ClearAndPlacePyBulletBlocksEnv, GraphClearAndPlacePyBulletBlocksEnv),
+        ):
             if obj.name == "table":
                 return self._sim.table_id
             if obj.name == "target":
@@ -276,7 +281,7 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 return self._sim.target_block_id
             assert len(obj.name) == 1
             letter = obj.name
-            return self._sim.obstacle_block_ids[ord(letter) - 65]
+            return self._sim.obstacle_block_ids[ord(letter) - 65 - 1]
         raise NotImplementedError
 
     def _obs_to_kinematic_state(self, obs: ObsType) -> KinematicState:
@@ -290,6 +295,8 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             return BlockStackingPyBulletBlocksState.from_observation(obs)  # type: ignore
         if isinstance(self._sim, ClearAndPlacePyBulletBlocksEnv):
             return ClearAndPlacePyBulletBlocksState.from_observation(obs)  # type: ignore
+        if isinstance(self._sim, GraphClearAndPlacePyBulletBlocksEnv):
+            return GraphClearAndPlacePyBulletBlocksState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
         raise NotImplementedError
 
     def _sim_state_to_kinematic_state(
@@ -327,8 +334,14 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 attachments[held_block_id] = sim_state.robot_state.grasp_transform
             return KinematicState(robot_joints, object_poses, attachments)
 
-        if isinstance(sim_state, ClearAndPlacePyBulletBlocksState):
-            assert isinstance(self._sim, ClearAndPlacePyBulletBlocksEnv)
+        if isinstance(
+            sim_state,
+            (ClearAndPlacePyBulletBlocksState, GraphClearAndPlacePyBulletBlocksState),
+        ):
+            assert isinstance(
+                self._sim,
+                (ClearAndPlacePyBulletBlocksEnv, GraphClearAndPlacePyBulletBlocksEnv),
+            )
             robot_points = sim_state.robot_state.joint_positions
             object_poses = {
                 self._sim.table_id: self._sim.scene_description.table_pose,
@@ -336,7 +349,9 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 self._sim.target_block_id: sim_state.target_block_state.pose,
             }
             for block_state in sim_state.obstacle_block_states:
-                block_id = self._sim.obstacle_block_ids[ord(block_state.letter) - 65]
+                block_id = self._sim.obstacle_block_ids[
+                    ord(block_state.letter) - 65 - 1
+                ]
                 object_poses[block_id] = block_state.pose
             attachments = {}
             if sim_state.robot_state.grasp_transform is not None:
@@ -348,7 +363,7 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                     for block_state in sim_state.obstacle_block_states:
                         if block_state.held:
                             block_id = self._sim.obstacle_block_ids[
-                                ord(block_state.letter) - 65
+                                ord(block_state.letter) - 65 - 1
                             ]
                             attachments[block_id] = (
                                 sim_state.robot_state.grasp_transform
@@ -432,7 +447,12 @@ class PlaceSkill(PyBulletBlocksSkill):
         self, held_obj_id: int, table_id: int, state: KinematicState
     ) -> Iterator[Pose]:
         if isinstance(
-            self._sim, (BlockStackingPyBulletBlocksEnv, ClearAndPlacePyBulletBlocksEnv)
+            self._sim,
+            (
+                BlockStackingPyBulletBlocksEnv,
+                ClearAndPlacePyBulletBlocksEnv,
+                GraphClearAndPlacePyBulletBlocksEnv,
+            ),
         ):
             while True:
                 world_to_placement = self._sim.sample_free_block_pose(held_obj_id)
