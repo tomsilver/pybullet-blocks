@@ -30,7 +30,8 @@ from pybullet_blocks.utils import create_lettered_block
 class DrawerSceneDescription(BaseSceneDescription):
     """Container for drawer task hyperparameters."""
     # Override and reposition table and robot
-    table_pose: Pose = Pose((0.5, 0.0, -0.1))
+    table_pose: Pose = Pose((0.9, 0.0, 0.01))
+    table_half_extents: tuple[float, float, float] = (0.25, 0.4, 0.01)
 
     # Drawer parameters
     drawer_pose: Pose = field(
@@ -67,7 +68,7 @@ class DrawerSceneDescription(BaseSceneDescription):
     def drawer_handle_position(self) -> tuple[float, float, float]:
         """Position of drawer handle."""
         return (
-            self.drawer_pose.position[0] + self.drawer_box_half_extents[0] + self.drawer_front_half_extents[0],
+            self.drawer_pose.position[0] - (self.drawer_box_half_extents[0] + self.drawer_front_half_extents[0]),
             self.drawer_pose.position[1],
             self.drawer_pose.position[2],
         )
@@ -552,13 +553,10 @@ class ClutteredDrawerBlocksEnv(PyBulletBlocksEnv[spaces.GraphInstance, NDArray[n
         )
         set_pose(self.drawer_front_id, Pose(drawer_front_pos), self.physics_client_id)
         
-        handle_pos = (
-            drawer_front_pos[0] + scene_description.drawer_front_half_extents[0] + 
-            scene_description.drawer_handle_half_extents[0],
-            drawer_front_pos[1],
-            drawer_front_pos[2],
-        )
+        handle_pos = scene_description.drawer_handle_position
         set_pose(self.drawer_handle_id, Pose(handle_pos), self.physics_client_id)
+        from pybullet_helpers.gui import visualize_pose
+        visualize_pose(Pose(handle_pos), self.physics_client_id)
         
         # Place blocks in the drawer in a cluttered manner
         self._place_blocks_in_drawer()
