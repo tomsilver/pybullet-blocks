@@ -478,22 +478,23 @@ class GraphClearAndPlacePyBulletBlocksEnv(
 
         for node in nodes:
             if np.isclose(node[0], 0):  # Robot
-                robot_node = node[1:]
+                robot_node = node[1:RobotState.get_dimension()]
             elif np.isclose(node[0], 1):  # Block or target area
                 # Check if it's a lettered block or the target area
-                if len(node) >= LetteredBlockState.get_dimension() and not np.isclose(
-                    node[LetteredBlockState.get_dimension() - 2], 0
+                lettered_block_dim = LetteredBlockState.get_dimension()
+                if len(node) >= lettered_block_dim and not np.isclose(
+                    node[lettered_block_dim - 2], 0
                 ):
                     # It's a lettered block - check the letter
-                    letter_idx = LetteredBlockState.get_dimension() - 2
+                    letter_idx = lettered_block_dim - 2
                     letter_val = int(node[letter_idx])
-                    letter = chr(int(letter_val + 65 + 1))
+                    letter = chr(int(letter_val + 65))
                     if letter in relevant_object_names:
-                        block_nodes[letter] = node[1:8]
+                        block_nodes[letter] = node[1:lettered_block_dim]
                 else:
                     # It's the target area
                     if "target" in relevant_object_names:
-                        target_area_node = node[1:8]
+                        target_area_node = node[1:BlockState.get_dimension()]
 
         features = []
         features.extend(robot_node)
@@ -543,7 +544,7 @@ class ClearAndPlacePyBulletBlocksEnv(
             low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
 
-        # Create obstacle blocks (A, B, C)
+        # Create obstacle blocks (B, C, D)
         self.obstacle_block_ids = [
             create_lettered_block(
                 chr(65 + i + 1),
