@@ -74,7 +74,7 @@ def test_cluttered_drawer_env():
         use_gui=True,
     )
     _ = env.reset()
-    for _ in range(100):
+    while True:
         p.getMouseEvents(env.physics_client_id)
     # for _ in range(100):
     #     # action = env.action_space.sample()

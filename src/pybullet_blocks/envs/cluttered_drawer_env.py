@@ -13,7 +13,7 @@ from gymnasium import spaces
 from gymnasium.utils import seeding
 from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, get_pose, set_pose
-from pybullet_helpers.joint import get_joint_positions
+from pybullet_helpers.joint import get_joint_positions, get_joint_infos, get_num_joints
 
 from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
@@ -207,8 +207,15 @@ class ClutteredDrawerBlocksEnv(
         self.table_id = (
             self.drawer_with_table_id
         )  # The table is now part of drawer_with_table_id
+        
+        # TODO get the link index automatically too
         self.tabletop_link_index = 0  # The first link in URDF is tabletop
-        self.drawer_joint_index = 0  # The drawer joint is still index 0
+
+        num_joints = get_num_joints(self.drawer_with_table_id, self.physics_client_id)
+        joint_infos = get_joint_infos(self.drawer_with_table_id, list(range(num_joints)), self.physics_client_id)
+        draw_joint_indices = [i for i, info in enumerate(joint_infos) if info.jointName == "drawer_slide"]
+        assert len(draw_joint_indices) == 1, "Expected exactly one drawer joint"
+        self.drawer_joint_index = draw_joint_indices[0]
 
         # Open the drawer initially
         p.resetJointState(
