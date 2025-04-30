@@ -1,30 +1,42 @@
 """Test script for the drawer environment."""
 
-import time
-from pybullet_blocks.envs.cluttered_drawer_env import ClutteredDrawerBlocksEnv, DrawerSceneDescription
+from pathlib import Path
 
-def test_cluttered_drawer_env():
-    """Test for the cluttered drawer environment."""
+import pybullet as p
+import pytest
+from pybullet_helpers.gui import create_gui_connection
+from pybullet_helpers.joint import (
+    get_joint_lower_limits,
+    get_joint_positions,
+    get_joint_upper_limits,
+    get_num_joints,
+)
+
+from pybullet_blocks.envs.cluttered_drawer_env import (
+    ClutteredDrawerBlocksEnv,
+    DrawerSceneDescription,
+)
 
 
-    # Tom starting to make a mess here
-    from pybullet_helpers.gui import create_gui_connection
-    from pybullet_helpers.joint import get_joint_lower_limits, get_joint_upper_limits, get_joint_positions, get_num_joints
-    from pathlib import Path
-    import pybullet as p
-
+@pytest.mark.skip()
+def test_creating_cluttered_drawer():
+    """Create a cluttered drawer for debugging."""
     physics_client_id = create_gui_connection()
-    drawer_id = p.loadURDF(str(Path(__file__).parent / "drawer.urdf"),
-                           basePosition=[0, 0, 0],
-                           physicsClientId=physics_client_id)
-    
+    drawer_id = p.loadURDF(
+        str(Path(__file__).parent / "drawer.urdf"),
+        basePosition=[0, 0, 0],
+        physicsClientId=physics_client_id,
+    )
+
     p.configureDebugVisualizer(
         p.COV_ENABLE_GUI, True, physicsClientId=physics_client_id
     )
 
     assert get_num_joints(drawer_id, physics_client_id) == 1
     drawer_joint = 0
-    initial_joint_value = get_joint_positions(drawer_id, [drawer_joint], physics_client_id)[0]
+    initial_joint_value = get_joint_positions(
+        drawer_id, [drawer_joint], physics_client_id
+    )[0]
     current = initial_joint_value
     lower = get_joint_lower_limits(drawer_id, [drawer_joint], physics_client_id)[0]
     upper = get_joint_upper_limits(drawer_id, [drawer_joint], physics_client_id)[0]
@@ -38,18 +50,21 @@ def test_cluttered_drawer_env():
 
     while True:
         try:
-            v = p.readUserDebugParameter(
-                slider_id, physicsClientId=physics_client_id
-            )
+            v = p.readUserDebugParameter(slider_id, physicsClientId=physics_client_id)
         except p.error:
             print("WARNING: failed to read parameter, skipping")
             continue
-        p.resetJointState(drawer_id, drawer_joint, v, targetVelocity=0, physicsClientId=physics_client_id)
+        p.resetJointState(
+            drawer_id,
+            drawer_joint,
+            v,
+            targetVelocity=0,
+            physicsClientId=physics_client_id,
+        )
 
 
-    # Tom stopping mess here
-    import ipdb; ipdb.set_trace()
-
+def test_cluttered_drawer_env():
+    """Test for the cluttered drawer environment."""
     scene_description = DrawerSceneDescription(
         num_drawer_blocks=3,
         drawer_travel_distance=0.2,
@@ -58,18 +73,17 @@ def test_cluttered_drawer_env():
         scene_description=scene_description,
         use_gui=True,
     )
-    obs, _ = env.reset()
-    import pybullet as p
-    while True:
-        p.getMouseEvents(env.physics_client_id)
+    _ = env.reset()
     for _ in range(100):
-        # action = env.action_space.sample()
-        # zero action
-        action = [0.0] * env.action_space.shape[0]
-        obs, reward, terminated, truncated, info = env.step(action)
-        print(f"Reward: {reward}, Terminated: {terminated}")
-        time.sleep(0.05)
-        if terminated:
-            print("Task completed!")
-            break
-    env.close()
+        p.getMouseEvents(env.physics_client_id)
+    # for _ in range(100):
+    #     # action = env.action_space.sample()
+    #     # zero action
+    #     action = [0.0] * env.action_space.shape[0]
+    #     obs, reward, terminated, truncated, info = env.step(action)
+    #     print(f"Reward: {reward}, Terminated: {terminated}")
+    #     time.sleep(0.05)
+    #     if terminated:
+    #         print("Task completed!")
+    #         break
+    # env.close()

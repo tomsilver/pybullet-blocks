@@ -1,0 +1,221 @@
+<?xml version="1.0"?>
+<robot name="drawer_with_table">
+
+  <!-- ======================== -->
+  <!-- Tabletop -->
+  <!-- ======================== -->
+  <link name="tabletop">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.6 0.8 0.02"/>
+      </geometry>
+      <material name="grey">
+        <color rgba="0.5 0.5 0.5 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.6 0.8 0.02"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="5"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <inertia ixx="1.0" ixy="0" ixz="0" iyy="1.0" iyz="0" izz="1.0"/>
+    </inertial>
+  </link>
+
+  <!-- ======================== -->
+  <!-- Table Legs -->
+  <!-- ======================== -->
+  <link name="leg_fl">
+    <visual>
+      <origin xyz="-0.275 0.375 -0.165" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.05 0.335"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.275 0.375 -0.165" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.05 0.335"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_fl_joint" type="fixed">
+    <parent link="tabletop"/>
+    <child link="leg_fl"/>
+  </joint>
+
+  <link name="leg_fr">
+    <visual>
+      <origin xyz="0.275 0.375 -0.165" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.05 0.335"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.275 0.375 -0.165" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.05 0.335"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_fr_joint" type="fixed">
+    <parent link="tabletop"/>
+    <child link="leg_fr"/>
+  </joint>
+
+  <link name="leg_bl">
+    <visual>
+      <origin xyz="-0.275 -0.375 -0.165" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.05 0.335"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.275 -0.375 -0.165" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.05 0.335"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_bl_joint" type="fixed">
+    <parent link="tabletop"/>
+    <child link="leg_bl"/>
+  </joint>
+
+  <link name="leg_br">
+    <visual>
+      <origin xyz="0.275 -0.375 -0.165" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.05 0.335"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.275 -0.375 -0.165" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.05 0.05 0.335"/>
+      </geometry>
+    </collision>
+  </link>
+  <joint name="leg_br_joint" type="fixed">
+    <parent link="tabletop"/>
+    <child link="leg_br"/>
+  </joint>
+
+  <!-- ======================== -->
+  <!-- Drawer -->
+  <!-- ======================== -->
+  <link name="drawer">
+    <!-- Bottom panel -->
+    <visual>
+      <origin xyz="0 0 -0.075" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.5 0.5 0.01"/>
+      </geometry>
+      <material name="brown">
+        <color rgba="0.6 0.4 0.2 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 -0.075" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.5 0.5 0.01"/>
+      </geometry>
+    </collision>
+
+    <!-- Left wall -->
+    <visual>
+      <origin xyz="0 0.245 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.5 0.01 0.1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 0.245 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.5 0.01 0.1"/>
+      </geometry>
+    </collision>
+
+    <!-- Right wall -->
+    <visual>
+      <origin xyz="0 -0.245 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.5 0.01 0.1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0 -0.245 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.5 0.01 0.1"/>
+      </geometry>
+    </collision>
+
+    <!-- Front wall -->
+    <visual>
+      <origin xyz="-0.245 0 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.01 0.5 0.1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="-0.245 0 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.01 0.5 0.1"/>
+      </geometry>
+    </collision>
+
+    <!-- Back wall -->
+    <visual>
+      <origin xyz="0.245 0 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.01 0.5 0.1"/>
+      </geometry>
+    </visual>
+    <collision>
+      <origin xyz="0.245 0 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.01 0.5 0.1"/>
+      </geometry>
+    </collision>
+
+    <!-- Handle -->
+    <visual>
+      <origin xyz="-0.26 0 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.02 0.1 0.02"/>
+      </geometry>
+      <material name="handle">
+        <color rgba="0.3 0.3 0.3 1.0"/>
+      </material>
+    </visual>
+    <collision>
+      <origin xyz="-0.26 0 -0.05" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.02 0.1 0.02"/>
+      </geometry>
+    </collision>
+
+    <inertial>
+      <mass value="1.5"/>
+      <origin xyz="0 0 -0.05" rpy="0 0 0"/>
+      <inertia ixx="0.02" ixy="0" ixz="0" iyy="0.02" iyz="0" izz="0.02"/>
+    </inertial>
+  </link>
+
+  <!-- ======================== -->
+  <!-- Drawer Joint -->
+  <!-- ======================== -->
+  <joint name="drawer_slide" type="prismatic">
+    <parent link="tabletop"/>
+    <child link="drawer"/>
+    <origin xyz="-0.15 0 -0.01" rpy="0 0 0"/>
+    <axis xyz="-1 0 0"/>
+    <limit lower="0" upper="0.5" effort="10" velocity="1.0"/>
+  </joint>
+
+</robot>

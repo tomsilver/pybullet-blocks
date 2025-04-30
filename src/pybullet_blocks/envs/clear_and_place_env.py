@@ -478,7 +478,7 @@ class GraphClearAndPlacePyBulletBlocksEnv(
 
         for node in nodes:
             if np.isclose(node[0], 0):  # Robot
-                robot_node = node[1:RobotState.get_dimension()]
+                robot_node = node[1 : RobotState.get_dimension()]
             elif np.isclose(node[0], 1):  # Block or target area
                 # Check if it's a lettered block or the target area
                 lettered_block_dim = LetteredBlockState.get_dimension()
@@ -494,7 +494,7 @@ class GraphClearAndPlacePyBulletBlocksEnv(
                 else:
                     # It's the target area
                     if "target" in relevant_object_names:
-                        target_area_node = node[1:BlockState.get_dimension()]
+                        target_area_node = node[1 : BlockState.get_dimension()]
 
         features = []
         features.extend(robot_node)
