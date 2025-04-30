@@ -13,7 +13,7 @@ from gymnasium import spaces
 from gymnasium.utils import seeding
 from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, get_pose, set_pose
-from pybullet_helpers.joint import get_joint_positions, get_joint_infos, get_num_joints
+from pybullet_helpers.joint import get_joint_infos, get_joint_positions, get_num_joints
 
 from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
@@ -36,7 +36,7 @@ class DrawerSceneDescription(BaseSceneDescription):
         default_factory=lambda: os.path.join(os.path.dirname(__file__), "drawer.urdf")
     )
     drawer_pos: tuple[float, float, float] = (1.0, 0.0, -0.05)  # Position under table
-    drawer_travel_distance: float = 0.5  # How far drawer can open
+    drawer_travel_distance: float = 0.2  # How far drawer can open
 
     # Block parameters for blocks inside drawer
     num_drawer_blocks: int = 3
@@ -136,9 +136,6 @@ class ClutteredDrawerBlocksEnv(
         if scene_description is None:
             scene_description = DrawerSceneDescription()
         assert isinstance(scene_description, DrawerSceneDescription)
-        print(
-            "drawer_travel_distance at init:", scene_description.drawer_travel_distance
-        )
 
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
         p.removeBody(self.table_id, physicsClientId=self.physics_client_id)
@@ -189,10 +186,6 @@ class ClutteredDrawerBlocksEnv(
             self.target_block_id: scene_description.target_block_letter,
         }
 
-        # Flag to track drawer state
-        self.drawer_is_closed = True
-        self.drawer_joint = None
-
     def _setup_drawer(self) -> None:
         """Create drawer components using a prismatic joint."""
         scene_description = self.scene_description
@@ -207,25 +200,30 @@ class ClutteredDrawerBlocksEnv(
         self.table_id = (
             self.drawer_with_table_id
         )  # The table is now part of drawer_with_table_id
-        
-        # TODO get the link index automatically too
+
         self.tabletop_link_index = 0  # The first link in URDF is tabletop
 
         num_joints = get_num_joints(self.drawer_with_table_id, self.physics_client_id)
-        joint_infos = get_joint_infos(self.drawer_with_table_id, list(range(num_joints)), self.physics_client_id)
-        draw_joint_indices = [i for i, info in enumerate(joint_infos) if info.jointName == "drawer_slide"]
-        assert len(draw_joint_indices) == 1, "Expected exactly one drawer joint"
-        self.drawer_joint_index = draw_joint_indices[0]
+        joint_infos = get_joint_infos(
+            self.drawer_with_table_id, list(range(num_joints)), self.physics_client_id
+        )
+
+        drawer_joint_indices = []
+        for i, info in enumerate(joint_infos):
+            print(f"Joint {i}: {info.jointName}, Link: {info.linkName}")
+            if info.jointName == "drawer_slide":
+                drawer_joint_indices.append(i)
+        assert len(drawer_joint_indices) == 1, "Expected exactly one drawer joint"
+        self.drawer_joint_index = drawer_joint_indices[0]
 
         # Open the drawer initially
         p.resetJointState(
             self.drawer_with_table_id,
             self.drawer_joint_index,
-            scene_description.drawer_travel_distance,  # Fully open
+            scene_description.drawer_travel_distance,
             targetVelocity=0,
             physicsClientId=self.physics_client_id,
         )
-        self.table_link_index = -1  # Base link
 
     def set_drawer_position(self, position: float) -> None:
         """Set the drawer position (how open it is)."""
@@ -234,7 +232,6 @@ class ClutteredDrawerBlocksEnv(
 
         # Clamp position within limits
         position = max(0, min(position, scene_description.drawer_travel_distance))
-        position = 0.5
 
         # Set the drawer joint position
         p.resetJointState(
@@ -371,10 +368,9 @@ class ClutteredDrawerBlocksEnv(
 
         # 2. It's not inside the drawer
         # Get drawer link position
-        drawer_link_index = 4  # Based on the URDF
         drawer_state = p.getLinkState(
             self.drawer_with_table_id,
-            drawer_link_index,
+            self.drawer_joint_index,
             computeLinkVelocity=0,
             computeForwardKinematics=1,
             physicsClientId=self.physics_client_id,
@@ -400,21 +396,14 @@ class ClutteredDrawerBlocksEnv(
         options: dict[str, Any] | None = None,
     ) -> tuple[spaces.GraphInstance, dict[str, Any]]:
         """Reset the environment to its initial state."""
-        # Set seed if provided
         if seed is not None:
             self._np_random, seed = seeding.np_random(seed)
 
-        scene_description = self.scene_description
-        assert isinstance(scene_description, DrawerSceneDescription)
+        assert isinstance(self.scene_description, DrawerSceneDescription)
 
         _ = super().reset(seed=seed)
 
-        travel_distance = scene_description.drawer_travel_distance
-        print(f"Setting drawer to open position: {travel_distance}")  # Debug
-        self.set_drawer_position(travel_distance)
-        actual_pos = self.get_drawer_position()
-        print(f"Actual drawer position after setting: {actual_pos}")  # Debug
-
+        self.set_drawer_position(self.scene_description.drawer_travel_distance)
         self._place_blocks_in_drawer()
 
         return self.get_state().to_observation(), self._get_info()
@@ -438,19 +427,9 @@ class ClutteredDrawerBlocksEnv(
         scene_description = self.scene_description
         assert isinstance(scene_description, DrawerSceneDescription)
 
-        # Print joint information
-        for i in range(
-            p.getNumJoints(self.drawer_with_table_id, self.physics_client_id)
-        ):
-            info = p.getJointInfo(self.drawer_with_table_id, i, self.physics_client_id)
-            print(
-                f"Joint {i}: {info[1].decode('utf-8')}, Link: {info[12].decode('utf-8')}"
-            )
-
-        drawer_link_index = 4  # The drawer link in the URDF
         drawer_state = p.getLinkState(
             self.drawer_with_table_id,
-            drawer_link_index,
+            self.drawer_joint_index,
             computeLinkVelocity=0,
             computeForwardKinematics=1,
             physicsClientId=self.physics_client_id,
@@ -465,7 +444,7 @@ class ClutteredDrawerBlocksEnv(
             drawer_pos[2] - 0.04 + block_half_extents[2]
         )  # Position blocks on drawer floor
 
-        target_x = drawer_pos[0] + 0.1  # Toward back of drawer
+        target_x = drawer_pos[0]
         target_y = drawer_pos[1]
         target_pose = Pose((target_x, target_y, z))
         set_pose(
@@ -476,11 +455,11 @@ class ClutteredDrawerBlocksEnv(
 
         block_positions = [
             # Block in front of target (toward handle)
-            (target_x - 2.1 * block_half_extents[0], target_y, z),
+            (target_x - 2.7 * block_half_extents[0], target_y, z),
             # Block to the side of target
-            (target_x, target_y + 2.1 * block_half_extents[1], z),
+            (target_x, target_y + 2.7 * block_half_extents[1], z),
             # Block to other side of target
-            (target_x, target_y - 2.1 * block_half_extents[1], z),
+            (target_x, target_y - 2.7 * block_half_extents[1], z),
         ]
 
         block_positions = block_positions[: len(self.drawer_block_ids)]
@@ -506,10 +485,9 @@ class ClutteredDrawerBlocksEnv(
         """Take a step in the environment."""
         ee_pose = self.robot.get_end_effector_pose()
 
-        drawer_link_index = 4  # Drawer link in URDF
         drawer_state = p.getLinkState(
             self.drawer_with_table_id,
-            drawer_link_index,
+            self.drawer_joint_index,
             computeLinkVelocity=0,
             computeForwardKinematics=1,
             physicsClientId=self.physics_client_id,
