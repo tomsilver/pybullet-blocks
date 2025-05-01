@@ -36,7 +36,7 @@ class DrawerSceneDescription(BaseSceneDescription):
         default_factory=lambda: os.path.join(os.path.dirname(__file__), "drawer.urdf")
     )
     drawer_pos: tuple[float, float, float] = (1.0, 0.0, -0.05)  # Position under table
-    drawer_travel_distance: float = 0.2  # How far drawer can open
+    drawer_travel_distance: float = 0.25  # How far drawer can open
 
     # Block parameters for blocks inside drawer
     num_drawer_blocks: int = 3
@@ -201,7 +201,7 @@ class ClutteredDrawerBlocksEnv(
             self.drawer_with_table_id
         )  # The table is now part of drawer_with_table_id
 
-        self.tabletop_link_index = 0  # The first link in URDF is tabletop
+        self.tabletop_link_index = -1  # Base link
 
         num_joints = get_num_joints(self.drawer_with_table_id, self.physics_client_id)
         joint_infos = get_joint_infos(
@@ -377,17 +377,26 @@ class ClutteredDrawerBlocksEnv(
         )
         drawer_pos = drawer_state[0]  # worldLinkPosition
 
-        # Check if block is not in the drawer (with some margin)
-        drawer_width = 0.5
-        drawer_depth = 0.5
-        not_above_drawer = (
-            block_pose.position[0] < drawer_pos[0] - (drawer_width / 2)
-            or block_pose.position[0] > drawer_pos[0] + (drawer_width / 2)
-            or block_pose.position[1] < drawer_pos[1] - (drawer_depth / 2)
-            or block_pose.position[1] > drawer_pos[1] + (drawer_depth / 2)
-        )
+        # Calculate the height of the table surface and drawer bottom
+        scene_description = self.scene_description
+        assert isinstance(scene_description, DrawerSceneDescription)
+        table_surface_z = (
+            scene_description.drawer_pos[2] + 0.01
+        )  # Half of the table thickness (0.02)
+        drawer_surface_z = drawer_pos[2] - 0.08
 
-        return table_contact and not_above_drawer
+        # Get the block's bottom z-coordinate
+        block_half_extents = self.get_object_half_extents(block_id)
+        block_bottom_z = block_pose.position[2] - block_half_extents[2]
+
+        # Check if block is at table height (with tolerance)
+        # A block is "on the table" if its bottom is close to the table surface height
+        # and far from the drawer surface height
+        on_table_height = abs(block_bottom_z - table_surface_z) < 1e-3
+        not_in_drawer_height = abs(block_bottom_z - drawer_surface_z) > 1e-2
+        is_on_table_surface = on_table_height and not_in_drawer_height
+
+        return table_contact and is_on_table_surface
 
     def reset(  # type: ignore[override]
         self,
