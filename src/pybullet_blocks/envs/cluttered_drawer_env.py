@@ -28,7 +28,7 @@ from pybullet_blocks.utils import create_lettered_block
 
 
 @dataclass
-class DrawerDimensions:
+class ClutteredDrawerDimensions:
     """Dimensions for the drawer and its components."""
 
     # Tabletop dimensions
@@ -77,7 +77,7 @@ class DrawerDimensions:
 
 
 @dataclass(frozen=True)
-class DrawerSceneDescription(BaseSceneDescription):
+class ClutteredDrawerSceneDescription(BaseSceneDescription):
     """Container for drawer task hyperparameters."""
 
     # Drawer parameters
@@ -86,7 +86,9 @@ class DrawerSceneDescription(BaseSceneDescription):
     )
     drawer_table_pos: tuple[float, float, float] = (1.0, 0.0, -0.05)
     drawer_travel_distance: float = 0.25  # How far drawer can open
-    dimensions: DrawerDimensions = field(default_factory=DrawerDimensions)
+    dimensions: ClutteredDrawerDimensions = field(
+        default_factory=ClutteredDrawerDimensions
+    )
 
     # Block parameters for blocks inside drawer
     num_drawer_blocks: int = 3
@@ -95,7 +97,7 @@ class DrawerSceneDescription(BaseSceneDescription):
 
 
 @dataclass(frozen=True)
-class DrawerBlocksState(PyBulletBlocksState):
+class ClutteredDrawerPyBulletBlocksState(PyBulletBlocksState):
     """A state in the drawer blocks environment with graph representation."""
 
     drawer_joint_pos: float  # Position of the drawer joint (how open it is)
@@ -138,7 +140,9 @@ class DrawerBlocksState(PyBulletBlocksState):
         return spaces.GraphInstance(nodes=arr, edges=None, edge_links=None)
 
     @classmethod
-    def from_observation(cls, obs: spaces.GraphInstance) -> DrawerBlocksState:
+    def from_observation(
+        cls, obs: spaces.GraphInstance
+    ) -> ClutteredDrawerPyBulletBlocksState:
         """Build a state from a graph."""
         robot_state: RobotState | None = None
         drawer_joint_pos: float = 0.0
@@ -168,7 +172,7 @@ class DrawerBlocksState(PyBulletBlocksState):
         )
 
 
-class ClutteredDrawerBlocksEnv(
+class ClutteredDrawerPyBulletBlocksEnv(
     PyBulletBlocksEnv[spaces.GraphInstance, NDArray[np.float32]]
 ):
     """A PyBullet environment with a cluttered drawer containing blocks
@@ -184,14 +188,14 @@ class ClutteredDrawerBlocksEnv(
         seed: int = 0,
     ) -> None:
         if scene_description is None:
-            scene_description = DrawerSceneDescription()
-        assert isinstance(scene_description, DrawerSceneDescription)
+            scene_description = ClutteredDrawerSceneDescription()
+        assert isinstance(scene_description, ClutteredDrawerSceneDescription)
 
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
         p.removeBody(self.table_id, physicsClientId=self.physics_client_id)
 
         # Set up observation space
-        obs_dim = DrawerBlocksState.get_node_dimension()
+        obs_dim = ClutteredDrawerPyBulletBlocksState.get_node_dimension()
         self.observation_space = spaces.Graph(
             node_space=spaces.Box(
                 low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
@@ -239,7 +243,7 @@ class ClutteredDrawerBlocksEnv(
     def _setup_drawer(self) -> None:
         """Create drawer components using a prismatic joint."""
         scene_description = self.scene_description
-        assert isinstance(scene_description, DrawerSceneDescription)
+        assert isinstance(scene_description, ClutteredDrawerSceneDescription)
 
         self.drawer_with_table_id = p.loadURDF(
             scene_description.drawer_urdf_path,
@@ -275,7 +279,7 @@ class ClutteredDrawerBlocksEnv(
     def set_drawer_position(self, position: float) -> None:
         """Set the drawer position (how open it is)."""
         scene_description = self.scene_description
-        assert isinstance(scene_description, DrawerSceneDescription)
+        assert isinstance(scene_description, ClutteredDrawerSceneDescription)
 
         # Clamp position within limits
         position = max(0, min(position, scene_description.drawer_travel_distance))
@@ -298,7 +302,7 @@ class ClutteredDrawerBlocksEnv(
 
     def set_state(self, state: PyBulletBlocksState) -> None:
         """Reset the internal state to the given state."""
-        assert isinstance(state, DrawerBlocksState)
+        assert isinstance(state, ClutteredDrawerPyBulletBlocksState)
 
         self.set_drawer_position(state.drawer_joint_pos)
 
@@ -325,7 +329,7 @@ class ClutteredDrawerBlocksEnv(
         else:
             self.current_held_object_id = None
 
-    def get_state(self) -> DrawerBlocksState:
+    def get_state(self) -> ClutteredDrawerPyBulletBlocksState:
         """Expose the internal state for simulation."""
         drawer_joint_pos = self.get_drawer_position()
 
@@ -348,7 +352,7 @@ class ClutteredDrawerBlocksEnv(
         robot_joints = self.robot.get_joint_positions()
         robot_state = RobotState(robot_joints, self.current_grasp_transform)
 
-        return DrawerBlocksState(
+        return ClutteredDrawerPyBulletBlocksState(
             drawer_joint_pos,
             drawer_block_states,
             target_block_state,
@@ -425,7 +429,7 @@ class ClutteredDrawerBlocksEnv(
         drawer_pos = drawer_state[0]  # worldLinkPosition
 
         scene_description = self.scene_description
-        assert isinstance(scene_description, DrawerSceneDescription)
+        assert isinstance(scene_description, ClutteredDrawerSceneDescription)
 
         # Get the block's bottom z-coordinate
         block_half_extents = self.get_object_half_extents(block_id)
@@ -463,7 +467,7 @@ class ClutteredDrawerBlocksEnv(
         if seed is not None:
             self._np_random, seed = seeding.np_random(seed)
 
-        assert isinstance(self.scene_description, DrawerSceneDescription)
+        assert isinstance(self.scene_description, ClutteredDrawerSceneDescription)
 
         _ = super().reset(seed=seed)
 
@@ -474,14 +478,14 @@ class ClutteredDrawerBlocksEnv(
 
     def reset_from_state(
         self,
-        state: spaces.GraphInstance | DrawerBlocksState,
+        state: spaces.GraphInstance | ClutteredDrawerPyBulletBlocksState,
         *,
         seed: int | None = None,
     ) -> tuple[spaces.GraphInstance, dict[str, Any]]:
         """Reset environment to specific state."""
         super().reset(seed=seed)
         if isinstance(state, spaces.GraphInstance):
-            state = DrawerBlocksState.from_observation(state)
+            state = ClutteredDrawerPyBulletBlocksState.from_observation(state)
         self.set_state(state)
         return self.get_state().to_observation(), self._get_info()
 
@@ -489,7 +493,7 @@ class ClutteredDrawerBlocksEnv(
         """Place blocks inside the drawer in a cluttered manner around target
         block."""
         scene_description = self.scene_description
-        assert isinstance(scene_description, DrawerSceneDescription)
+        assert isinstance(scene_description, ClutteredDrawerSceneDescription)
 
         drawer_state = p.getLinkState(
             self.drawer_with_table_id,
@@ -504,28 +508,16 @@ class ClutteredDrawerBlocksEnv(
         drawer_depth = scene_description.dimensions.drawer_depth
         wall_thickness = scene_description.dimensions.drawer_wall_thickness
         min_x = (
-            drawer_pos[0]
-            - drawer_width / 2
-            + block_half_extents[0]
-            + wall_thickness / 2
+            drawer_pos[0] - drawer_width / 2 + block_half_extents[0] + wall_thickness
         )
         max_x = (
-            drawer_pos[0]
-            + drawer_width / 2
-            - block_half_extents[0]
-            - wall_thickness / 2
+            drawer_pos[0] + drawer_width / 2 - block_half_extents[0] - wall_thickness
         )
         min_y = (
-            drawer_pos[1]
-            - drawer_depth / 2
-            + block_half_extents[1]
-            + wall_thickness / 2
+            drawer_pos[1] - drawer_depth / 2 + block_half_extents[1] + wall_thickness
         )
         max_y = (
-            drawer_pos[1]
-            + drawer_depth / 2
-            - block_half_extents[1]
-            - wall_thickness / 2
+            drawer_pos[1] + drawer_depth / 2 - block_half_extents[1] - wall_thickness
         )
         z = (
             drawer_pos[2]
@@ -616,9 +608,9 @@ class ClutteredDrawerBlocksEnv(
         collision_ids.update(all_blocks - {block_id})
         return collision_ids
 
-    def clone(self) -> ClutteredDrawerBlocksEnv:
+    def clone(self) -> ClutteredDrawerPyBulletBlocksEnv:
         """Clone the environment."""
-        clone_env = ClutteredDrawerBlocksEnv(
+        clone_env = ClutteredDrawerPyBulletBlocksEnv(
             scene_description=self.scene_description,
             render_mode=self.render_mode,
             use_gui=False,

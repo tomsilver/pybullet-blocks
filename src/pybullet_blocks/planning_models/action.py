@@ -7,7 +7,7 @@ import numpy as np
 import pybullet as p
 from gymnasium.core import ObsType
 from numpy.typing import NDArray
-from pybullet_helpers.geometry import Pose, multiply_poses
+from pybullet_helpers.geometry import Pose, get_pose, multiply_poses
 from pybullet_helpers.manipulation import (
     get_kinematic_plan_to_pick_object,
     get_kinematic_plan_to_place_object,
@@ -32,6 +32,10 @@ from pybullet_blocks.envs.clear_and_place_env import (
     ClearAndPlacePyBulletBlocksState,
     GraphClearAndPlacePyBulletBlocksEnv,
     GraphClearAndPlacePyBulletBlocksState,
+)
+from pybullet_blocks.envs.cluttered_drawer_env import (
+    ClutteredDrawerPyBulletBlocksEnv,
+    ClutteredDrawerPyBulletBlocksState,
 )
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
@@ -282,6 +286,14 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             assert len(obj.name) == 1
             letter = obj.name
             return self._sim.obstacle_block_ids[ord(letter) - 65 - 1]
+        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
+            if obj.name in ["table", "drawer"]:
+                return self._sim.drawer_with_table_id
+            if obj.name == self._sim.scene_description.target_block_letter:
+                return self._sim.target_block_id
+            assert len(obj.name) == 1
+            letter = obj.name
+            return self._sim.drawer_block_ids[ord(letter) - 65 - 1]
         raise NotImplementedError
 
     def _obs_to_kinematic_state(self, obs: ObsType) -> KinematicState:
@@ -297,6 +309,8 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             return ClearAndPlacePyBulletBlocksState.from_observation(obs)  # type: ignore
         if isinstance(self._sim, GraphClearAndPlacePyBulletBlocksEnv):
             return GraphClearAndPlacePyBulletBlocksState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
+        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
+            return ClutteredDrawerPyBulletBlocksState.from_observation(obs)  # type: ignore # pylint:disable=line-too-long
         raise NotImplementedError
 
     def _sim_state_to_kinematic_state(
@@ -370,6 +384,36 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                             )
                             break
             return KinematicState(robot_points, object_poses, attachments)
+
+        if isinstance(sim_state, ClutteredDrawerPyBulletBlocksState):
+            assert isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv)
+            robot_joints = sim_state.robot_state.joint_positions
+            object_poses = {
+                self._sim.drawer_with_table_id: get_pose(
+                    self._sim.drawer_with_table_id, self._sim.physics_client_id
+                ),
+            }
+            for block_state in sim_state.drawer_blocks:
+                block_id = self._sim.drawer_block_ids[ord(block_state.letter) - 65 - 1]
+                object_poses[block_id] = block_state.pose
+            object_poses[self._sim.target_block_id] = sim_state.target_block_state.pose
+            attachments = {}
+            if sim_state.robot_state.grasp_transform is not None:
+                if sim_state.target_block_state.held:
+                    attachments[self._sim.target_block_id] = (
+                        sim_state.robot_state.grasp_transform
+                    )
+                else:
+                    for block_state in sim_state.drawer_blocks:
+                        if block_state.held:
+                            block_id = self._sim.drawer_block_ids[
+                                ord(block_state.letter) - 65 - 1
+                            ]
+                            attachments[block_id] = (
+                                sim_state.robot_state.grasp_transform
+                            )
+                            break
+            return KinematicState(robot_joints, object_poses, attachments)
 
         raise NotImplementedError
 
