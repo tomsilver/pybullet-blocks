@@ -5,6 +5,7 @@ from typing import Any
 
 import gymnasium as gym
 import numpy as np
+import pybullet as p
 from gymnasium.core import ObsType
 from numpy.typing import NDArray
 from pybullet_helpers.geometry import get_pose
@@ -22,6 +23,10 @@ from pybullet_blocks.envs.clear_and_place_env import (
     ClearAndPlacePyBulletBlocksState,
     GraphClearAndPlacePyBulletBlocksEnv,
     GraphClearAndPlacePyBulletBlocksState,
+)
+from pybullet_blocks.envs.cluttered_drawer_env import (
+    ClutteredDrawerPyBulletBlocksEnv,
+    ClutteredDrawerPyBulletBlocksState,
 )
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
@@ -408,3 +413,122 @@ class GraphClearAndPlacePyBulletBlocksPerceiver(
 
     def _interpret_IsTarget(self) -> set[GroundAtom]:
         return {GroundAtom(IsTarget, [self._target_area])}
+
+
+class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphInstance]):
+    """A perceiver for the ClutteredDrawerBlocksEnv."""
+
+    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+        super().__init__(sim)
+
+        assert isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv)
+        self._drawer = Object("drawer", object_type)
+        self._target_block = Object(
+            self._sim.scene_description.target_block_letter, object_type
+        )
+        self._drawer_blocks = sorted(
+            [
+                Object(chr(65 + 1 + i), object_type)
+                for i in range(self._sim.scene_description.num_drawer_blocks)
+            ],
+            key=lambda x: x.name,
+        )
+
+        self._pybullet_ids = {
+            self._robot: self._sim.robot.robot_id,
+            self._table: self._sim.drawer_with_table_id,
+            self._drawer: self._sim.drawer_with_table_id,
+            self._target_block: self._sim.target_block_id,
+        }
+        for i, block in enumerate(self._drawer_blocks):
+            self._pybullet_ids[block] = self._sim.drawer_block_ids[i]
+
+    def _get_objects(self) -> set[Object]:
+        return {self._robot, self._table, self._drawer, self._target_block} | set(
+            self._drawer_blocks
+        )
+
+    def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
+        self._sim.set_state(ClutteredDrawerPyBulletBlocksState.from_observation(obs))
+
+    def _get_goal(
+        self, obs: gym.spaces.GraphInstance, info: dict[str, Any]
+    ) -> set[GroundAtom]:
+        del obs, info
+        return {GroundAtom(On, [self._target_block, self._table])}
+
+    def _interpret_IsMovable(self) -> set[GroundAtom]:
+        movable_objects = {self._target_block} | set(self._drawer_blocks)
+        return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
+
+    def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
+        on_relations = set()
+        base_relations = super()._get_on_relations_from_sim()
+        on_relations.update(base_relations)
+        drawer_blocks = self._get_blocks_in_drawer()
+        for obj in drawer_blocks:
+            if (self._table, obj) in on_relations:
+                on_relations.remove((self._table, obj))
+            if (self._drawer, obj) in on_relations:
+                on_relations.remove((self._drawer, obj))
+            on_relations.add((obj, self._drawer))
+        return on_relations
+
+    def _get_blocks_in_drawer(self) -> set[Object]:
+        """Determine which blocks are in the drawer based on position."""
+        in_drawer = set()
+        drawer_state = p.getLinkState(
+            self._sim.drawer_with_table_id,
+            self._sim.drawer_joint_index,
+            computeLinkVelocity=0,
+            computeForwardKinematics=1,
+            physicsClientId=self._sim.physics_client_id,
+        )
+        drawer_pos = drawer_state[0]  # worldLinkPosition
+        drawer_dim = self._sim.scene_description.dimensions
+
+        # Define drawer boundaries
+        min_x = (
+            drawer_pos[0]
+            - drawer_dim.drawer_width / 2
+            + drawer_dim.drawer_wall_thickness
+        )
+        max_x = (
+            drawer_pos[0]
+            + drawer_dim.drawer_width / 2
+            - drawer_dim.drawer_wall_thickness
+        )
+        min_y = (
+            drawer_pos[1]
+            - drawer_dim.drawer_depth / 2
+            + drawer_dim.drawer_wall_thickness
+        )
+        max_y = (
+            drawer_pos[1]
+            + drawer_dim.drawer_depth / 2
+            - drawer_dim.drawer_wall_thickness
+        )
+        drawer_z = (
+            drawer_pos[2]
+            + (
+                drawer_dim.drawer_bottom_z_offset
+                - drawer_dim.drawer_bottom_thickness / 2
+            )
+            / 2
+        )
+
+        # Check if blocks are within drawer boundaries
+        for obj in self._drawer_blocks + [self._target_block]:
+            obj_id = self._pybullet_ids[obj]
+            pose = get_pose(obj_id, self._sim.physics_client_id)
+            pos = pose.position
+
+            # Check if block is in drawer boundaries
+            if (
+                min_x <= pos[0] <= max_x
+                and min_y <= pos[1] <= max_y
+                and abs(pos[2] - drawer_z) < 0.05
+            ):
+                in_drawer.add(obj)
+
+        return in_drawer

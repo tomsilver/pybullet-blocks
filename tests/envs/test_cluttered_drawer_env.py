@@ -12,20 +12,20 @@ from pybullet_helpers.motion_planning import (
 )
 
 from pybullet_blocks.envs.cluttered_drawer_env import (
-    ClutteredDrawerBlocksEnv,
-    DrawerBlocksState,
-    DrawerSceneDescription,
+    ClutteredDrawerPyBulletBlocksEnv,
+    ClutteredDrawerPyBulletBlocksState,
+    ClutteredDrawerSceneDescription,
 )
 
 
 @pytest.mark.skip(reason="View the cluttered drawer in PyBullet GUI.")
 def test_cluttered_drawer_env_init():
     """Test for the cluttered drawer environment initialization."""
-    scene_description = DrawerSceneDescription(
+    scene_description = ClutteredDrawerSceneDescription(
         num_drawer_blocks=3,
         drawer_travel_distance=0.25,
     )
-    env = ClutteredDrawerBlocksEnv(
+    env = ClutteredDrawerPyBulletBlocksEnv(
         scene_description=scene_description,
         use_gui=True,
     )
@@ -36,11 +36,11 @@ def test_cluttered_drawer_env_init():
 
 def test_cluttered_drawer_env_contacts():
     """Test placing blocks on the table and check contacts."""
-    scene_description = DrawerSceneDescription(
+    scene_description = ClutteredDrawerSceneDescription(
         num_drawer_blocks=3,
         drawer_travel_distance=0.25,
     )
-    env = ClutteredDrawerBlocksEnv(
+    env = ClutteredDrawerPyBulletBlocksEnv(
         scene_description=scene_description,
         use_gui=False,
     )
@@ -146,14 +146,14 @@ def test_cluttered_drawer_env_contacts():
 
 def test_cluttered_drawer_env():
     """Test for the cluttered drawer environment by retrieving all blocks."""
-    env = ClutteredDrawerBlocksEnv(use_gui=False)
-    sim = ClutteredDrawerBlocksEnv(env.scene_description, use_gui=False)
+    env = ClutteredDrawerPyBulletBlocksEnv(use_gui=False)
+    sim = ClutteredDrawerPyBulletBlocksEnv(env.scene_description, use_gui=False)
     joint_distance_fn = create_joint_distance_fn(sim.robot)
 
     max_motion_planning_time = 0.1
 
     obs, _ = env.reset(seed=123)
-    state = DrawerBlocksState.from_observation(obs)
+    state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
     drawer_position = state.drawer_joint_pos
     target_block_id = env.target_block_id
 
@@ -171,7 +171,7 @@ def test_cluttered_drawer_env():
             action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert env.action_space.contains(action)
             obs, _, _, _, _ = env.step(action)
-            state = DrawerBlocksState.from_observation(obs)
+            state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
         return state
 
     def _pick_block(block_id, state):
@@ -237,7 +237,7 @@ def test_cluttered_drawer_env():
         # Close the gripper
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0], dtype=np.float32)
         obs, _, _, _, _ = env.step(action)
-        state = DrawerBlocksState.from_observation(obs)
+        state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
 
         # Move up to remove contact
         grasp_to_pregrasp_plan = pregrasp_to_grasp_plan[::-1]
@@ -251,7 +251,7 @@ def test_cluttered_drawer_env():
 
         # Define a position on the table
         scene_desc = env.scene_description
-        assert isinstance(scene_desc, DrawerSceneDescription)
+        assert isinstance(scene_desc, ClutteredDrawerSceneDescription)
 
         # Position on the table in front of the drawer
         table_position = (
@@ -305,7 +305,7 @@ def test_cluttered_drawer_env():
         # Open the gripper
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
         obs, _, _, _, _ = env.step(action)
-        state = DrawerBlocksState.from_observation(obs)
+        state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
 
         # Move up from placement
         place_to_preplace_plan = preplace_to_place_plan[::-1]
@@ -319,7 +319,7 @@ def test_cluttered_drawer_env():
 
         # Get drawer handle position
         scene_desc = env.scene_description
-        assert isinstance(scene_desc, DrawerSceneDescription)
+        assert isinstance(scene_desc, ClutteredDrawerSceneDescription)
 
         # Define handle position
         handle_pos = (
@@ -372,7 +372,7 @@ def test_cluttered_drawer_env():
         # Close gripper on handle
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0], dtype=np.float32)
         obs, _, _, _, _ = env.step(action)
-        state = DrawerBlocksState.from_observation(obs)
+        state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
 
         # Move drawer
         # For opening: move in -X direction
@@ -384,12 +384,12 @@ def test_cluttered_drawer_env():
                 [direction * 0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32
             )
             obs, _, _, _, _ = env.step(action)
-            state = DrawerBlocksState.from_observation(obs)
+            state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
 
         # Release handle
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
         obs, _, _, _, _ = env.step(action)
-        state = DrawerBlocksState.from_observation(obs)
+        state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
 
         # Move away from handle
         from_handle_plan = to_handle_plan[::-1]
