@@ -138,26 +138,49 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
     def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
         on_relations = set()
         candidates = {o for o in self._get_objects() if o.is_instance(object_type)}
+
         for obj1 in candidates:
+            if obj1 == self._table:
+                continue
             obj1_pybullet_id = self._pybullet_ids[obj1]
             pose1 = get_pose(obj1_pybullet_id, self._sim.physics_client_id)
+
             for obj2 in candidates:
                 if obj1 == obj2:
                     continue
                 obj2_pybullet_id = self._pybullet_ids[obj2]
-                # Check if obj1 pose is above obj2 pose.
                 pose2 = get_pose(obj2_pybullet_id, self._sim.physics_client_id)
-                if pose1.position[2] <= pose2.position[2] + 1e-4:
-                    continue
-                # Check for contact.
-                if check_body_collisions(
-                    obj1_pybullet_id,
-                    obj2_pybullet_id,
-                    self._sim.physics_client_id,
-                    distance_threshold=1e-3,
-                ):
-                    on_relations.add((obj1, obj2))
+
+                obj1_half_extents = self._get_object_half_extents(obj1_pybullet_id)
+                obj2_half_extents = self._get_object_half_extents(obj2_pybullet_id)
+                obj1_bottom_center = (
+                    pose1.position[0],
+                    pose1.position[1],
+                    pose1.position[2] - obj1_half_extents[2],
+                )
+                obj2_top_center = (
+                    pose2.position[0],
+                    pose2.position[1],
+                    pose2.position[2] + obj2_half_extents[2],
+                )
+                vertical_distance = abs(obj1_bottom_center[2] - obj2_top_center[2])
+
+                if vertical_distance < 0.005:
+                    if check_body_collisions(
+                        obj1_pybullet_id,
+                        obj2_pybullet_id,
+                        self._sim.physics_client_id,
+                        distance_threshold=1e-3,
+                    ):
+                        on_relations.add((obj1, obj2))
+
         return on_relations
+
+    def _get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        """Get the half extents of an object."""
+        if object_id == self._pybullet_ids[self._table]:
+            return self._sim.scene_description.table_half_extents
+        return self._sim.scene_description.block_half_extents
 
     @abc.abstractmethod
     def _interpret_IsMovable(self) -> set[GroundAtom]:
@@ -241,6 +264,13 @@ class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float3
     ) -> set[GroundAtom]:
         del obs, info
         return {On([self._block, self._target])}
+
+    def _get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self._pybullet_ids[self._table]:
+            return self._sim.scene_description.table_half_extents
+        if object_id == self._pybullet_ids[self._target]:
+            return self._sim.scene_description.target_half_extents
+        return self._sim.scene_description.block_half_extents
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         return {GroundAtom(IsMovable, [self._block])}
@@ -355,6 +385,13 @@ class ClearAndPlacePyBulletBlocksPerceiver(
         del obs, info
         return {GroundAtom(On, [self._target_block, self._target_area])}
 
+    def _get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self._pybullet_ids[self._table]:
+            return self._sim.scene_description.table_half_extents
+        if object_id == self._pybullet_ids[self._target_area]:
+            return self._sim.scene_description.target_half_extents
+        return self._sim.scene_description.block_half_extents
+
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = {self._target_block} | set(self._obstacle_blocks)
         return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
@@ -406,6 +443,13 @@ class GraphClearAndPlacePyBulletBlocksPerceiver(
     ) -> set[GroundAtom]:
         del obs, info
         return {GroundAtom(On, [self._target_block, self._target_area])}
+
+    def _get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self._pybullet_ids[self._table]:
+            return self._sim.scene_description.table_half_extents
+        if object_id == self._pybullet_ids[self._target_area]:
+            return self._sim.scene_description.target_half_extents
+        return self._sim.scene_description.block_half_extents
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = {self._target_block} | set(self._obstacle_blocks)
@@ -467,8 +511,6 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         on_relations.update(base_relations)
         drawer_blocks = self._get_blocks_in_drawer()
         for obj in drawer_blocks:
-            if (self._table, obj) in on_relations:
-                on_relations.remove((self._table, obj))
             if (self._drawer, obj) in on_relations:
                 on_relations.remove((self._drawer, obj))
             on_relations.add((obj, self._drawer))
