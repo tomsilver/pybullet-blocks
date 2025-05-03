@@ -27,6 +27,55 @@ from pybullet_blocks.envs.base_env import (
 from pybullet_blocks.utils import create_lettered_block
 
 
+@dataclass
+class DrawerDimensions:
+    """Dimensions for the drawer and its components."""
+
+    # Tabletop dimensions
+    tabletop_size: tuple[float, float, float] = (0.6, 0.8, 0.02)
+
+    # Drawer dimensions
+    drawer_size: tuple[float, float, float] = (0.5, 0.5, 0.1)
+    drawer_bottom_thickness: float = 0.01
+    drawer_wall_thickness: float = 0.01
+
+    # Offsets from drawer origin
+    drawer_bottom_z_offset: float = -0.075
+    drawer_front_wall_x_offset: float = -0.245
+    drawer_back_wall_x_offset: float = 0.245
+    drawer_left_wall_y_offset: float = 0.245
+    drawer_right_wall_y_offset: float = -0.245
+
+    # Handle position relative to drawer origin
+    handle_x_offset: float = -0.26
+    handle_y_offset: float = 0.0
+    handle_z_offset: float = -0.05
+    handle_size: tuple[float, float, float] = (0.02, 0.1, 0.02)
+
+    # Drawer travel
+    max_travel_distance: float = 0.25
+
+    @property
+    def drawer_width(self) -> float:
+        """Width of the drawer (X dimension)."""
+        return self.drawer_size[0]
+
+    @property
+    def drawer_depth(self) -> float:
+        """Depth of the drawer (Y dimension)."""
+        return self.drawer_size[1]
+
+    @property
+    def drawer_height(self) -> float:
+        """Height of the drawer (Z dimension)."""
+        return self.drawer_size[2]
+
+    @property
+    def drawer_interior_height(self) -> float:
+        """Interior height of the drawer."""
+        return self.drawer_height - self.drawer_bottom_thickness
+
+
 @dataclass(frozen=True)
 class DrawerSceneDescription(BaseSceneDescription):
     """Container for drawer task hyperparameters."""
@@ -35,8 +84,9 @@ class DrawerSceneDescription(BaseSceneDescription):
     drawer_urdf_path: str = field(
         default_factory=lambda: os.path.join(os.path.dirname(__file__), "drawer.urdf")
     )
-    drawer_pos: tuple[float, float, float] = (1.0, 0.0, -0.05)  # Position under table
+    drawer_table_pos: tuple[float, float, float] = (1.0, 0.0, -0.05)
     drawer_travel_distance: float = 0.25  # How far drawer can open
+    dimensions: DrawerDimensions = field(default_factory=DrawerDimensions)
 
     # Block parameters for blocks inside drawer
     num_drawer_blocks: int = 3
@@ -193,7 +243,7 @@ class ClutteredDrawerBlocksEnv(
 
         self.drawer_with_table_id = p.loadURDF(
             scene_description.drawer_urdf_path,
-            basePosition=scene_description.drawer_pos,
+            basePosition=scene_description.drawer_table_pos,
             useFixedBase=True,
             physicsClientId=self.physics_client_id,
         )
@@ -207,12 +257,9 @@ class ClutteredDrawerBlocksEnv(
         joint_infos = get_joint_infos(
             self.drawer_with_table_id, list(range(num_joints)), self.physics_client_id
         )
-
-        drawer_joint_indices = []
-        for i, info in enumerate(joint_infos):
-            print(f"Joint {i}: {info.jointName}, Link: {info.linkName}")
-            if info.jointName == "drawer_slide":
-                drawer_joint_indices.append(i)
+        drawer_joint_indices = [
+            i for i, info in enumerate(joint_infos) if info.jointName == "drawer_slide"
+        ]
         assert len(drawer_joint_indices) == 1, "Expected exactly one drawer joint"
         self.drawer_joint_index = drawer_joint_indices[0]
 
@@ -377,17 +424,25 @@ class ClutteredDrawerBlocksEnv(
         )
         drawer_pos = drawer_state[0]  # worldLinkPosition
 
-        # Calculate the height of the table surface and drawer bottom
         scene_description = self.scene_description
         assert isinstance(scene_description, DrawerSceneDescription)
-        table_surface_z = (
-            scene_description.drawer_pos[2] + 0.01
-        )  # Half of the table thickness (0.02)
-        drawer_surface_z = drawer_pos[2] - 0.08
 
         # Get the block's bottom z-coordinate
         block_half_extents = self.get_object_half_extents(block_id)
         block_bottom_z = block_pose.position[2] - block_half_extents[2]
+
+        # Calculate the height of the table surface and drawer bottom
+        table_surface_z = scene_description.drawer_table_pos[2] + (
+            scene_description.dimensions.tabletop_size[2] / 2
+        )
+        drawer_surface_z = (
+            drawer_pos[2]
+            + (
+                scene_description.dimensions.drawer_bottom_z_offset
+                - scene_description.dimensions.drawer_bottom_thickness / 2
+            )
+            / 2
+        )
 
         # Check if block is at table height (with tolerance)
         # A block is "on the table" if its bottom is close to the table surface height
@@ -445,13 +500,42 @@ class ClutteredDrawerBlocksEnv(
         )
         drawer_pos = drawer_state[0]  # worldLinkPosition
         block_half_extents = scene_description.block_half_extents
-        min_x = drawer_pos[0] - 0.18
-        max_x = drawer_pos[0] + 0.18
-        min_y = drawer_pos[1] - 0.18
-        max_y = drawer_pos[1] + 0.18
+        drawer_width = scene_description.dimensions.drawer_width
+        drawer_depth = scene_description.dimensions.drawer_depth
+        wall_thickness = scene_description.dimensions.drawer_wall_thickness
+        min_x = (
+            drawer_pos[0]
+            - drawer_width / 2
+            + block_half_extents[0]
+            + wall_thickness / 2
+        )
+        max_x = (
+            drawer_pos[0]
+            + drawer_width / 2
+            - block_half_extents[0]
+            - wall_thickness / 2
+        )
+        min_y = (
+            drawer_pos[1]
+            - drawer_depth / 2
+            + block_half_extents[1]
+            + wall_thickness / 2
+        )
+        max_y = (
+            drawer_pos[1]
+            + drawer_depth / 2
+            - block_half_extents[1]
+            - wall_thickness / 2
+        )
         z = (
-            drawer_pos[2] - 0.04 + block_half_extents[2]
-        )  # Position blocks on drawer floor
+            drawer_pos[2]
+            + (
+                scene_description.dimensions.drawer_bottom_z_offset
+                - scene_description.dimensions.drawer_bottom_thickness / 2
+            )
+            / 2
+            + block_half_extents[2]
+        )
 
         target_x = drawer_pos[0]
         target_y = drawer_pos[1]
@@ -504,9 +588,9 @@ class ClutteredDrawerBlocksEnv(
         drawer_pos = drawer_state[0]  # worldLinkPosition
 
         handle_pos = (
-            drawer_pos[0] - 0.26,  # X position of handle
-            drawer_pos[1],  # Y position of handle
-            drawer_pos[2] - 0.05,  # Z position of handle
+            drawer_pos[0] - self.scene_description.dimensions.handle_x_offset,
+            drawer_pos[1] - self.scene_description.dimensions.handle_y_offset,
+            drawer_pos[2] - self.scene_description.dimensions.handle_z_offset,
         )
 
         dist = np.sqrt(sum((np.array(ee_pose.position) - np.array(handle_pos)) ** 2))

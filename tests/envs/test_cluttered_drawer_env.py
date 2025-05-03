@@ -1,18 +1,9 @@
 """Test script for the drawer environment."""
 
-from pathlib import Path
-
 import numpy as np
 import pybullet as p
 import pytest
 from pybullet_helpers.geometry import Pose, get_pose, iter_between_poses, set_pose
-from pybullet_helpers.gui import create_gui_connection
-from pybullet_helpers.joint import (
-    get_joint_lower_limits,
-    get_joint_positions,
-    get_joint_upper_limits,
-    get_num_joints,
-)
 from pybullet_helpers.motion_planning import (
     create_joint_distance_fn,
     remap_joint_position_plan_to_constant_distance,
@@ -25,51 +16,6 @@ from pybullet_blocks.envs.cluttered_drawer_env import (
     DrawerBlocksState,
     DrawerSceneDescription,
 )
-
-
-@pytest.mark.skip()
-def test_creating_cluttered_drawer():
-    """Create a cluttered drawer for debugging."""
-    physics_client_id = create_gui_connection()
-    drawer_id = p.loadURDF(
-        str(Path(__file__).parent / "drawer.urdf"),
-        basePosition=[0, 0, 0],
-        physicsClientId=physics_client_id,
-    )
-
-    p.configureDebugVisualizer(
-        p.COV_ENABLE_GUI, True, physicsClientId=physics_client_id
-    )
-
-    assert get_num_joints(drawer_id, physics_client_id) == 1
-    drawer_joint = 0
-    initial_joint_value = get_joint_positions(
-        drawer_id, [drawer_joint], physics_client_id
-    )[0]
-    current = initial_joint_value
-    lower = get_joint_lower_limits(drawer_id, [drawer_joint], physics_client_id)[0]
-    upper = get_joint_upper_limits(drawer_id, [drawer_joint], physics_client_id)[0]
-    slider_id = p.addUserDebugParameter(
-        paramName="Drawer Joint",
-        rangeMin=lower,
-        rangeMax=upper,
-        startValue=current,
-        physicsClientId=physics_client_id,
-    )
-
-    while True:
-        try:
-            v = p.readUserDebugParameter(slider_id, physicsClientId=physics_client_id)
-        except p.error:
-            print("WARNING: failed to read parameter, skipping")
-            continue
-        p.resetJointState(
-            drawer_id,
-            drawer_joint,
-            v,
-            targetVelocity=0,
-            physicsClientId=physics_client_id,
-        )
 
 
 @pytest.mark.skip(reason="View the cluttered drawer in PyBullet GUI.")
@@ -123,27 +69,28 @@ def test_cluttered_drawer_env_contacts():
 
     # Place blocks on the table
     block_ids = [env.target_block_id] + env.drawer_block_ids
-    table_z = scene_description.drawer_pos[2]  # Z position of table
+    table_z = scene_description.drawer_table_pos[2]  # Z position of table
+    block_half_extents = scene_description.block_half_extents
     positions = [
         (
-            scene_description.drawer_pos[0] - 0.2,
-            scene_description.drawer_pos[1],
-            table_z + 0.02,
+            scene_description.drawer_table_pos[0] - 0.2,
+            scene_description.drawer_table_pos[1],
+            table_z + block_half_extents[2],
         ),
         (
-            scene_description.drawer_pos[0] - 0.2,
-            scene_description.drawer_pos[1] + 0.1,
-            table_z + 0.02,
+            scene_description.drawer_table_pos[0] - 0.2,
+            scene_description.drawer_table_pos[1] + 0.1,
+            table_z + block_half_extents[2],
         ),
         (
-            scene_description.drawer_pos[0] - 0.2,
-            scene_description.drawer_pos[1] - 0.1,
-            table_z + 0.02,
+            scene_description.drawer_table_pos[0] - 0.2,
+            scene_description.drawer_table_pos[1] - 0.1,
+            table_z + block_half_extents[2],
         ),
         (
-            scene_description.drawer_pos[0] - 0.3,
-            scene_description.drawer_pos[1],
-            table_z + 0.02,
+            scene_description.drawer_table_pos[0] - 0.3,
+            scene_description.drawer_table_pos[1],
+            table_z + block_half_extents[2],
         ),
     ]
     for i, block_id in enumerate(block_ids):
@@ -308,9 +255,9 @@ def test_cluttered_drawer_env():
 
         # Position on the table in front of the drawer
         table_position = (
-            scene_desc.drawer_pos[0] - 0.3 + offset_x,
-            scene_desc.drawer_pos[1] + offset_y,
-            scene_desc.drawer_pos[2]
+            scene_desc.drawer_table_pos[0] - 0.3 + offset_x,
+            scene_desc.drawer_table_pos[1] + offset_y,
+            scene_desc.drawer_table_pos[2]
             + scene_desc.table_half_extents[2]
             + scene_desc.block_half_extents[2]
             + 0.02,
@@ -376,9 +323,9 @@ def test_cluttered_drawer_env():
 
         # Define handle position
         handle_pos = (
-            scene_desc.drawer_pos[0] - 0.26,  # X position of handle
-            scene_desc.drawer_pos[1],  # Y position of handle
-            scene_desc.drawer_pos[2] - 0.05,  # Z position of handle
+            scene_desc.drawer_table_pos[0] - scene_desc.dimensions.handle_x_offset,
+            scene_desc.drawer_table_pos[1] - scene_desc.dimensions.handle_y_offset,
+            scene_desc.drawer_table_pos[2] - scene_desc.dimensions.handle_z_offset,
         )
 
         # Position slightly in front of handle
