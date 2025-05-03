@@ -180,11 +180,6 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
         """Get the half extents of an object."""
         if object_id == self._pybullet_ids[self._table]:
             return self._sim.scene_description.table_half_extents
-        if (
-            hasattr(self._sim, "target_area_id")
-            and object_id == self._sim.target_area_id
-        ) or (hasattr(self._sim, "target_id") and object_id == self._sim.target_id):
-            return self._sim.scene_description.target_half_extents
         return self._sim.scene_description.block_half_extents
 
     @abc.abstractmethod
@@ -269,6 +264,13 @@ class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float3
     ) -> set[GroundAtom]:
         del obs, info
         return {On([self._block, self._target])}
+
+    def _get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self._pybullet_ids[self._table]:
+            return self._sim.scene_description.table_half_extents
+        if object_id == self._pybullet_ids[self._target]:
+            return self._sim.scene_description.target_half_extents
+        return self._sim.scene_description.block_half_extents
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         return {GroundAtom(IsMovable, [self._block])}
@@ -383,6 +385,13 @@ class ClearAndPlacePyBulletBlocksPerceiver(
         del obs, info
         return {GroundAtom(On, [self._target_block, self._target_area])}
 
+    def _get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self._pybullet_ids[self._table]:
+            return self._sim.scene_description.table_half_extents
+        if object_id == self._pybullet_ids[self._target_area]:
+            return self._sim.scene_description.target_half_extents
+        return self._sim.scene_description.block_half_extents
+
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = {self._target_block} | set(self._obstacle_blocks)
         return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
@@ -434,6 +443,13 @@ class GraphClearAndPlacePyBulletBlocksPerceiver(
     ) -> set[GroundAtom]:
         del obs, info
         return {GroundAtom(On, [self._target_block, self._target_area])}
+
+    def _get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        if object_id == self._pybullet_ids[self._table]:
+            return self._sim.scene_description.table_half_extents
+        if object_id == self._pybullet_ids[self._target_area]:
+            return self._sim.scene_description.target_half_extents
+        return self._sim.scene_description.block_half_extents
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = {self._target_block} | set(self._obstacle_blocks)
