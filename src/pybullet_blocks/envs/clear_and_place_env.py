@@ -506,6 +506,18 @@ class GraphClearAndPlacePyBulletBlocksEnv(
 
         return np.array(features, dtype=np.float32)
 
+    def get_object_category(self, obj_name: str) -> str:
+        """Determine object category based on name."""
+        if obj_name == "robot":
+            return "robot"
+        if obj_name == "target":
+            return "target_area"
+        if obj_name.startswith("T"):
+            return "lettered_block"
+        if len(obj_name) == 1 and obj_name in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            return "lettered_block"
+        return ""
+
     def clone(self) -> GraphClearAndPlacePyBulletBlocksEnv:
         """Clone the environment."""
         clone_env = GraphClearAndPlacePyBulletBlocksEnv(
