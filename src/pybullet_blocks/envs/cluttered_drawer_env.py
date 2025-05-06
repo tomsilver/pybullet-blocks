@@ -300,9 +300,12 @@ class ClutteredDrawerPyBulletBlocksEnv(
         )
         return joint_positions[0]  # First element is position
 
-    def set_state(self, state: PyBulletBlocksState) -> None:
+    def set_state(self, state: PyBulletBlocksState, debug: bool = False) -> None:
         """Reset the internal state to the given state."""
         assert isinstance(state, ClutteredDrawerPyBulletBlocksState)
+
+        if debug:
+            import ipdb; ipdb.set_trace()
 
         self.set_drawer_position(state.drawer_joint_pos)
 
@@ -481,12 +484,13 @@ class ClutteredDrawerPyBulletBlocksEnv(
         state: spaces.GraphInstance | ClutteredDrawerPyBulletBlocksState,
         *,
         seed: int | None = None,
+        debug: bool = False,
     ) -> tuple[spaces.GraphInstance, dict[str, Any]]:
         """Reset environment to specific state."""
         super().reset(seed=seed)
         if isinstance(state, spaces.GraphInstance):
             state = ClutteredDrawerPyBulletBlocksState.from_observation(state)
-        self.set_state(state)
+        self.set_state(state, debug=debug)
         return self.get_state().to_observation(), self._get_info()
 
     def _place_blocks_in_drawer(self) -> None:
