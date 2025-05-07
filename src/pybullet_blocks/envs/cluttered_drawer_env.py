@@ -13,6 +13,7 @@ from gymnasium import spaces
 from gymnasium.utils import seeding
 from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, get_pose, set_pose
+from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.joint import get_joint_infos, get_joint_positions, get_num_joints
 
 from pybullet_blocks.envs.base_env import (
@@ -33,6 +34,7 @@ class ClutteredDrawerDimensions:
 
     # Tabletop dimensions
     tabletop_size: tuple[float, float, float] = (0.6, 0.8, 0.02)
+    tabletop_half_extents: tuple[float, float, float] = (0.3, 0.4, 0.01)
 
     # Drawer dimensions
     drawer_size: tuple[float, float, float] = (0.5, 0.5, 0.1)
@@ -94,6 +96,46 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     num_drawer_blocks: int = 3
     target_block_letter: str = "T"
     target_block_rgba: tuple[float, float, float, float] = (0.2, 0.8, 0.2, 1.0)
+
+    # placement sampling parameters, do not cause collisions but also have contact points.
+    # between 1e-6 and 1e-3.
+    placement_z_offset: float = 1e-4
+    placement_x_offset: float = 0.1 # from table edge
+    placement_y_offset: float = 0.2 # from table center line
+
+    # Initial target block position offset
+    tgt_x_offset: float = -0.05 # w.r.t. drawer center
+
+    @property
+    def block_placement_position_lower(self) -> tuple[float, float, float]:
+        """Lower bounds for block position."""
+        return (
+            self.drawer_table_pos[0]
+            - self.dimensions.tabletop_half_extents[0]
+            + self.block_half_extents[0],
+            self.drawer_table_pos[1]
+            - self.placement_y_offset,
+            self.drawer_table_pos[2]
+            + self.dimensions.tabletop_half_extents[2]
+            + self.block_half_extents[2],
+        )
+
+    @property
+    def block_placement_position_upper(self) -> tuple[float, float, float]:
+        """Upper bounds for block position."""
+        # Bias x-aixs sampling to be closer to the robot.
+        return (
+            self.drawer_table_pos[0]
+            - self.dimensions.tabletop_half_extents[0]
+            + self.placement_x_offset
+            + self.block_half_extents[0],
+            self.drawer_table_pos[1]
+            + self.placement_y_offset,
+            self.drawer_table_pos[2]
+            + self.dimensions.tabletop_half_extents[2]
+            + self.block_half_extents[2]
+            + self.placement_z_offset,
+        )
 
 
 @dataclass(frozen=True)
@@ -239,7 +281,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             },
             self.target_block_id: scene_description.target_block_letter,
         }
-
+    
     def _setup_drawer(self) -> None:
         """Create drawer components using a prismatic joint."""
         scene_description = self.scene_description
@@ -256,6 +298,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
         )  # The table is now part of drawer_with_table_id
 
         self.tabletop_link_index = -1  # Base link
+        self.drawer_link_index = 4  # Drawer link
 
         num_joints = get_num_joints(self.drawer_with_table_id, self.physics_client_id)
         joint_infos = get_joint_infos(
@@ -393,7 +436,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
 
     def _get_terminated(self) -> bool:
         """Get whether the episode is terminated."""
-        target_on_table = self._is_block_on_table(self.target_block_id)
+        target_on_table = self.is_block_on_table(self.target_block_id)
         gripper_empty = self.current_grasp_transform is None
         return target_on_table and gripper_empty
 
@@ -401,21 +444,20 @@ class ClutteredDrawerPyBulletBlocksEnv(
         """Get the current reward."""
         return float(self._get_terminated())
 
-    def _is_block_on_table(self, block_id: int) -> bool:
+    def is_block_on_table(self, block_id: int) -> bool:
         """Check if a block is positioned on the table (not in drawer)."""
         # Get block position
         block_pose = get_pose(block_id, self.physics_client_id)
 
         # A block is on the table if:
         # 1. It's in contact with the tabletop (link 0)
-        table_contact = False
-        contacts = p.getContactPoints(
-            bodyA=block_id,
-            bodyB=self.drawer_with_table_id,
-            linkIndexB=self.tabletop_link_index,
-            physicsClientId=self.physics_client_id,
-        )
-        table_contact = len(contacts) > 0
+        table_contact = check_body_collisions(
+                        block_id,
+                        self.drawer_with_table_id,
+                        self.physics_client_id,
+                        link2=self.tabletop_link_index,
+                        distance_threshold=1e-3,
+                    )
 
         # 2. It's not inside the drawer
         # Get drawer link position
@@ -456,6 +498,20 @@ class ClutteredDrawerPyBulletBlocksEnv(
         is_on_table_surface = on_table_height and not_in_drawer_height
 
         return table_contact and is_on_table_surface
+    
+    def is_block_on_drawer(self, block_id: int) -> bool:
+        """Check if a block is positioned on the drawer."""
+        # A block is on the table if:
+        # 1. It's in contact with the drawer (link 5)
+        drawer_contact = check_body_collisions(
+                        block_id,
+                        self.drawer_with_table_id,
+                        self.physics_client_id,
+                        link2=self.drawer_link_index,
+                        distance_threshold=1e-3,
+                    )
+
+        return drawer_contact
 
     def reset(  # type: ignore[override]
         self,
@@ -529,7 +585,9 @@ class ClutteredDrawerPyBulletBlocksEnv(
             + block_half_extents[2]
         )
 
-        target_x = drawer_pos[0]
+        # move the target to further from the tabel edge
+        # otherwise very weird collision happens
+        target_x = drawer_pos[0] + self.scene_description.tgt_x_offset
         target_y = drawer_pos[1]
         target_pose = Pose((target_x, target_y, z))
         set_pose(
@@ -617,3 +675,27 @@ class ClutteredDrawerPyBulletBlocksEnv(
         )
         clone_env.set_state(self.get_state())
         return clone_env
+
+    def sample_free_block_place_pose(self, block_id: int) -> Pose:
+        """Sample a free pose on the table."""
+        for _ in range(10000):
+            block_position = self.np_random.uniform(
+                self.scene_description.block_placement_position_lower,
+                self.scene_description.block_placement_position_upper,
+            )
+            set_pose(block_id, Pose(tuple(block_position)), self.physics_client_id)
+            collision_free = True
+            p.performCollisionDetection(physicsClientId=self.physics_client_id)
+            for collision_id in self.get_collision_check_ids(block_id):
+                collision = check_body_collisions(
+                    block_id,
+                    collision_id,
+                    self.physics_client_id,
+                    perform_collision_detection=False,
+                )
+                if collision:
+                    collision_free = False
+                    break
+            if collision_free:
+                return Pose(tuple(block_position))
+        raise RuntimeError("Could not sample free block position.")
