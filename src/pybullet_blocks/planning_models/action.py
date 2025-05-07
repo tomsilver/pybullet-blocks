@@ -486,6 +486,32 @@ class PickFromDrawerSkill(PickSkill):
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return PickFromDrawerOperator
+    
+    def _get_kinematic_plan_given_objects(
+        self,
+        objects: Sequence[Object],
+        state: KinematicState,
+    ) -> list[KinematicState] | None:
+        _, block, surface = objects
+        block_id = self._object_to_pybullet_id(block)
+        surface_id = self._object_to_pybullet_id(surface)
+        collision_ids = set(state.object_poses)
+        # add one more possible relative grasp (orientation)
+        relative_grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
+        relative_pose = Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, np.pi / 2]))
+        relative_grasp_2 = multiply_poses(relative_grasp_1, relative_pose)
+        relative_grasp = [relative_grasp_1, relative_grasp_2]
+        grasp_generator = iter(relative_grasp)
+        kinematic_plan = get_kinematic_plan_to_pick_object(
+            state,
+            self._sim.robot,
+            block_id,
+            surface_id,
+            collision_ids,
+            grasp_generator=grasp_generator,
+            grasp_generator_iters=5,
+        )
+        return kinematic_plan
 
 class PlaceSkill(PyBulletBlocksSkill):
     """Skill for placing."""
