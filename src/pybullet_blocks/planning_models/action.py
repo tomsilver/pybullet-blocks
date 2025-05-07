@@ -481,12 +481,13 @@ class PickFromTargetSkill(PickSkill):
     def _get_lifted_operator(self) -> LiftedOperator:
         return PickFromTargetOperator
 
+
 class PickFromDrawerSkill(PickSkill):
     """Skill for picking from target area."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return PickFromDrawerOperator
-    
+
     def _get_kinematic_plan_given_objects(
         self,
         objects: Sequence[Object],
@@ -512,6 +513,7 @@ class PickFromDrawerSkill(PickSkill):
             grasp_generator_iters=5,
         )
         return kinematic_plan
+
 
 class PlaceSkill(PyBulletBlocksSkill):
     """Skill for placing."""
@@ -621,7 +623,4 @@ SKILLS = {
     StackSkill,
 }
 
-SKILLS_DRAWER = {
-    PickFromDrawerSkill,
-    PlaceSkill
-}
+SKILLS_DRAWER = {PickFromDrawerSkill, PlaceSkill}

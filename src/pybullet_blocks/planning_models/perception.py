@@ -8,7 +8,7 @@ import numpy as np
 import pybullet as p
 from gymnasium.core import ObsType
 from numpy.typing import NDArray
-from pybullet_helpers.geometry import get_pose, Pose
+from pybullet_helpers.geometry import get_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 from relational_structs import GroundAtom, Object, Predicate, Type
 from task_then_motion_planning.structs import Perceiver
@@ -546,7 +546,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         candidates = {o for o in self._get_objects() if o.is_instance(object_type)}
 
         for obj1 in candidates:
-            if obj1 == self._table or obj1 == self._drawer:
+            if obj1 in [self._table, self._drawer]:
                 continue
             obj1_pybullet_id = self._pybullet_ids[obj1]
 

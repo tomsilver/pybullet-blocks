@@ -97,14 +97,14 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     target_block_letter: str = "T"
     target_block_rgba: tuple[float, float, float, float] = (0.2, 0.8, 0.2, 1.0)
 
-    # placement sampling parameters, do not cause collisions but also have contact points.
+    # placement sampling parameters, no collisions but also have contact points.
     # between 1e-6 and 1e-3.
     placement_z_offset: float = 1e-4
-    placement_x_offset: float = 0.1 # from table edge
-    placement_y_offset: float = 0.2 # from table center line
+    placement_x_offset: float = 0.2  # from table edge
+    placement_y_offset: float = 0.25  # from table center line
 
     # Initial target block position offset
-    tgt_x_offset: float = -0.05 # w.r.t. drawer center
+    tgt_x_offset: float = -0.05  # w.r.t. drawer center
 
     @property
     def block_placement_position_lower(self) -> tuple[float, float, float]:
@@ -113,8 +113,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
             self.drawer_table_pos[0]
             - self.dimensions.tabletop_half_extents[0]
             + self.block_half_extents[0],
-            self.drawer_table_pos[1]
-            - self.placement_y_offset,
+            self.drawer_table_pos[1] - self.placement_y_offset,
             self.drawer_table_pos[2]
             + self.dimensions.tabletop_half_extents[2]
             + self.block_half_extents[2],
@@ -129,8 +128,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
             - self.dimensions.tabletop_half_extents[0]
             + self.placement_x_offset
             + self.block_half_extents[0],
-            self.drawer_table_pos[1]
-            + self.placement_y_offset,
+            self.drawer_table_pos[1] + self.placement_y_offset,
             self.drawer_table_pos[2]
             + self.dimensions.tabletop_half_extents[2]
             + self.block_half_extents[2]
@@ -281,7 +279,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             },
             self.target_block_id: scene_description.target_block_letter,
         }
-    
+
     def _setup_drawer(self) -> None:
         """Create drawer components using a prismatic joint."""
         scene_description = self.scene_description
@@ -452,12 +450,12 @@ class ClutteredDrawerPyBulletBlocksEnv(
         # A block is on the table if:
         # 1. It's in contact with the tabletop (link 0)
         table_contact = check_body_collisions(
-                        block_id,
-                        self.drawer_with_table_id,
-                        self.physics_client_id,
-                        link2=self.tabletop_link_index,
-                        distance_threshold=1e-3,
-                    )
+            block_id,
+            self.drawer_with_table_id,
+            self.physics_client_id,
+            link2=self.tabletop_link_index,
+            distance_threshold=1e-3,
+        )
 
         # 2. It's not inside the drawer
         # Get drawer link position
@@ -498,18 +496,18 @@ class ClutteredDrawerPyBulletBlocksEnv(
         is_on_table_surface = on_table_height and not_in_drawer_height
 
         return table_contact and is_on_table_surface
-    
+
     def is_block_on_drawer(self, block_id: int) -> bool:
         """Check if a block is positioned on the drawer."""
         # A block is on the table if:
         # 1. It's in contact with the drawer (link 5)
         drawer_contact = check_body_collisions(
-                        block_id,
-                        self.drawer_with_table_id,
-                        self.physics_client_id,
-                        link2=self.drawer_link_index,
-                        distance_threshold=1e-3,
-                    )
+            block_id,
+            self.drawer_with_table_id,
+            self.physics_client_id,
+            link2=self.drawer_link_index,
+            distance_threshold=1e-3,
+        )
 
         return drawer_contact
 
