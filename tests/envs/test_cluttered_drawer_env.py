@@ -134,10 +134,8 @@ def test_cluttered_drawer_env_contacts():
             if link_contacts:
                 print(f"  Link {link_idx} contacts: {len(link_contacts)}")
 
-        is_on_table = env._is_block_on_table(  # pylint:disable=protected-access
-            block_id
-        )
-        print(f"  env._is_block_on_table(): {is_on_table}")
+        is_on_table = env.is_block_on_table(block_id)  # pylint:disable=protected-access
+        print(f"  env.is_block_on_table(): {is_on_table}")
         block_pose = get_pose(block_id, env.physics_client_id)
         print(f"  Block position: {block_pose.position}")
 
@@ -425,7 +423,7 @@ def test_cluttered_drawer_env():
     # state = _interact_with_drawer(state, open_drawer=False)
 
     # Verify that target block is now on the table and not held
-    target_on_table = env._is_block_on_table(  # pylint:disable=protected-access
+    target_on_table = env.is_block_on_table(  # pylint:disable=protected-access
         target_block_id
     )
     gripper_empty = env.current_grasp_transform is None

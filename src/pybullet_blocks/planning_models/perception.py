@@ -59,6 +59,18 @@ PREDICATES = {
     IsTarget,
     NotIsTarget,
 }
+# For drawer env, do not track NothingOn, as this is not
+# a precondition of any action.
+DRAWER_PREDICATES = {
+    IsMovable,
+    NotIsMovable,
+    On,
+    Holding,
+    NotHolding,
+    GripperEmpty,
+    IsTarget,
+    NotIsTarget,
+}
 
 
 class PyBulletBlocksPerceiver(Perceiver[ObsType]):
@@ -487,6 +499,19 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         for i, block in enumerate(self._drawer_blocks):
             self._pybullet_ids[block] = self._sim.drawer_block_ids[i]
 
+        # Create predicate interpreters.
+        # No NothingOn predicate in this env.
+        self._predicate_interpreters = [
+            self._interpret_IsMovable,
+            self._interpret_NotIsMovable,
+            self._interpret_On,
+            self._interpret_Holding,
+            self._interpret_NotHolding,
+            self._interpret_GripperEmpty,
+            self._interpret_IsTarget,
+            self._interpret_NotIsTarget,
+        ]
+
     def _get_objects(self) -> set[Object]:
         return {self._robot, self._table, self._drawer, self._target_block} | set(
             self._drawer_blocks
@@ -507,13 +532,23 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
 
     def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
         on_relations = set()
-        base_relations = super()._get_on_relations_from_sim()
-        on_relations.update(base_relations)
-        drawer_blocks = self._get_blocks_in_drawer()
-        for obj in drawer_blocks:
-            if (self._drawer, obj) in on_relations:
-                on_relations.remove((self._drawer, obj))
-            on_relations.add((obj, self._drawer))
+        candidates = {o for o in self._get_objects() if o.is_instance(object_type)}
+
+        for obj1 in candidates:
+            if obj1 in [self._table, self._drawer]:
+                continue
+            obj1_pybullet_id = self._pybullet_ids[obj1]
+
+            # assume only block on table/drawer is allowed.
+            for obj2 in candidates:
+                if obj2 == self._table:
+                    if self._sim.is_block_on_table(obj1_pybullet_id):
+                        on_relations.add((obj1, obj2))
+                elif obj2 == self._drawer:
+                    if self._sim.is_block_on_drawer(obj1_pybullet_id):
+                        on_relations.add((obj1, obj2))
+                else:
+                    continue
         return on_relations
 
     def _get_blocks_in_drawer(self) -> set[Object]:
