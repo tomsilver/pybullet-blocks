@@ -93,18 +93,18 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     )
 
     # Block parameters for blocks inside drawer
-    num_drawer_blocks: int = 3
+    num_drawer_blocks: int = 4  # Num of blocks in addition to target block
     target_block_letter: str = "T"
     target_block_rgba: tuple[float, float, float, float] = (0.2, 0.8, 0.2, 1.0)
 
     # placement sampling parameters, no collisions but also have contact points.
     # between 1e-6 and 1e-3.
     placement_z_offset: float = 1e-4
-    placement_x_offset: float = 0.2  # from table edge
-    placement_y_offset: float = 0.25  # from table center line
+    placement_x_offset: float = 0.25  # from table edge
+    placement_y_offset: float = 0.4  # from table center line
 
     # Initial target block position offset
-    tgt_x_offset: float = -0.05  # w.r.t. drawer center
+    tgt_x_offset: float = -0.08  # w.r.t. drawer center
 
     @property
     def block_placement_position_lower(self) -> tuple[float, float, float]:
@@ -595,6 +595,8 @@ class ClutteredDrawerPyBulletBlocksEnv(
         )
 
         block_positions = [
+            # Block behind target (toward handle)
+            (target_x + 2.7 * block_half_extents[0], target_y, z),
             # Block in front of target (toward handle)
             (target_x - 2.7 * block_half_extents[0], target_y, z),
             # Block to the side of target

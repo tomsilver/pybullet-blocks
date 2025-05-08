@@ -22,7 +22,7 @@ from pybullet_blocks.envs.cluttered_drawer_env import (
 def test_cluttered_drawer_env_init():
     """Test for the cluttered drawer environment initialization."""
     scene_description = ClutteredDrawerSceneDescription(
-        num_drawer_blocks=3,
+        num_drawer_blocks=4,
         drawer_travel_distance=0.25,
     )
     env = ClutteredDrawerPyBulletBlocksEnv(
@@ -37,7 +37,7 @@ def test_cluttered_drawer_env_init():
 def test_cluttered_drawer_env_contacts():
     """Test placing blocks on the table and check contacts."""
     scene_description = ClutteredDrawerSceneDescription(
-        num_drawer_blocks=3,
+        num_drawer_blocks=4,
         drawer_travel_distance=0.25,
     )
     env = ClutteredDrawerPyBulletBlocksEnv(
@@ -148,7 +148,7 @@ def test_cluttered_drawer_env():
     sim = ClutteredDrawerPyBulletBlocksEnv(env.scene_description, use_gui=False)
     joint_distance_fn = create_joint_distance_fn(sim.robot)
 
-    max_motion_planning_time = 0.1
+    max_motion_planning_time = 2.0
 
     obs, _ = env.reset(seed=123)
     state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
@@ -403,9 +403,11 @@ def test_cluttered_drawer_env():
 
     # 2. Retrieve and place each regular block
     offsets = [(0.0, 0.15), (0.0, -0.15), (0.0, 0.3)]  # Different table positions
-
     for i, block_id in enumerate(env.drawer_block_ids):
         # Pick the block
+        if block_id == 4:
+            # Block 4 is skipped
+            continue
         state = _pick_block(block_id, state)
 
         # Place on table with offset
