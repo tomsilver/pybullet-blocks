@@ -680,7 +680,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             block_position = self.np_random.uniform(
                 self.scene_description.block_placement_position_lower,
                 self.scene_description.block_placement_position_upper,
-                size=3
+                size=3,
             )
             set_pose(
                 block_id,
