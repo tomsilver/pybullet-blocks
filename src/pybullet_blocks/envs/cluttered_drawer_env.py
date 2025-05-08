@@ -681,7 +681,11 @@ class ClutteredDrawerPyBulletBlocksEnv(
                 self.scene_description.block_placement_position_lower,
                 self.scene_description.block_placement_position_upper,
             )
-            set_pose(block_id, Pose(tuple(block_position)), self.physics_client_id)
+            set_pose(
+                block_id,
+                Pose((block_position[0], block_position[1], block_position[2])),
+                self.physics_client_id,
+            )
             collision_free = True
             p.performCollisionDetection(physicsClientId=self.physics_client_id)
             for collision_id in self.get_collision_check_ids(block_id):
@@ -695,5 +699,5 @@ class ClutteredDrawerPyBulletBlocksEnv(
                     collision_free = False
                     break
             if collision_free:
-                return Pose(tuple(block_position))
+                return Pose((block_position[0], block_position[1], block_position[2]))
         raise RuntimeError("Could not sample free block position.")

@@ -207,7 +207,6 @@ StackOperator = LiftedOperator(
 OPERATORS = {
     PickOperator,
     PickFromTargetOperator,
-    PickFromDrawerOperator,
     PlaceOperator,
     PlaceInTargetOperator,
     UnstackOperator,

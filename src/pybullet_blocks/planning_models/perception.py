@@ -530,17 +530,6 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         movable_objects = {self._target_block} | set(self._drawer_blocks)
         return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
 
-    # def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
-    #     on_relations = set()
-    #     base_relations = self._get_on_relations_from_sim()
-    #     on_relations.update(base_relations)
-    #     drawer_blocks = self._get_blocks_in_drawer()
-    #     for obj in drawer_blocks:
-    #         if (self._drawer, obj) in on_relations:
-    #             on_relations.remove((self._drawer, obj))
-    #         on_relations.add((obj, self._drawer))
-    #     return on_relations
-
     def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
         on_relations = set()
         candidates = {o for o in self._get_objects() if o.is_instance(object_type)}
