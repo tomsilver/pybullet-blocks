@@ -543,7 +543,10 @@ class PlaceSkill(PyBulletBlocksSkill):
             surface_id,
             collision_ids,
             placement_generator=placement_generator,
-            placement_generator_iters=20,
+            placement_generator_iters=30,
+            max_motion_planning_time=3.0,
+            birrt_num_attempts=30,
+            birrt_num_iters=500,
         )
         return kinematic_plan
 
