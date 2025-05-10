@@ -7,6 +7,9 @@ import numpy as np
 import pybullet as p
 from gymnasium.core import ObsType
 from numpy.typing import NDArray
+from pybullet_blocks.planning_models.manipulation import (
+    get_kinematic_plan_to_reach_object,
+)
 from pybullet_helpers.geometry import Pose, get_pose, multiply_poses
 from pybullet_helpers.manipulation import (
     get_kinematic_plan_to_pick_object,
@@ -46,10 +49,12 @@ from pybullet_blocks.planning_models.perception import (
     Holding,
     IsMovable,
     IsTarget,
+    ReadyPick,
     NothingOn,
     NotHolding,
     NotIsMovable,
     NotIsTarget,
+    NotReadyPick,
     On,
     object_type,
     robot_type,
@@ -103,8 +108,24 @@ PickFromTargetOperator = LiftedOperator(
 )
 
 # no NothingOn
-PickFromDrawerOperator = LiftedOperator(
-    "PickFromDrawer",
+ReachOperator = LiftedOperator(
+    "Reach",
+    [Robot, Obj],
+    preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+    },
+    add_effects={
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+    },
+)
+
+GraspOperator = LiftedOperator(
+    "Grasp",
     [Robot, Obj, Surface],
     preconditions={
         LiftedAtom(IsMovable, [Obj]),
@@ -113,13 +134,16 @@ PickFromDrawerOperator = LiftedOperator(
         LiftedAtom(On, [Obj, Surface]),
         LiftedAtom(NotIsTarget, [Surface]),
         LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
     },
     delete_effects={
         LiftedAtom(NotHolding, [Robot, Obj]),
         LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
         LiftedAtom(On, [Obj, Surface]),
     },
 )
@@ -214,7 +238,8 @@ OPERATORS = {
 }
 
 OPERATORS_DRAWER = {
-    PickFromDrawerOperator,
+    ReachOperator,
+    GraspOperator,
     PlaceOperator,
 }
 
@@ -480,25 +505,58 @@ class PickFromTargetSkill(PickSkill):
     def _get_lifted_operator(self) -> LiftedOperator:
         return PickFromTargetOperator
 
-
-class PickFromDrawerSkill(PickSkill):
-    """Skill for picking from target area."""
+class ReachSkill(PyBulletBlocksSkill):
+    """Skill for reaching."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
-        return PickFromDrawerOperator
+        return ReachOperator
 
     def _get_kinematic_plan_given_objects(
         self,
         objects: Sequence[Object],
         state: KinematicState,
     ) -> list[KinematicState] | None:
+        # same as pick
+        _, block = objects
+        block_id = self._object_to_pybullet_id(block)
+        collision_ids = set(state.object_poses)
+        def reach_generator() -> Iterator[Pose]:
+            relative_x = 0.0
+            relative_y = 0.0
+            relative_z = self._sim.np_random.uniform(0.05, 0.1)
+            relative_reach = Pose(
+                (relative_x, relative_y, relative_z), self._robot_grasp_orientation
+            )
+            yield relative_reach
+        kinematic_plan = get_kinematic_plan_to_reach_object(
+            state,
+            self._sim.robot,
+            block_id,
+            collision_ids,
+            reach_generator=reach_generator(),
+            reach_generator_iters=5,
+        )
+        return kinematic_plan
+
+class GraspSkill(PickSkill):
+    """Skill for picking from target area."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return GraspOperator
+
+    def _get_kinematic_plan_given_objects(
+        self,
+        objects: Sequence[Object],
+        state: KinematicState,
+    ) -> list[KinematicState] | None:
+        # same as pick
         _, block, surface = objects
         block_id = self._object_to_pybullet_id(block)
         surface_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses)
         # add one more possible relative grasp (orientation)
         relative_grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
-        relative_pose = Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, np.pi / 2]))
+        relative_pose = Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2]))
         relative_grasp_2 = multiply_poses(relative_grasp_1, relative_pose)
         relative_grasp = [relative_grasp_1, relative_grasp_2]
         grasp_generator = iter(relative_grasp)
@@ -625,4 +683,4 @@ SKILLS = {
     StackSkill,
 }
 
-SKILLS_DRAWER = {PickFromDrawerSkill, PlaceSkill}
+SKILLS_DRAWER = {ReachSkill, GraspSkill, PlaceSkill}
