@@ -100,8 +100,12 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     # placement sampling parameters, no collisions but also have contact points.
     # between 1e-6 and 1e-3.
     placement_z_offset: float = 1e-4
-    placement_x_offset: float = 0.25  # from table edge
+    placement_x_offset: float = 0.1  # from table edge
     placement_y_offset: float = 0.4  # from table center line
+
+    # pick related settings
+    z_dist_threshold: float = 0.1  # Z distance threshold for pick
+    xy_dist_threshold: float = 0.025  # XY distance threshold for pick
 
     # Initial target block position offset
     tgt_x_offset: float = -0.08  # w.r.t. drawer center
@@ -510,6 +514,23 @@ class ClutteredDrawerPyBulletBlocksEnv(
         )
 
         return drawer_contact
+
+    def is_block_ready_pick(self, block_id: int) -> bool:
+        """Check if a block is ready to be picked up."""
+        # A block is ready to pick if:
+        # 1. It's on the table
+        # 2. Hand is right above it with desired z offset and x-y distance
+        hand_pose = self.robot.get_end_effector_pose()
+        block_pose = get_pose(block_id, self.physics_client_id)
+        z_dist = abs(hand_pose.position[2] - block_pose.position[2])
+        xy_dist = np.sqrt(
+            (hand_pose.position[0] - block_pose.position[0]) ** 2
+            + (hand_pose.position[1] - block_pose.position[1]) ** 2
+        )
+        z_ok = z_dist < self.scene_description.z_dist_threshold
+        xy_ok = xy_dist < self.scene_description.xy_dist_threshold
+
+        return self.is_block_on_drawer(block_id) and z_ok and xy_ok
 
     def reset(  # type: ignore[override]
         self,

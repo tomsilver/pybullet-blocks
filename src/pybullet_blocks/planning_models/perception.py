@@ -44,6 +44,8 @@ NotIsMovable = Predicate("NotIsMovable", [object_type])
 On = Predicate("On", [object_type, object_type])
 NothingOn = Predicate("NothingOn", [object_type])
 Holding = Predicate("Holding", [robot_type, object_type])
+ReadyPick = Predicate("ReadyPick", [robot_type, object_type])
+NotReadyPick = Predicate("NotReadyPick", [robot_type, object_type])
 NotHolding = Predicate("NotHolding", [robot_type, object_type])
 GripperEmpty = Predicate("GripperEmpty", [robot_type])
 IsTarget = Predicate("IsTarget", [object_type])
@@ -64,6 +66,8 @@ PREDICATES = {
 DRAWER_PREDICATES = {
     IsMovable,
     NotIsMovable,
+    ReadyPick,
+    NotReadyPick,
     On,
     Holding,
     NotHolding,
@@ -510,6 +514,8 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
             self._interpret_GripperEmpty,
             self._interpret_IsTarget,
             self._interpret_NotIsTarget,
+            self._interpret_ReadyPick,
+            self._interpret_NotReadyPick,
         ]
 
     def _get_objects(self) -> set[Object]:
@@ -529,6 +535,32 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = {self._target_block} | set(self._drawer_blocks)
         return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
+
+    def _interpret_ReadyPick(self) -> set[GroundAtom]:
+        """Determine if the robot is ready to pick an object."""
+        ready_pick_atoms = set()
+        candidates = {o for o in self._get_objects() if o.is_instance(object_type)}
+        for obj in candidates:
+            if obj == self._table or obj == self._drawer:
+                continue
+            obj_pybullet_id = self._pybullet_ids[obj]
+
+            # Check if the object is within the gripper's reach.
+            if self._sim.is_block_ready_pick(obj_pybullet_id):
+                ready_pick_atoms.add(GroundAtom(ReadyPick, [self._robot, obj]))
+        return ready_pick_atoms
+
+    def _interpret_NotReadyPick(self) -> set[GroundAtom]:
+        """Determine if the robot is not ready to pick an object."""
+        ready_pick_atoms = self._interpret_ReadyPick()
+        candidates = {o for o in self._get_objects() if o.is_instance(object_type)}
+        not_ready_pick_atoms = set()
+        for obj in candidates:
+            if obj == self._table or obj == self._drawer:
+                continue
+            if obj not in [a.objects[1] for a in ready_pick_atoms]:
+                not_ready_pick_atoms.add(GroundAtom(NotReadyPick, [self._robot, obj]))
+        return not_ready_pick_atoms
 
     def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
         on_relations = set()
