@@ -7,9 +7,6 @@ import numpy as np
 import pybullet as p
 from gymnasium.core import ObsType
 from numpy.typing import NDArray
-from pybullet_blocks.planning_models.manipulation import (
-    get_kinematic_plan_to_reach_object,
-)
 from pybullet_helpers.geometry import Pose, get_pose, multiply_poses
 from pybullet_helpers.manipulation import (
     get_kinematic_plan_to_pick_object,
@@ -44,18 +41,21 @@ from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
     PickPlacePyBulletBlocksState,
 )
+from pybullet_blocks.planning_models.manipulation import (
+    get_kinematic_plan_to_reach_object,
+)
 from pybullet_blocks.planning_models.perception import (
     GripperEmpty,
     Holding,
     IsMovable,
     IsTarget,
-    ReadyPick,
     NothingOn,
     NotHolding,
     NotIsMovable,
     NotIsTarget,
     NotReadyPick,
     On,
+    ReadyPick,
     object_type,
     robot_type,
 )
@@ -505,6 +505,7 @@ class PickFromTargetSkill(PickSkill):
     def _get_lifted_operator(self) -> LiftedOperator:
         return PickFromTargetOperator
 
+
 class ReachSkill(PyBulletBlocksSkill):
     """Skill for reaching."""
 
@@ -520,6 +521,7 @@ class ReachSkill(PyBulletBlocksSkill):
         _, block = objects
         block_id = self._object_to_pybullet_id(block)
         collision_ids = set(state.object_poses)
+
         def reach_generator() -> Iterator[Pose]:
             relative_x = 0.0
             relative_y = 0.0
@@ -528,6 +530,7 @@ class ReachSkill(PyBulletBlocksSkill):
                 (relative_x, relative_y, relative_z), self._robot_grasp_orientation
             )
             yield relative_reach
+
         kinematic_plan = get_kinematic_plan_to_reach_object(
             state,
             self._sim.robot,
@@ -537,6 +540,7 @@ class ReachSkill(PyBulletBlocksSkill):
             reach_generator_iters=5,
         )
         return kinematic_plan
+
 
 class GraspSkill(PickSkill):
     """Skill for picking from target area."""

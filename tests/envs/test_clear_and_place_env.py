@@ -36,7 +36,6 @@ def test_clear_and_place_env(env_cls, state_cls):
 
     @dataclass(frozen=True)
     class _CustomClearAndPlaceSceneDescription(ClearAndPlaceSceneDescription):
-
         @property
         def target_block_init_position(self) -> tuple[float, float, float]:
             return (
