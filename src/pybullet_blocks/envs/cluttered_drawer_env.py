@@ -101,7 +101,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     # between 1e-6 and 1e-3.
     placement_z_offset: float = 1e-4
     placement_x_offset: float = 0.1  # from table edge
-    placement_y_offset: float = 0.4  # from table center line
+    placement_y_offset: float = 0.25  # from table center line
 
     # pick related settings
     z_dist_threshold: float = 0.1  # Z distance threshold for pick

@@ -42,6 +42,7 @@ from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksState,
 )
 from pybullet_blocks.planning_models.manipulation import (
+    get_kinematic_plan_to_lift_place_object,
     get_kinematic_plan_to_reach_object,
 )
 from pybullet_blocks.planning_models.perception import (
@@ -630,15 +631,6 @@ class PlaceSkill(PyBulletBlocksSkill):
                     world_to_table.invert(), world_to_placement
                 )
                 yield table_to_placement
-        elif isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
-            # For cluttered drawer, sample placements on the table top region.
-            while True:
-                world_to_placement = self._sim.sample_free_block_place_pose(held_obj_id)
-                world_to_table = state.object_poses[table_id]
-                table_to_placement = multiply_poses(
-                    world_to_table.invert(), world_to_placement
-                )
-                yield table_to_placement
         else:
             raise NotImplementedError
 
@@ -655,6 +647,58 @@ class PlaceSkill(PyBulletBlocksSkill):
             yaw = np.random.choice(yaw_choices)
             rot = p.getQuaternionFromEuler([0, 0, yaw])
             yield Pose((0, 0, dz), rot)
+
+
+class PlaceDrawerSkill(PyBulletBlocksSkill):
+    """Skill for placing in the drawer domain.
+
+    The drawer is cluttered, so we uniquely design motion planning for
+    it.
+    """
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceOperator
+
+    def _get_kinematic_plan_given_objects(
+        self, objects: Sequence[Object], state: KinematicState
+    ) -> list[KinematicState] | None:
+        _, block, surface = objects
+
+        block_id = self._object_to_pybullet_id(block)
+        surface_id = self._object_to_pybullet_id(surface)
+        collision_ids = set(state.object_poses) - {block_id}
+        placement_generator = self._generate_surface_placements(
+            block_id, surface_id, state
+        )
+        # use customized motion planner
+        kinematic_plan = get_kinematic_plan_to_lift_place_object(
+            state,
+            self._sim.robot,
+            block_id,
+            surface_id,
+            collision_ids,
+            placement_generator=placement_generator,
+            placement_generator_iters=30,
+            max_motion_planning_time=3.0,
+            birrt_num_attempts=30,
+            birrt_num_iters=500,
+        )
+        return kinematic_plan
+
+    def _generate_surface_placements(
+        self, held_obj_id: int, table_id: int, state: KinematicState
+    ) -> Iterator[Pose]:
+        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
+            # For cluttered drawer, sample placements on the table top region.
+            while True:
+                world_to_placement = self._sim.sample_free_block_place_pose(held_obj_id)
+                world_to_table = state.object_poses[table_id]
+                table_to_placement = multiply_poses(
+                    world_to_table.invert(), world_to_placement
+                )
+                yield table_to_placement
+        else:
+            raise NotImplementedError
 
 
 class PlaceInTargetSkill(PlaceSkill):
@@ -687,4 +731,4 @@ SKILLS = {
     StackSkill,
 }
 
-SKILLS_DRAWER = {ReachSkill, GraspSkill, PlaceSkill}
+SKILLS_DRAWER = {ReachSkill, GraspSkill, PlaceDrawerSkill}
