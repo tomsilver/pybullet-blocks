@@ -541,7 +541,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         ready_pick_atoms = set()
         candidates = {o for o in self._get_objects() if o.is_instance(object_type)}
         for obj in candidates:
-            if obj == self._table or obj == self._drawer:
+            if obj in [self._table, self._drawer]:
                 continue
             obj_pybullet_id = self._pybullet_ids[obj]
 
@@ -556,7 +556,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         candidates = {o for o in self._get_objects() if o.is_instance(object_type)}
         not_ready_pick_atoms = set()
         for obj in candidates:
-            if obj == self._table or obj == self._drawer:
+            if obj in [self._table, self._drawer]:
                 continue
             if obj not in [a.objects[1] for a in ready_pick_atoms]:
                 not_ready_pick_atoms.add(GroundAtom(NotReadyPick, [self._robot, obj]))
