@@ -46,29 +46,29 @@ from pybullet_blocks.planning_models.manipulation import (
     get_kinematic_plan_to_reach_object,
 )
 from pybullet_blocks.planning_models.perception import (
+    BackClear,
+    BlockingBack,
+    BlockingFront,
+    BlockingLeft,
+    BlockingRight,
+    FrontClear,
     GripperEmpty,
     Holding,
+    IsDrawer,
     IsMovable,
+    IsTable,
     IsTarget,
+    IsTargetBlock,
+    LeftClear,
     NothingOn,
     NotHolding,
     NotIsMovable,
     NotIsTarget,
+    NotIsTargetBlock,
     NotReadyPick,
     On,
     ReadyPick,
-    IsTargetBlock,
-    NotIsTargetBlock,
-    IsTable,
-    IsDrawer,
-    BlockingLeft,
-    BlockingRight,
-    BlockingFront,
-    BlockingBack,
-    LeftClear,
     RightClear,
-    FrontClear,
-    BackClear,
     object_type,
     robot_type,
 )
@@ -366,7 +366,7 @@ PlaceTargetOperator = LiftedOperator(
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
         LiftedAtom(IsTargetBlock, [Obj]),
-        LiftedAtom(IsTable, [Surface])
+        LiftedAtom(IsTable, [Surface]),
     },
     add_effects={
         LiftedAtom(On, [Obj, Surface]),
@@ -812,19 +812,21 @@ class GraspFrontBackSkill(PickSkill):
             grasp_generator_iters=5,
         )
         return kinematic_plan
-    
+
+
 class GraspLeftRightSkill(GraspFrontBackSkill):
     """Skill for grasping in the drawer domain."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return GraspLeftRightOperator
-    
+
+
 class GraspFullClearSkill(PickSkill):
     """Skill for grasping in the drawer domain."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return GraspFullClearOperator
-    
+
     def _get_kinematic_plan_given_objects(
         self,
         objects: Sequence[Object],
@@ -852,18 +854,19 @@ class GraspFullClearSkill(PickSkill):
         )
         return kinematic_plan
 
+
 class GraspNonTargetSkill(GraspFullClearSkill):
     """Skill for grasping in the drawer domain."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return GraspNonTargetOperator
-    
+
+
 class PlaceTargetSkill(PyBulletBlocksSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the target block on the Table.
+    it. This is for placing the target block on the Table.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
@@ -910,12 +913,12 @@ class PlaceTargetSkill(PyBulletBlocksSkill):
         else:
             raise NotImplementedError
 
+
 class PlaceFrontBlockSkill(PyBulletBlocksSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the non target block on the drawer.
+    it. This is for placing the non target block on the drawer.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
@@ -946,14 +949,16 @@ class PlaceFrontBlockSkill(PyBulletBlocksSkill):
             birrt_num_iters=500,
         )
         return kinematic_plan
-    
+
     def _generate_surface_placements(
         self, held_obj_id: int, table_id: int, state: KinematicState
     ) -> Iterator[Pose]:
         if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
             # For cluttered drawer, sample placements on the table top region.
             while True:
-                world_to_placement = self._sim.sample_free_drawer_place_pose(held_obj_id)
+                world_to_placement = self._sim.sample_free_drawer_place_pose(
+                    held_obj_id
+                )
                 world_to_table = state.object_poses[table_id]
                 table_to_placement = multiply_poses(
                     world_to_table.invert(), world_to_placement
@@ -961,39 +966,40 @@ class PlaceFrontBlockSkill(PyBulletBlocksSkill):
                 yield table_to_placement
         else:
             raise NotImplementedError
-        
+
+
 class PlaceBackBlockSkill(PlaceFrontBlockSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the non target block on the drawer.
+    it. This is for placing the non target block on the drawer.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return PlaceBackBlockOperator
 
+
 class PlaceLeftBlockSkill(PlaceFrontBlockSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the non target block on the drawer.
+    it. This is for placing the non target block on the drawer.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return PlaceLeftBlockOperator
-    
+
+
 class PlaceRightBlockSkill(PlaceFrontBlockSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the non target block on the drawer.
+    it. This is for placing the non target block on the drawer.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
         return PlaceRightBlockOperator
+
 
 class PlaceSkill(PyBulletBlocksSkill):
     """Skill for placing."""
@@ -1067,7 +1073,6 @@ class PlaceSkill(PyBulletBlocksSkill):
             yield Pose((0, 0, dz), rot)
 
 
-
 class PlaceInTargetSkill(PlaceSkill):
     """Skill for placing in target area."""
 
@@ -1098,8 +1103,15 @@ SKILLS = {
     StackSkill,
 }
 
-SKILLS_DRAWER = {ReachSkill, GraspFrontBackSkill, GraspLeftRightSkill, 
-                 GraspFullClearSkill, GraspNonTargetSkill,
-                 PlaceTargetSkill, PlaceFrontBlockSkill,
-                    PlaceBackBlockSkill, PlaceLeftBlockSkill,
-                    PlaceRightBlockSkill}
+SKILLS_DRAWER = {
+    ReachSkill,
+    GraspFrontBackSkill,
+    GraspLeftRightSkill,
+    GraspFullClearSkill,
+    GraspNonTargetSkill,
+    PlaceTargetSkill,
+    PlaceFrontBlockSkill,
+    PlaceBackBlockSkill,
+    PlaceLeftBlockSkill,
+    PlaceRightBlockSkill,
+}

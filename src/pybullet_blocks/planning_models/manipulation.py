@@ -332,8 +332,9 @@ def get_approach_pose_from_contact_normals(
     contact_distance_threshold: float = 1e-3,
 ):
     """Get the translation direction from the contact normals.
-    This is used to determine the preplace pose.
-    The translation is in the world frame.
+
+    This is used to determine the preplace pose. The translation is in
+    the world frame.
     """
     contact_points = get_closest_points_with_optional_links(
         object_id,

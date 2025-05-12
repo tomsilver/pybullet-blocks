@@ -95,7 +95,7 @@ DRAWER_PREDICATES = {
     LeftClear,
     RightClear,
     FrontClear,
-    BackClear
+    BackClear,
 }
 
 
@@ -592,7 +592,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
             if obj not in [a.objects[1] for a in ready_pick_atoms]:
                 not_ready_pick_atoms.add(GroundAtom(NotReadyPick, [self._robot, obj]))
         return not_ready_pick_atoms
-    
+
     def _interpret_IsTargetBlock(self) -> set[GroundAtom]:
         """Determine if the object is the target block."""
         target_block_atoms = set()
@@ -602,15 +602,15 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
             else:
                 target_block_atoms.add(GroundAtom(NotIsTargetBlock, [obj]))
         return target_block_atoms
-    
+
     def _interpret_IsTable(self) -> set[GroundAtom]:
         """Determine if the object is the table."""
         return {GroundAtom(IsTable, [self._table])}
-    
+
     def _interpret_IsDrawer(self) -> set[GroundAtom]:
         """Determine if the object is the drawer."""
         return {GroundAtom(IsDrawer, [self._drawer])}
-    
+
     def _interpret_BlockingLeft(self) -> set[GroundAtom]:
         """Determine if the object is blocking to the left."""
         blocking_left_atoms = set()
@@ -622,10 +622,10 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
                 if obj1 == obj2:
                     continue
                 obj2_id = self._pybullet_ids[obj2]
-                if self._sim.is_block_blocking(obj1_id, obj2_id, 'left'):
+                if self._sim.is_block_blocking(obj1_id, obj2_id, "left"):
                     blocking_left_atoms.add(GroundAtom(BlockingLeft, [obj1, obj2]))
         return blocking_left_atoms
-    
+
     def _interpret_BlockingRight(self) -> set[GroundAtom]:
         """Determine if the object is blocking to the right."""
         blocking_right_atoms = set()
@@ -637,10 +637,10 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
                 if obj1 == obj2:
                     continue
                 obj2_id = self._pybullet_ids[obj2]
-                if self._sim.is_block_blocking(obj1_id, obj2_id, 'right'):
+                if self._sim.is_block_blocking(obj1_id, obj2_id, "right"):
                     blocking_right_atoms.add(GroundAtom(BlockingRight, [obj1, obj2]))
         return blocking_right_atoms
-    
+
     def _interpret_BlockingFront(self) -> set[GroundAtom]:
         """Determine if the object is blocking to the front."""
         blocking_front_atoms = set()
@@ -652,10 +652,10 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
                 if obj1 == obj2:
                     continue
                 obj2_id = self._pybullet_ids[obj2]
-                if self._sim.is_block_blocking(obj1_id, obj2_id, 'front'):
+                if self._sim.is_block_blocking(obj1_id, obj2_id, "front"):
                     blocking_front_atoms.add(GroundAtom(BlockingFront, [obj1, obj2]))
         return blocking_front_atoms
-    
+
     def _interpret_BlockingBack(self) -> set[GroundAtom]:
         """Determine if the object is blocking to the back."""
         blocking_back_atoms = set()
@@ -667,10 +667,10 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
                 if obj1 == obj2:
                     continue
                 obj2_id = self._pybullet_ids[obj2]
-                if self._sim.is_block_blocking(obj1_id, obj2_id, 'back'):
+                if self._sim.is_block_blocking(obj1_id, obj2_id, "back"):
                     blocking_back_atoms.add(GroundAtom(BlockingBack, [obj1, obj2]))
         return blocking_back_atoms
-    
+
     def _interpret_LeftClear(self) -> set[GroundAtom]:
         """Determine if the left side is clear."""
         # This only evaluates the target block, as all other blocks are
@@ -678,9 +678,8 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         blocking_left_atoms = self._interpret_BlockingLeft()
         if len(blocking_left_atoms) > 0:
             return set()
-        else:
-            return {GroundAtom(LeftClear, [self._target_block])}
-        
+        return {GroundAtom(LeftClear, [self._target_block])}
+
     def _interpret_RightClear(self) -> set[GroundAtom]:
         """Determine if the right side is clear."""
         # This only evaluates the target block, as all other blocks are
@@ -688,9 +687,8 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         blocking_right_atoms = self._interpret_BlockingRight()
         if len(blocking_right_atoms) > 0:
             return set()
-        else:
-            return {GroundAtom(RightClear, [self._target_block])}
-        
+        return {GroundAtom(RightClear, [self._target_block])}
+
     def _interpret_FrontClear(self) -> set[GroundAtom]:
         """Determine if the front side is clear."""
         # This only evaluates the target block, as all other blocks are
@@ -698,9 +696,8 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         blocking_front_atoms = self._interpret_BlockingFront()
         if len(blocking_front_atoms) > 0:
             return set()
-        else:
-            return {GroundAtom(FrontClear, [self._target_block])}
-        
+        return {GroundAtom(FrontClear, [self._target_block])}
+
     def _interpret_BackClear(self) -> set[GroundAtom]:
         """Determine if the back side is clear."""
         # This only evaluates the target block, as all other blocks are
@@ -708,8 +705,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         blocking_back_atoms = self._interpret_BlockingBack()
         if len(blocking_back_atoms) > 0:
             return set()
-        else:
-            return {GroundAtom(BackClear, [self._target_block])}
+        return {GroundAtom(BackClear, [self._target_block])}
 
     def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
         on_relations = set()
