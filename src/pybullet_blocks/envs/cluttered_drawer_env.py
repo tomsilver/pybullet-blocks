@@ -760,7 +760,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
 
         for node in nodes:
             if np.isclose(node[0], 0):  # Robot
-                robot_node = node[1:RobotState.get_dimension()]
+                robot_node = node[1 : RobotState.get_dimension()]
             elif np.isclose(node[0], 2):  # Drawer
                 drawer_node = node[1:3]
             elif np.isclose(node[0], 1):  # Block
