@@ -1046,6 +1046,7 @@ class PlaceSkill(PyBulletBlocksSkill):
                 BlockStackingPyBulletBlocksEnv,
                 ClearAndPlacePyBulletBlocksEnv,
                 GraphClearAndPlacePyBulletBlocksEnv,
+                ClutteredDrawerPyBulletBlocksEnv,
             ),
         ):
             while True:
