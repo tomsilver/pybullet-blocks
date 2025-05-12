@@ -137,10 +137,17 @@ ReachOperator = LiftedOperator(
     },
 )
 
+Obj_blo = Variable("?objblo", object_type)
+Obj_blo2 = Variable("?objblo2", object_type)
+Obj_tgt = Variable("?objtgt", object_type)
 # For grasping the target block
+
+# Now we have to assume when grasping from left right, the
+# front and back are still blocking, since this operator
+# will delete the blocking atoms.
 GraspLeftRightOperator = LiftedOperator(
     "GraspLeftRight",
-    [Robot, Obj, Surface],
+    [Robot, Obj, Obj_blo, Obj_blo2, Surface],
     preconditions={
         LiftedAtom(IsTargetBlock, [Obj]),
         LiftedAtom(IsMovable, [Obj]),
@@ -152,21 +159,60 @@ GraspLeftRightOperator = LiftedOperator(
         LiftedAtom(ReadyPick, [Robot, Obj]),
         LiftedAtom(LeftClear, [Obj]),
         LiftedAtom(RightClear, [Obj]),
+        LiftedAtom(BlockingBack, [Obj_blo, Obj]),
+        LiftedAtom(BlockingFront, [Obj_blo2, Obj]),
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(FrontClear, [Obj]),
+        LiftedAtom(BackClear, [Obj]),
     },
     delete_effects={
         LiftedAtom(NotHolding, [Robot, Obj]),
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(ReadyPick, [Robot, Obj]),
         LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(BlockingBack, [Obj_blo, Obj]),
+        LiftedAtom(BlockingFront, [Obj_blo2, Obj]),
     },
 )
 
 GraspFrontBackOperator = LiftedOperator(
     "GraspFrontBack",
+    [Robot, Obj, Obj_blo, Obj_blo2, Surface],
+    preconditions={
+        LiftedAtom(IsTargetBlock, [Obj]),
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(IsDrawer, [Surface]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(FrontClear, [Obj]),
+        LiftedAtom(BackClear, [Obj]),
+        LiftedAtom(BlockingLeft, [Obj_blo, Obj]),
+        LiftedAtom(BlockingRight, [Obj_blo2, Obj]),
+    },
+    add_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(LeftClear, [Obj]),
+        LiftedAtom(RightClear, [Obj]),
+    },
+    delete_effects={
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(BlockingLeft, [Obj_blo, Obj]),
+        LiftedAtom(BlockingRight, [Obj_blo2, Obj]),
+    },
+)
+
+GraspFullClearOperator = LiftedOperator(
+    "GraspFullClear",
     [Robot, Obj, Surface],
     preconditions={
         LiftedAtom(IsTargetBlock, [Obj]),
@@ -179,6 +225,8 @@ GraspFrontBackOperator = LiftedOperator(
         LiftedAtom(ReadyPick, [Robot, Obj]),
         LiftedAtom(FrontClear, [Obj]),
         LiftedAtom(BackClear, [Obj]),
+        LiftedAtom(LeftClear, [Obj]),
+        LiftedAtom(RightClear, [Obj]),
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
@@ -192,121 +240,121 @@ GraspFrontBackOperator = LiftedOperator(
     },
 )
 
-# For grasping the blocking block
-Obj_blo = Variable("?objblo", object_type)
-GraspFrontBlockOperator = LiftedOperator(
-    "GraspFrontBlock",
-    [Robot, Obj, Obj_blo, Surface],
+# For grasping the blocking blocks
+# Note that grasping does not involve changes in the
+# blocking predicates, only placement does.
+# Such that wiggling behavior connects two nodes without
+# the need to achieve holding at the same time.
+GraspNonTargetOperator = LiftedOperator(
+    "GraspNonTarget",
+    [Robot, Obj, Surface],
     preconditions={
         LiftedAtom(IsMovable, [Obj]),
-        LiftedAtom(IsMovable, [Obj_blo]),
-        LiftedAtom(IsTargetBlock, [Obj]),
-        LiftedAtom(NotIsTargetBlock, [Obj_blo]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
         LiftedAtom(GripperEmpty, [Robot]),
-        LiftedAtom(On, [Obj_blo, Surface]),
+        LiftedAtom(On, [Obj, Surface]),
         LiftedAtom(IsDrawer, [Surface]),
-        LiftedAtom(NotHolding, [Robot, Obj_blo]),
-        LiftedAtom(ReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(BlockingFront, [Obj_blo, Obj]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
     },
     add_effects={
-        LiftedAtom(Holding, [Robot, Obj_blo]),
-        LiftedAtom(NotReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(FrontClear, [Obj]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
     },
     delete_effects={
-        LiftedAtom(NotHolding, [Robot, Obj_blo]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
         LiftedAtom(GripperEmpty, [Robot]),
-        LiftedAtom(ReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(On, [Obj_blo, Surface]),
-        LiftedAtom(BlockingFront, [Obj_blo, Obj]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(On, [Obj, Surface]),
     },
 )
 
-GraspBackBlockOperator = LiftedOperator(
-    "GraspBackBlock",
-    [Robot, Obj, Obj_blo, Surface],
+# For Placing the blocking block
+PlaceFrontBlockOperator = LiftedOperator(
+    "PlaceFrontBlock",
+    [Robot, Obj, Obj_tgt, Surface],
     preconditions={
-        LiftedAtom(IsMovable, [Obj]),
-        LiftedAtom(IsMovable, [Obj_blo]),
-        LiftedAtom(IsTargetBlock, [Obj]),
-        LiftedAtom(NotIsTargetBlock, [Obj_blo]),
-        LiftedAtom(GripperEmpty, [Robot]),
-        LiftedAtom(On, [Obj_blo, Surface]),
+        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
         LiftedAtom(IsDrawer, [Surface]),
-        LiftedAtom(NotHolding, [Robot, Obj_blo]),
-        LiftedAtom(ReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(BlockingBack, [Obj_blo, Obj]),
+        LiftedAtom(BlockingFront, [Obj, Obj_tgt]),
     },
     add_effects={
-        LiftedAtom(Holding, [Robot, Obj_blo]),
-        LiftedAtom(NotReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(BackClear, [Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(FrontClear, [Obj_tgt]),
     },
     delete_effects={
-        LiftedAtom(NotHolding, [Robot, Obj_blo]),
-        LiftedAtom(GripperEmpty, [Robot]),
-        LiftedAtom(ReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(On, [Obj_blo, Surface]),
-        LiftedAtom(BlockingBack, [Obj_blo, Obj]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(BlockingFront, [Obj, Obj_tgt]),
     },
 )
 
-GraspLeftBlockOperator = LiftedOperator(
-    "GraspLeftBlock",
-    [Robot, Obj, Obj_blo, Surface],
+PlaceBackBlockOperator = LiftedOperator(
+    "PlaceBackBlock",
+    [Robot, Obj, Obj_tgt, Surface],
     preconditions={
-        LiftedAtom(IsMovable, [Obj]),
-        LiftedAtom(IsMovable, [Obj_blo]),
-        LiftedAtom(IsTargetBlock, [Obj]),
-        LiftedAtom(NotIsTargetBlock, [Obj_blo]),
-        LiftedAtom(GripperEmpty, [Robot]),
-        LiftedAtom(On, [Obj_blo, Surface]),
+        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
         LiftedAtom(IsDrawer, [Surface]),
-        LiftedAtom(NotHolding, [Robot, Obj_blo]),
-        LiftedAtom(ReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(BlockingLeft, [Obj_blo, Obj]),
+        LiftedAtom(BlockingBack, [Obj, Obj_tgt]),
     },
     add_effects={
-        LiftedAtom(Holding, [Robot, Obj_blo]),
-        LiftedAtom(NotReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(LeftClear, [Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(BackClear, [Obj_tgt]),
     },
     delete_effects={
-        LiftedAtom(NotHolding, [Robot, Obj_blo]),
-        LiftedAtom(GripperEmpty, [Robot]),
-        LiftedAtom(ReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(On, [Obj_blo, Surface]),
-        LiftedAtom(BlockingLeft, [Obj_blo, Obj]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(BlockingBack, [Obj, Obj_tgt]),
     },
 )
 
-GraspRightBlockOperator = LiftedOperator(
-    "GraspRightBlock",
-    [Robot, Obj, Obj_blo, Surface],
+PlaceLeftBlockOperator = LiftedOperator(
+    "PlaceLeftBlock",
+    [Robot, Obj, Obj_tgt, Surface],
     preconditions={
-        LiftedAtom(IsMovable, [Obj]),
-        LiftedAtom(IsMovable, [Obj_blo]),
-        LiftedAtom(IsTargetBlock, [Obj]),
-        LiftedAtom(NotIsTargetBlock, [Obj_blo]),
-        LiftedAtom(GripperEmpty, [Robot]),
-        LiftedAtom(On, [Obj_blo, Surface]),
+        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
         LiftedAtom(IsDrawer, [Surface]),
-        LiftedAtom(NotHolding, [Robot, Obj_blo]),
-        LiftedAtom(ReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(BlockingRight, [Obj_blo, Obj]),
+        LiftedAtom(BlockingLeft, [Obj, Obj_tgt]),
     },
     add_effects={
-        LiftedAtom(Holding, [Robot, Obj_blo]),
-        LiftedAtom(NotReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(RightClear, [Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(LeftClear, [Obj_tgt]),
     },
     delete_effects={
-        LiftedAtom(NotHolding, [Robot, Obj_blo]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(BlockingLeft, [Obj, Obj_tgt]),
+    },
+)
+
+PlaceRightBlockOperator = LiftedOperator(
+    "PlaceRightBlock",
+    [Robot, Obj, Obj_tgt, Surface],
+    preconditions={
+        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(IsDrawer, [Surface]),
+        LiftedAtom(BlockingRight, [Obj, Obj_tgt]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
         LiftedAtom(GripperEmpty, [Robot]),
-        LiftedAtom(ReadyPick, [Robot, Obj_blo]),
-        LiftedAtom(On, [Obj_blo, Surface]),
-        LiftedAtom(BlockingRight, [Obj_blo, Obj]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(RightClear, [Obj_tgt]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(BlockingRight, [Obj, Obj_tgt]),
     },
 )
 
@@ -319,25 +367,6 @@ PlaceTargetOperator = LiftedOperator(
         LiftedAtom(NotIsMovable, [Surface]),
         LiftedAtom(IsTargetBlock, [Obj]),
         LiftedAtom(IsTable, [Surface])
-    },
-    add_effects={
-        LiftedAtom(On, [Obj, Surface]),
-        LiftedAtom(GripperEmpty, [Robot]),
-        LiftedAtom(NotHolding, [Robot, Obj]),
-    },
-    delete_effects={
-        LiftedAtom(Holding, [Robot, Obj]),
-    },
-)
-
-PlaceNonTargetOperator = LiftedOperator(
-    "PlaceNonTarget",
-    [Robot, Obj, Surface],
-    preconditions={
-        LiftedAtom(Holding, [Robot, Obj]),
-        LiftedAtom(NotIsMovable, [Surface]),
-        LiftedAtom(NotIsTargetBlock, [Obj]),
-        LiftedAtom(IsDrawer, [Surface])
     },
     add_effects={
         LiftedAtom(On, [Obj, Surface]),
@@ -441,14 +470,15 @@ OPERATORS = {
 
 OPERATORS_DRAWER = {
     ReachOperator,
-    GraspBackBlockOperator,
-    GraspFrontBlockOperator,
-    GraspLeftBlockOperator,
-    GraspRightBlockOperator,
     GraspFrontBackOperator,
     GraspLeftRightOperator,
+    GraspFullClearOperator,
+    GraspNonTargetOperator,
     PlaceTargetOperator,
-    PlaceNonTargetOperator,
+    PlaceFrontBlockOperator,
+    PlaceBackBlockOperator,
+    PlaceLeftBlockOperator,
+    PlaceRightBlockOperator,
 }
 
 
@@ -733,7 +763,7 @@ class ReachSkill(PyBulletBlocksSkill):
         def reach_generator() -> Iterator[Pose]:
             relative_x = 0.0
             relative_y = 0.0
-            relative_z = self._sim.np_random.uniform(0.05, 0.1)
+            relative_z = self._sim.np_random.uniform(0.06, 0.09)
             relative_reach = Pose(
                 (relative_x, relative_y, relative_z), self._robot_grasp_orientation
             )
@@ -762,7 +792,7 @@ class GraspFrontBackSkill(PickSkill):
         state: KinematicState,
     ) -> list[KinematicState] | None:
         # same as pick
-        _, block, surface = objects
+        _, block, _, _, surface = objects
         block_id = self._object_to_pybullet_id(block)
         surface_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses)
@@ -789,30 +819,44 @@ class GraspLeftRightSkill(GraspFrontBackSkill):
     def _get_lifted_operator(self) -> LiftedOperator:
         return GraspLeftRightOperator
     
-    
-class GraspRightBlockSkill(GraspFrontBackSkill):
+class GraspFullClearSkill(PickSkill):
     """Skill for grasping in the drawer domain."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
-        return GraspRightBlockOperator
+        return GraspFullClearOperator
     
-class GraspLeftBlockSkill(GraspFrontBackSkill):
+    def _get_kinematic_plan_given_objects(
+        self,
+        objects: Sequence[Object],
+        state: KinematicState,
+    ) -> list[KinematicState] | None:
+        # same as pick
+        _, block, surface = objects
+        block_id = self._object_to_pybullet_id(block)
+        surface_id = self._object_to_pybullet_id(surface)
+        collision_ids = set(state.object_poses)
+        # add one more possible relative grasp (orientation)
+        relative_grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
+        relative_pose = Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2]))
+        relative_grasp_2 = multiply_poses(relative_grasp_1, relative_pose)
+        relative_grasp = [relative_grasp_1, relative_grasp_2]
+        grasp_generator = iter(relative_grasp)
+        kinematic_plan = get_kinematic_plan_to_pick_object(
+            state,
+            self._sim.robot,
+            block_id,
+            surface_id,
+            collision_ids,
+            grasp_generator=grasp_generator,
+            grasp_generator_iters=5,
+        )
+        return kinematic_plan
+
+class GraspNonTargetSkill(GraspFullClearSkill):
     """Skill for grasping in the drawer domain."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
-        return GraspLeftBlockOperator
-    
-class GraspFrontBlockSkill(GraspFrontBackSkill):
-    """Skill for grasping in the drawer domain."""
-
-    def _get_lifted_operator(self) -> LiftedOperator:
-        return GraspFrontBlockOperator
-    
-class GraspBackBlockSkill(GraspFrontBackSkill):
-    """Skill for grasping in the drawer domain."""
-
-    def _get_lifted_operator(self) -> LiftedOperator:
-        return GraspBackBlockOperator
+        return GraspNonTargetOperator
     
 class PlaceTargetSkill(PyBulletBlocksSkill):
     """Skill for placing in the drawer domain.
@@ -866,7 +910,7 @@ class PlaceTargetSkill(PyBulletBlocksSkill):
         else:
             raise NotImplementedError
 
-class PlaceNonTargetSkill(PlaceTargetSkill):
+class PlaceFrontBlockSkill(PyBulletBlocksSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
@@ -875,8 +919,34 @@ class PlaceNonTargetSkill(PlaceTargetSkill):
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceNonTargetOperator
+        return PlaceFrontBlockOperator
 
+    def _get_kinematic_plan_given_objects(
+        self, objects: Sequence[Object], state: KinematicState
+    ) -> list[KinematicState] | None:
+        _, block, _, surface = objects
+
+        block_id = self._object_to_pybullet_id(block)
+        surface_id = self._object_to_pybullet_id(surface)
+        collision_ids = set(state.object_poses) - {block_id}
+        placement_generator = self._generate_surface_placements(
+            block_id, surface_id, state
+        )
+        # use customized motion planner
+        kinematic_plan = get_kinematic_plan_to_lift_place_object(
+            state,
+            self._sim.robot,
+            block_id,
+            surface_id,
+            collision_ids,
+            placement_generator=placement_generator,
+            placement_generator_iters=30,
+            max_motion_planning_time=3.0,
+            birrt_num_attempts=30,
+            birrt_num_iters=500,
+        )
+        return kinematic_plan
+    
     def _generate_surface_placements(
         self, held_obj_id: int, table_id: int, state: KinematicState
     ) -> Iterator[Pose]:
@@ -891,6 +961,39 @@ class PlaceNonTargetSkill(PlaceTargetSkill):
                 yield table_to_placement
         else:
             raise NotImplementedError
+        
+class PlaceBackBlockSkill(PlaceFrontBlockSkill):
+    """Skill for placing in the drawer domain.
+
+    The drawer is cluttered, so we uniquely design motion planning for
+    it.
+    This is for placing the non target block on the drawer.
+    """
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceBackBlockOperator
+
+class PlaceLeftBlockSkill(PlaceFrontBlockSkill):
+    """Skill for placing in the drawer domain.
+
+    The drawer is cluttered, so we uniquely design motion planning for
+    it.
+    This is for placing the non target block on the drawer.
+    """
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceLeftBlockOperator
+    
+class PlaceRightBlockSkill(PlaceFrontBlockSkill):
+    """Skill for placing in the drawer domain.
+
+    The drawer is cluttered, so we uniquely design motion planning for
+    it.
+    This is for placing the non target block on the drawer.
+    """
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceRightBlockOperator
 
 class PlaceSkill(PyBulletBlocksSkill):
     """Skill for placing."""
@@ -995,6 +1098,8 @@ SKILLS = {
     StackSkill,
 }
 
-SKILLS_DRAWER = {ReachSkill, GraspFrontBackSkill, GraspLeftRightSkill, GraspRightBlockSkill,
-                 GraspLeftBlockSkill, GraspFrontBlockSkill, GraspBackBlockSkill,
-                 PlaceTargetSkill, PlaceNonTargetSkill}
+SKILLS_DRAWER = {ReachSkill, GraspFrontBackSkill, GraspLeftRightSkill, 
+                 GraspFullClearSkill, GraspNonTargetSkill,
+                 PlaceTargetSkill, PlaceFrontBlockSkill,
+                    PlaceBackBlockSkill, PlaceLeftBlockSkill,
+                    PlaceRightBlockSkill}

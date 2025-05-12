@@ -54,6 +54,8 @@ class ClutteredDrawerDimensions:
     handle_z_offset: float = -0.05
     handle_size: tuple[float, float, float] = (0.02, 0.1, 0.02)
 
+    on_drawer_block_z: float = -0.105
+
     # Drawer travel
     max_travel_distance: float = 0.25
 
@@ -107,7 +109,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     drawer_placement_y_offset: float = 0.1  # from drawer edge
 
     # pick related settings
-    z_dist_threshold: float = 0.1  # Z distance threshold for pick
+    z_dist_threshold: tuple[float, float] = (0.05, 0.1)  # Z distance threshold for pick
     xy_dist_threshold: float = 0.025  # XY distance threshold for pick
 
     # Initial target block position offset
@@ -530,7 +532,8 @@ class ClutteredDrawerPyBulletBlocksEnv(
             (hand_pose.position[0] - block_pose.position[0]) ** 2
             + (hand_pose.position[1] - block_pose.position[1]) ** 2
         )
-        z_ok = z_dist < self.scene_description.z_dist_threshold
+        z_ok = (z_dist < self.scene_description.z_dist_threshold[1]) \
+            and (z_dist > self.scene_description.z_dist_threshold[0])
         xy_ok = xy_dist < self.scene_description.xy_dist_threshold
 
         return self.is_block_on_drawer(block_id) and z_ok and xy_ok
@@ -543,8 +546,8 @@ class ClutteredDrawerPyBulletBlocksEnv(
                           block2_id: int,
                           dir: str) ->  bool:
         """Check if a block is blocking another block."""
-        # First, if block1 is not on drawer
-        if not self.is_block_on_drawer(block1_id):
+        # First, if block2 is not on drawer
+        if not self.is_block_on_drawer(block2_id):
             return False
         
         # Get block position
@@ -557,21 +560,29 @@ class ClutteredDrawerPyBulletBlocksEnv(
         
         # Check dir
         if dir == "left":
+            dx = abs(block1_pose.position[0] - block2_pose.position[0])
             dy = block1_pose.position[1] - block2_pose.position[1]
             return (dy > self.scene_description.block_half_extents[1]) \
-                and (abs(dy) < 4 * self.scene_description.block_half_extents[1])
+                and (abs(dy) < 4 * self.scene_description.block_half_extents[1]) \
+                and (dx < self.scene_description.block_half_extents[0])
         elif dir == "right":
+            dx = abs(block1_pose.position[0] - block2_pose.position[0])
             dy = block1_pose.position[1] - block2_pose.position[1]
             return (dy < -self.scene_description.block_half_extents[1]) \
-                and (abs(dy) < 4 * self.scene_description.block_half_extents[1])
+                and (abs(dy) < 4 * self.scene_description.block_half_extents[1]) \
+                and (dx < self.scene_description.block_half_extents[0])
         elif dir == "front":
             dx = block1_pose.position[0] - block2_pose.position[0]
+            dy = abs(block1_pose.position[1] - block2_pose.position[1])
             return (dx > self.scene_description.block_half_extents[1]) \
-                and (abs(dx) < 4 * self.scene_description.block_half_extents[1]) 
+                and (abs(dx) < 4 * self.scene_description.block_half_extents[1]) \
+                and (dy < self.scene_description.block_half_extents[0])
         elif dir == "back":
             dx = block1_pose.position[0] - block2_pose.position[0]
+            dy = abs(block1_pose.position[1] - block2_pose.position[1])
             return (dx < -self.scene_description.block_half_extents[1]) \
-                and (abs(dx) < 4 * self.scene_description.block_half_extents[1])
+                and (abs(dx) < 4 * self.scene_description.block_half_extents[1]) \
+                and (dy < self.scene_description.block_half_extents[0])
         else:
             raise ValueError(f"Invalid direction: {dir}. Use 'left', 'right', 'front', or 'back'.")
 
@@ -637,15 +648,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
         max_y = (
             drawer_pos[1] + drawer_depth / 2 - block_half_extents[1] - wall_thickness
         )
-        z = (
-            drawer_pos[2]
-            + (
-                scene_description.dimensions.drawer_bottom_z_offset
-                - scene_description.dimensions.drawer_bottom_thickness / 2
-            )
-            / 2
-            + block_half_extents[2]
-        )
+        z = scene_description.dimensions.on_drawer_block_z
 
         # move the target to further from the tabel edge
         # otherwise very weird collision happens
@@ -790,9 +793,11 @@ class ClutteredDrawerPyBulletBlocksEnv(
         min_x = (
             drawer_pos[0] - drawer_width / 2 + block_half_extents[0] + wall_thickness
         )
-        max_x = (
+        max_x_kine = (
             drawer_pos[0] + drawer_width / 2 - block_half_extents[0] - wall_thickness
         )
+        max_x_dyn = min_x + scene_description.drawer_travel_distance
+        max_x = min(max_x_kine, max_x_dyn)
         min_y = (
             drawer_pos[1] - drawer_depth / 2 + block_half_extents[1] + wall_thickness
         )
@@ -801,15 +806,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             drawer_pos[1] + drawer_depth / 2 - block_half_extents[1] - wall_thickness
         )
         max_middle_y = max_y - scene_description.drawer_placement_y_offset
-        z = (
-            drawer_pos[2]
-            + (
-                scene_description.dimensions.drawer_bottom_z_offset
-                - scene_description.dimensions.drawer_bottom_thickness / 2
-            )
-            / 2
-            + block_half_extents[2]
-        )
+        z = scene_description.dimensions.on_drawer_block_z
         for _ in range(10000):
             block_position_y_range = self.np_random.choice(
                 [(min_y, min_middle_y), (max_middle_y, max_y)])

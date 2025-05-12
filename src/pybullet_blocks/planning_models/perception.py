@@ -95,7 +95,7 @@ DRAWER_PREDICATES = {
     LeftClear,
     RightClear,
     FrontClear,
-    BackClear,
+    BackClear
 }
 
 
@@ -673,45 +673,41 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
     
     def _interpret_LeftClear(self) -> set[GroundAtom]:
         """Determine if the left side is clear."""
-        left_clear_atoms = set()
         # This only evaluates the target block, as all other blocks are
         # always graspable, and they are grasped by other operators.
         blocking_left_atoms = self._interpret_BlockingLeft()
         if len(blocking_left_atoms) > 0:
-            return left_clear_atoms
+            return set()
         else:
             return {GroundAtom(LeftClear, [self._target_block])}
         
     def _interpret_RightClear(self) -> set[GroundAtom]:
         """Determine if the right side is clear."""
-        right_clear_atoms = set()
         # This only evaluates the target block, as all other blocks are
         # always graspable, and they are grasped by other operators.
         blocking_right_atoms = self._interpret_BlockingRight()
         if len(blocking_right_atoms) > 0:
-            return right_clear_atoms
+            return set()
         else:
             return {GroundAtom(RightClear, [self._target_block])}
         
     def _interpret_FrontClear(self) -> set[GroundAtom]:
         """Determine if the front side is clear."""
-        front_clear_atoms = set()
         # This only evaluates the target block, as all other blocks are
         # always graspable, and they are grasped by other operators.
         blocking_front_atoms = self._interpret_BlockingFront()
         if len(blocking_front_atoms) > 0:
-            return front_clear_atoms
+            return set()
         else:
             return {GroundAtom(FrontClear, [self._target_block])}
         
     def _interpret_BackClear(self) -> set[GroundAtom]:
         """Determine if the back side is clear."""
-        back_clear_atoms = set()
         # This only evaluates the target block, as all other blocks are
         # always graspable, and they are grasped by other operators.
         blocking_back_atoms = self._interpret_BlockingBack()
         if len(blocking_back_atoms) > 0:
-            return back_clear_atoms
+            return set()
         else:
             return {GroundAtom(BackClear, [self._target_block])}
 
