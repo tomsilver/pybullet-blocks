@@ -41,16 +41,34 @@ from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
     PickPlacePyBulletBlocksState,
 )
+from pybullet_blocks.planning_models.manipulation import (
+    get_kinematic_plan_to_lift_place_object,
+    get_kinematic_plan_to_reach_object,
+)
 from pybullet_blocks.planning_models.perception import (
+    BackClear,
+    BlockingBack,
+    BlockingFront,
+    BlockingLeft,
+    BlockingRight,
+    FrontClear,
     GripperEmpty,
     Holding,
+    IsDrawer,
     IsMovable,
+    IsTable,
     IsTarget,
+    IsTargetBlock,
+    LeftClear,
     NothingOn,
     NotHolding,
     NotIsMovable,
     NotIsTarget,
+    NotIsTargetBlock,
+    NotReadyPick,
     On,
+    ReadyPick,
+    RightClear,
     object_type,
     robot_type,
 )
@@ -102,27 +120,264 @@ PickFromTargetOperator = LiftedOperator(
     },
 )
 
-# no NothingOn
-PickFromDrawerOperator = LiftedOperator(
-    "PickFromDrawer",
-    [Robot, Obj, Surface],
+# For drawer
+ReachOperator = LiftedOperator(
+    "Reach",
+    [Robot, Obj],
     preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+    },
+    add_effects={
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+    },
+)
+
+Obj_blo = Variable("?objblo", object_type)
+Obj_blo2 = Variable("?objblo2", object_type)
+Obj_tgt = Variable("?objtgt", object_type)
+# For grasping the target block
+
+# Now we have to assume when grasping from left right, the
+# front and back are still blocking, since this operator
+# will delete the blocking atoms.
+GraspLeftRightOperator = LiftedOperator(
+    "GraspLeftRight",
+    [Robot, Obj, Obj_blo, Obj_blo2, Surface],
+    preconditions={
+        LiftedAtom(IsTargetBlock, [Obj]),
         LiftedAtom(IsMovable, [Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(On, [Obj, Surface]),
-        LiftedAtom(NotIsTarget, [Surface]),
+        LiftedAtom(IsDrawer, [Surface]),
         LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(LeftClear, [Obj]),
+        LiftedAtom(RightClear, [Obj]),
+        LiftedAtom(BlockingBack, [Obj_blo, Obj]),
+        LiftedAtom(BlockingFront, [Obj_blo2, Obj]),
     },
     add_effects={
         LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(FrontClear, [Obj]),
+        LiftedAtom(BackClear, [Obj]),
     },
     delete_effects={
         LiftedAtom(NotHolding, [Robot, Obj]),
         LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(BlockingBack, [Obj_blo, Obj]),
+        LiftedAtom(BlockingFront, [Obj_blo2, Obj]),
+    },
+)
+
+GraspFrontBackOperator = LiftedOperator(
+    "GraspFrontBack",
+    [Robot, Obj, Obj_blo, Obj_blo2, Surface],
+    preconditions={
+        LiftedAtom(IsTargetBlock, [Obj]),
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(IsDrawer, [Surface]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(FrontClear, [Obj]),
+        LiftedAtom(BackClear, [Obj]),
+        LiftedAtom(BlockingLeft, [Obj_blo, Obj]),
+        LiftedAtom(BlockingRight, [Obj_blo2, Obj]),
+    },
+    add_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(LeftClear, [Obj]),
+        LiftedAtom(RightClear, [Obj]),
+    },
+    delete_effects={
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(BlockingLeft, [Obj_blo, Obj]),
+        LiftedAtom(BlockingRight, [Obj_blo2, Obj]),
+    },
+)
+
+GraspFullClearOperator = LiftedOperator(
+    "GraspFullClear",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(IsTargetBlock, [Obj]),
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(IsDrawer, [Surface]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(FrontClear, [Obj]),
+        LiftedAtom(BackClear, [Obj]),
+        LiftedAtom(LeftClear, [Obj]),
+        LiftedAtom(RightClear, [Obj]),
+    },
+    add_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
         LiftedAtom(On, [Obj, Surface]),
     },
 )
+
+# For grasping the blocking blocks
+# Note that grasping does not involve changes in the
+# blocking predicates, only placement does.
+# Such that wiggling behavior connects two nodes without
+# the need to achieve holding at the same time.
+GraspNonTargetOperator = LiftedOperator(
+    "GraspNonTarget",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(IsDrawer, [Surface]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+    },
+    add_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(On, [Obj, Surface]),
+    },
+)
+
+# For Placing the blocking block
+PlaceFrontBlockOperator = LiftedOperator(
+    "PlaceFrontBlock",
+    [Robot, Obj, Obj_tgt, Surface],
+    preconditions={
+        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(IsDrawer, [Surface]),
+        LiftedAtom(BlockingFront, [Obj, Obj_tgt]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(FrontClear, [Obj_tgt]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(BlockingFront, [Obj, Obj_tgt]),
+    },
+)
+
+PlaceBackBlockOperator = LiftedOperator(
+    "PlaceBackBlock",
+    [Robot, Obj, Obj_tgt, Surface],
+    preconditions={
+        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(IsDrawer, [Surface]),
+        LiftedAtom(BlockingBack, [Obj, Obj_tgt]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(BackClear, [Obj_tgt]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(BlockingBack, [Obj, Obj_tgt]),
+    },
+)
+
+PlaceLeftBlockOperator = LiftedOperator(
+    "PlaceLeftBlock",
+    [Robot, Obj, Obj_tgt, Surface],
+    preconditions={
+        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(IsDrawer, [Surface]),
+        LiftedAtom(BlockingLeft, [Obj, Obj_tgt]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(LeftClear, [Obj_tgt]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(BlockingLeft, [Obj, Obj_tgt]),
+    },
+)
+
+PlaceRightBlockOperator = LiftedOperator(
+    "PlaceRightBlock",
+    [Robot, Obj, Obj_tgt, Surface],
+    preconditions={
+        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(IsDrawer, [Surface]),
+        LiftedAtom(BlockingRight, [Obj, Obj_tgt]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(RightClear, [Obj_tgt]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(BlockingRight, [Obj, Obj_tgt]),
+    },
+)
+
+# For the target block
+PlaceTargetOperator = LiftedOperator(
+    "PlaceTarget",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(IsTargetBlock, [Obj]),
+        LiftedAtom(IsTable, [Surface]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+    },
+)
+# End of drawer
 
 PlaceOperator = LiftedOperator(
     "Place",
@@ -214,8 +469,16 @@ OPERATORS = {
 }
 
 OPERATORS_DRAWER = {
-    PickFromDrawerOperator,
-    PlaceOperator,
+    ReachOperator,
+    GraspFrontBackOperator,
+    GraspLeftRightOperator,
+    GraspFullClearOperator,
+    GraspNonTargetOperator,
+    PlaceTargetOperator,
+    PlaceFrontBlockOperator,
+    PlaceBackBlockOperator,
+    PlaceLeftBlockOperator,
+    PlaceRightBlockOperator,
 }
 
 
@@ -481,24 +744,61 @@ class PickFromTargetSkill(PickSkill):
         return PickFromTargetOperator
 
 
-class PickFromDrawerSkill(PickSkill):
-    """Skill for picking from target area."""
+class ReachSkill(PyBulletBlocksSkill):
+    """Skill for reaching."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
-        return PickFromDrawerOperator
+        return ReachOperator
 
     def _get_kinematic_plan_given_objects(
         self,
         objects: Sequence[Object],
         state: KinematicState,
     ) -> list[KinematicState] | None:
-        _, block, surface = objects
+        # same as pick
+        _, block = objects
+        block_id = self._object_to_pybullet_id(block)
+        collision_ids = set(state.object_poses)
+
+        def reach_generator() -> Iterator[Pose]:
+            relative_x = 0.0
+            relative_y = 0.0
+            relative_z = self._sim.np_random.uniform(0.06, 0.09)
+            relative_reach = Pose(
+                (relative_x, relative_y, relative_z), self._robot_grasp_orientation
+            )
+            yield relative_reach
+
+        kinematic_plan = get_kinematic_plan_to_reach_object(
+            state,
+            self._sim.robot,
+            block_id,
+            collision_ids,
+            reach_generator=reach_generator(),
+            reach_generator_iters=5,
+        )
+        return kinematic_plan
+
+
+class GraspFrontBackSkill(PickSkill):
+    """Skill for grasping in the drawer domain."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return GraspFrontBackOperator
+
+    def _get_kinematic_plan_given_objects(
+        self,
+        objects: Sequence[Object],
+        state: KinematicState,
+    ) -> list[KinematicState] | None:
+        # same as pick
+        _, block, _, _, surface = objects
         block_id = self._object_to_pybullet_id(block)
         surface_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses)
         # add one more possible relative grasp (orientation)
         relative_grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
-        relative_pose = Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, np.pi / 2]))
+        relative_pose = Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2]))
         relative_grasp_2 = multiply_poses(relative_grasp_1, relative_pose)
         relative_grasp = [relative_grasp_1, relative_grasp_2]
         grasp_generator = iter(relative_grasp)
@@ -512,6 +812,193 @@ class PickFromDrawerSkill(PickSkill):
             grasp_generator_iters=5,
         )
         return kinematic_plan
+
+
+class GraspLeftRightSkill(GraspFrontBackSkill):
+    """Skill for grasping in the drawer domain."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return GraspLeftRightOperator
+
+
+class GraspFullClearSkill(PickSkill):
+    """Skill for grasping in the drawer domain."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return GraspFullClearOperator
+
+    def _get_kinematic_plan_given_objects(
+        self,
+        objects: Sequence[Object],
+        state: KinematicState,
+    ) -> list[KinematicState] | None:
+        # same as pick
+        _, block, surface = objects
+        block_id = self._object_to_pybullet_id(block)
+        surface_id = self._object_to_pybullet_id(surface)
+        collision_ids = set(state.object_poses)
+        # add one more possible relative grasp (orientation)
+        relative_grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
+        relative_pose = Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2]))
+        relative_grasp_2 = multiply_poses(relative_grasp_1, relative_pose)
+        relative_grasp = [relative_grasp_1, relative_grasp_2]
+        grasp_generator = iter(relative_grasp)
+        kinematic_plan = get_kinematic_plan_to_pick_object(
+            state,
+            self._sim.robot,
+            block_id,
+            surface_id,
+            collision_ids,
+            grasp_generator=grasp_generator,
+            grasp_generator_iters=5,
+        )
+        return kinematic_plan
+
+
+class GraspNonTargetSkill(GraspFullClearSkill):
+    """Skill for grasping in the drawer domain."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return GraspNonTargetOperator
+
+
+class PlaceTargetSkill(PyBulletBlocksSkill):
+    """Skill for placing in the drawer domain.
+
+    The drawer is cluttered, so we uniquely design motion planning for
+    it. This is for placing the target block on the Table.
+    """
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceTargetOperator
+
+    def _get_kinematic_plan_given_objects(
+        self, objects: Sequence[Object], state: KinematicState
+    ) -> list[KinematicState] | None:
+        _, block, surface = objects
+
+        block_id = self._object_to_pybullet_id(block)
+        surface_id = self._object_to_pybullet_id(surface)
+        collision_ids = set(state.object_poses) - {block_id}
+        placement_generator = self._generate_surface_placements(
+            block_id, surface_id, state
+        )
+        # use customized motion planner
+        kinematic_plan = get_kinematic_plan_to_lift_place_object(
+            state,
+            self._sim.robot,
+            block_id,
+            surface_id,
+            collision_ids,
+            placement_generator=placement_generator,
+            placement_generator_iters=30,
+            max_motion_planning_time=3.0,
+            birrt_num_attempts=30,
+            birrt_num_iters=500,
+        )
+        return kinematic_plan
+
+    def _generate_surface_placements(
+        self, held_obj_id: int, table_id: int, state: KinematicState
+    ) -> Iterator[Pose]:
+        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
+            # For cluttered drawer, sample placements on the table top region.
+            while True:
+                world_to_placement = self._sim.sample_free_table_place_pose(held_obj_id)
+                world_to_table = state.object_poses[table_id]
+                table_to_placement = multiply_poses(
+                    world_to_table.invert(), world_to_placement
+                )
+                yield table_to_placement
+        else:
+            raise NotImplementedError
+
+
+class PlaceFrontBlockSkill(PyBulletBlocksSkill):
+    """Skill for placing in the drawer domain.
+
+    The drawer is cluttered, so we uniquely design motion planning for
+    it. This is for placing the non target block on the drawer.
+    """
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceFrontBlockOperator
+
+    def _get_kinematic_plan_given_objects(
+        self, objects: Sequence[Object], state: KinematicState
+    ) -> list[KinematicState] | None:
+        _, block, _, surface = objects
+
+        block_id = self._object_to_pybullet_id(block)
+        surface_id = self._object_to_pybullet_id(surface)
+        collision_ids = set(state.object_poses) - {block_id}
+        placement_generator = self._generate_surface_placements(
+            block_id, surface_id, state
+        )
+        # use customized motion planner
+        kinematic_plan = get_kinematic_plan_to_lift_place_object(
+            state,
+            self._sim.robot,
+            block_id,
+            surface_id,
+            collision_ids,
+            placement_generator=placement_generator,
+            placement_generator_iters=30,
+            max_motion_planning_time=3.0,
+            birrt_num_attempts=30,
+            birrt_num_iters=500,
+        )
+        return kinematic_plan
+
+    def _generate_surface_placements(
+        self, held_obj_id: int, table_id: int, state: KinematicState
+    ) -> Iterator[Pose]:
+        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
+            # For cluttered drawer, sample placements on the table top region.
+            while True:
+                world_to_placement = self._sim.sample_free_drawer_place_pose(
+                    held_obj_id
+                )
+                world_to_table = state.object_poses[table_id]
+                table_to_placement = multiply_poses(
+                    world_to_table.invert(), world_to_placement
+                )
+                yield table_to_placement
+        else:
+            raise NotImplementedError
+
+
+class PlaceBackBlockSkill(PlaceFrontBlockSkill):
+    """Skill for placing in the drawer domain.
+
+    The drawer is cluttered, so we uniquely design motion planning for
+    it. This is for placing the non target block on the drawer.
+    """
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceBackBlockOperator
+
+
+class PlaceLeftBlockSkill(PlaceFrontBlockSkill):
+    """Skill for placing in the drawer domain.
+
+    The drawer is cluttered, so we uniquely design motion planning for
+    it. This is for placing the non target block on the drawer.
+    """
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceLeftBlockOperator
+
+
+class PlaceRightBlockSkill(PlaceFrontBlockSkill):
+    """Skill for placing in the drawer domain.
+
+    The drawer is cluttered, so we uniquely design motion planning for
+    it. This is for placing the non target block on the drawer.
+    """
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return PlaceRightBlockOperator
 
 
 class PlaceSkill(PyBulletBlocksSkill):
@@ -543,7 +1030,10 @@ class PlaceSkill(PyBulletBlocksSkill):
             surface_id,
             collision_ids,
             placement_generator=placement_generator,
-            placement_generator_iters=20,
+            placement_generator_iters=30,
+            max_motion_planning_time=3.0,
+            birrt_num_attempts=30,
+            birrt_num_iters=500,
         )
         return kinematic_plan
 
@@ -560,15 +1050,6 @@ class PlaceSkill(PyBulletBlocksSkill):
         ):
             while True:
                 world_to_placement = self._sim.sample_free_block_pose(held_obj_id)
-                world_to_table = state.object_poses[table_id]
-                table_to_placement = multiply_poses(
-                    world_to_table.invert(), world_to_placement
-                )
-                yield table_to_placement
-        elif isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
-            # For cluttered drawer, sample placements on the table top region.
-            while True:
-                world_to_placement = self._sim.sample_free_block_place_pose(held_obj_id)
                 world_to_table = state.object_poses[table_id]
                 table_to_placement = multiply_poses(
                     world_to_table.invert(), world_to_placement
@@ -622,4 +1103,15 @@ SKILLS = {
     StackSkill,
 }
 
-SKILLS_DRAWER = {PickFromDrawerSkill, PlaceSkill}
+SKILLS_DRAWER = {
+    ReachSkill,
+    GraspFrontBackSkill,
+    GraspLeftRightSkill,
+    GraspFullClearSkill,
+    GraspNonTargetSkill,
+    PlaceTargetSkill,
+    PlaceFrontBlockSkill,
+    PlaceBackBlockSkill,
+    PlaceLeftBlockSkill,
+    PlaceRightBlockSkill,
+}
