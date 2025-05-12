@@ -129,7 +129,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
         )
 
     @property
-    def table_placement_position_lower(self) -> tuple[float, float, float]:
+    def table_placement_position_upper(self) -> tuple[float, float, float]:
         """Upper bounds for block position."""
         # Bias x-aixs sampling to be closer to the robot.
         return (
