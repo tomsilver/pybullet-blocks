@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, Collection
+from typing import Any, Collection, List
 
 import numpy as np
 import pybullet as p
@@ -97,11 +97,14 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     target_block_letter: str = "T"
     target_block_rgba: tuple[float, float, float, float] = (0.2, 0.8, 0.2, 1.0)
 
-    # placement sampling parameters, no collisions but also have contact points.
+    # tabel placement sampling parameters, no collisions but also have contact points.
     # between 1e-6 and 1e-3.
     placement_z_offset: float = 1e-4
     placement_x_offset: float = 0.1  # from table edge
     placement_y_offset: float = 0.25  # from table center line
+
+    # drawer placement sampling parameters
+    drawer_placement_y_offset: float = 0.1  # from drawer edge
 
     # pick related settings
     z_dist_threshold: float = 0.1  # Z distance threshold for pick
@@ -111,7 +114,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     tgt_x_offset: float = -0.08  # w.r.t. drawer center
 
     @property
-    def block_placement_position_lower(self) -> tuple[float, float, float]:
+    def table_placement_position_lower(self) -> tuple[float, float, float]:
         """Lower bounds for block position."""
         return (
             self.drawer_table_pos[0]
@@ -124,7 +127,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
         )
 
     @property
-    def block_placement_position_upper(self) -> tuple[float, float, float]:
+    def table_placement_position_lower(self) -> tuple[float, float, float]:
         """Upper bounds for block position."""
         # Bias x-aixs sampling to be closer to the robot.
         return (
@@ -138,7 +141,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
             + self.block_half_extents[2]
             + self.placement_z_offset,
         )
-
+    
 
 @dataclass(frozen=True)
 class ClutteredDrawerPyBulletBlocksState(PyBulletBlocksState):
@@ -532,6 +535,46 @@ class ClutteredDrawerPyBulletBlocksEnv(
 
         return self.is_block_on_drawer(block_id) and z_ok and xy_ok
 
+    def is_block_target(self, block_id: int) -> bool:
+        """Check if a block is the target block."""
+        return block_id == self.target_block_id
+    
+    def is_block_blocking(self, block1_id: int, 
+                          block2_id: int,
+                          dir: str) ->  bool:
+        """Check if a block is blocking another block."""
+        # First, if block1 is not on drawer
+        if not self.is_block_on_drawer(block1_id):
+            return False
+        
+        # Get block position
+        block1_pose = get_pose(block1_id, self.physics_client_id)
+        block2_pose = get_pose(block2_id, self.physics_client_id)
+        dist = np.sqrt(sum((np.array(block1_pose.position) - np.array(block2_pose.position)) ** 2))
+        # If the distance is larger than 3 times the block size, they are not blocking each other
+        if dist > 6 * self.scene_description.block_half_extents[0]:
+            return False
+        
+        # Check dir
+        if dir == "left":
+            dy = block1_pose.position[1] - block2_pose.position[1]
+            return (dy > self.scene_description.block_half_extents[1]) \
+                and (abs(dy) < 4 * self.scene_description.block_half_extents[1])
+        elif dir == "right":
+            dy = block1_pose.position[1] - block2_pose.position[1]
+            return (dy < -self.scene_description.block_half_extents[1]) \
+                and (abs(dy) < 4 * self.scene_description.block_half_extents[1])
+        elif dir == "front":
+            dx = block1_pose.position[0] - block2_pose.position[0]
+            return (dx > self.scene_description.block_half_extents[1]) \
+                and (abs(dx) < 4 * self.scene_description.block_half_extents[1]) 
+        elif dir == "back":
+            dx = block1_pose.position[0] - block2_pose.position[0]
+            return (dx < -self.scene_description.block_half_extents[1]) \
+                and (abs(dx) < 4 * self.scene_description.block_half_extents[1])
+        else:
+            raise ValueError(f"Invalid direction: {dir}. Use 'left', 'right', 'front', or 'back'.")
+
     def reset(  # type: ignore[override]
         self,
         *,
@@ -632,6 +675,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
                 set_pose(block_id, Pose(block_positions[i]), self.physics_client_id)
             else:
                 # If more blocks than positions, place randomly within drawer
+                # TODO: Avoid making the non-target blocks not graspable
                 random_x = self.np_random.uniform(min_x, max_x)
                 random_y = self.np_random.uniform(min_y, max_y)
                 set_pose(
@@ -697,12 +741,12 @@ class ClutteredDrawerPyBulletBlocksEnv(
         clone_env.set_state(self.get_state())
         return clone_env
 
-    def sample_free_block_place_pose(self, block_id: int) -> Pose:
+    def sample_free_table_place_pose(self, block_id: int) -> Pose:
         """Sample a free pose on the table."""
         for _ in range(10000):
             block_position = self.np_random.uniform(
-                self.scene_description.block_placement_position_lower,
-                self.scene_description.block_placement_position_upper,
+                self.scene_description.table_placement_position_lower,
+                self.scene_description.table_placement_position_upper,
                 size=3,
             )
             set_pose(
@@ -724,4 +768,75 @@ class ClutteredDrawerPyBulletBlocksEnv(
                     break
             if collision_free:
                 return Pose((block_position[0], block_position[1], block_position[2]))
+        raise RuntimeError("Could not sample free block position.")
+
+    def sample_free_drawer_place_pose(self, block_id: int) -> Pose:
+        """Sample a free pose on the table."""
+        scene_description = self.scene_description
+        assert isinstance(scene_description, ClutteredDrawerSceneDescription)
+
+        drawer_state = p.getLinkState(
+            self.drawer_with_table_id,
+            self.drawer_joint_index,
+            computeLinkVelocity=0,
+            computeForwardKinematics=1,
+            physicsClientId=self.physics_client_id,
+        )
+        drawer_pos = drawer_state[0]  # worldLinkPosition
+        block_half_extents = scene_description.block_half_extents
+        drawer_width = scene_description.dimensions.drawer_width
+        drawer_depth = scene_description.dimensions.drawer_depth
+        wall_thickness = scene_description.dimensions.drawer_wall_thickness
+        min_x = (
+            drawer_pos[0] - drawer_width / 2 + block_half_extents[0] + wall_thickness
+        )
+        max_x = (
+            drawer_pos[0] + drawer_width / 2 - block_half_extents[0] - wall_thickness
+        )
+        min_y = (
+            drawer_pos[1] - drawer_depth / 2 + block_half_extents[1] + wall_thickness
+        )
+        min_middle_y = min_y + scene_description.drawer_placement_y_offset
+        max_y = (
+            drawer_pos[1] + drawer_depth / 2 - block_half_extents[1] - wall_thickness
+        )
+        max_middle_y = max_y - scene_description.drawer_placement_y_offset
+        z = (
+            drawer_pos[2]
+            + (
+                scene_description.dimensions.drawer_bottom_z_offset
+                - scene_description.dimensions.drawer_bottom_thickness / 2
+            )
+            / 2
+            + block_half_extents[2]
+        )
+        for _ in range(10000):
+            block_position_y_range = self.np_random.choice(
+                [(min_y, min_middle_y), (max_middle_y, max_y)])
+            block_position_y = self.np_random.uniform(
+                block_position_y_range[0], block_position_y_range[1])
+            block_position_xz = self.np_random.uniform(
+                [min_x, z],
+                [max_x, z + scene_description.placement_z_offset],
+                size=2,
+            )
+            set_pose(
+                block_id,
+                Pose((block_position_xz[0], block_position_y, block_position_xz[1])),
+                self.physics_client_id,
+            )
+            collision_free = True
+            p.performCollisionDetection(physicsClientId=self.physics_client_id)
+            for collision_id in self.get_collision_check_ids(block_id):
+                collision = check_body_collisions(
+                    block_id,
+                    collision_id,
+                    self.physics_client_id,
+                    perform_collision_detection=False,
+                )
+                if collision:
+                    collision_free = False
+                    break
+            if collision_free:
+                return Pose((block_position_xz[0], block_position_y, block_position_xz[1]))
         raise RuntimeError("Could not sample free block position.")
