@@ -32,6 +32,7 @@ def get_kinematic_plan_to_reach_object(
     collision_ids: set[int],
     reach_generator: Iterator[Pose],
     reach_generator_iters: int = int(1e6),
+    lifting_height: float = 0.2,
     object_link_id: int | None = None,
     max_motion_planning_time: float = 1.0,
     max_motion_planning_candidates: int | None = None,
@@ -69,6 +70,30 @@ def get_kinematic_plan_to_reach_object(
         state = initial_state
         plan = [state]
 
+        # First lift the hand to above everything.
+        curr_ee_pose = robot.get_end_effector_pose()
+        lift_pose = Pose(
+            (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
+            curr_ee_pose.orientation,
+        )
+        plan_to_lift = run_smooth_motion_planning_to_pose(
+            lift_pose,
+            robot,
+            collision_ids=collision_ids - {object_id},
+            end_effector_frame_to_plan_frame=Pose.identity(),
+            seed=seed,
+            max_time=max_motion_planning_time,
+            max_candidate_plans=max_motion_planning_candidates,
+        )
+        assert plan_to_lift is not None, "Lifting should always succeed."
+        # Motion planning succeeded, so update the plan.
+        for robot_joints in plan_to_lift:
+            state = state.copy_with(robot_joints=robot_joints)
+            plan.append(state)
+
+        # Set the state back to continue planning.
+        state.set_pybullet(robot)
+
         # Calculate the reach in the world frame.
         object_pose = state.object_poses[object_id]
         reach = multiply_poses(object_pose, object_to_link, relative_reach)
@@ -101,6 +126,154 @@ def get_kinematic_plan_to_reach_object(
     return None
 
 
+def get_kinematic_plan_to_grasp_object(
+    initial_state: KinematicState,
+    robot: FingeredSingleArmPyBulletRobot,
+    object_id: int,
+    surface_id: int,
+    collision_ids: set[int],
+    grasp_generator: Iterator[Pose],
+    grasp_generator_iters: int = int(1e6),
+    object_link_id: int | None = None,
+    surface_link_id: int | None = None,
+    postgrasp_translation: Pose | None = None,
+    postgrasp_translation_magnitude: float = 0.05,
+    max_motion_planning_time: float = 1.0,
+    max_smoothing_iters_per_step: int = 1,
+) -> list[KinematicState] | None:
+    """Make a plan to pick up the object from a surface.
+
+    The grasp pose is in the object frame.
+
+    The surface is used to determine the direction that the robot should move
+    directly after picking (to remove contact between the object and surface).
+
+    Users should make grasp_generator finite to prevent infinite loops, unless
+    they are very confident that some feasible grasp plan exists.
+
+    NOTE: this function updates pybullet directly and arbitrarily. Users should
+    reset the pybullet state as appropriate after calling this function.
+    """
+    # Reset the simulator to the initial state to restart the planning.
+    initial_state.set_pybullet(robot)
+    state = initial_state
+    all_object_ids = set(state.object_poses)
+    joint_distance_fn = create_joint_distance_fn(robot)
+
+    # Calculate once the direction to move after grasping succeeds. Using the
+    # contact normal with the surface.
+    if postgrasp_translation is None:
+        postgrasp_translation = get_approach_pose_from_contact_normals(
+            object_id,
+            surface_id,
+            robot.physics_client_id,
+            surface_link_id=surface_link_id,
+            translation_magnitude=postgrasp_translation_magnitude,
+        )
+
+    # Prepare to transform grasps relative to the link into the object frame.
+    if object_link_id is None:
+        object_to_link = Pose.identity()
+    else:
+        object_to_link = get_relative_link_pose(
+            object_id, object_link_id, -1, robot.physics_client_id
+        )
+
+    num_attempts = 0
+    for relative_grasp in grasp_generator:
+        # Reset the simulator to the initial state to restart the planning.
+        initial_state.set_pybullet(robot)
+        state = initial_state
+        plan = [state]
+
+        # Calculate the grasp in the world frame.
+        object_pose = state.object_poses[object_id]
+        grasp = multiply_poses(object_pose, object_to_link, relative_grasp)
+
+        # Move to grasp.
+        end_effector_pose = robot.get_end_effector_pose()
+        end_effector_path = list(
+            iter_between_poses(
+                end_effector_pose,
+                grasp,
+                include_start=False,
+            )
+        )
+        try:
+            pregrasp_to_grasp_plan = smoothly_follow_end_effector_path(
+                robot,
+                end_effector_path,
+                state.robot_joints,
+                collision_ids - {object_id, surface_id},
+                joint_distance_fn,
+                max_time=max_motion_planning_time,
+                max_smoothing_iters_per_step=max_smoothing_iters_per_step,
+                include_start=False,
+            )
+        except InverseKinematicsError:
+            pregrasp_to_grasp_plan = None
+        num_attempts += 1
+        # If motion planning failed, try a different grasp.
+        if pregrasp_to_grasp_plan is None:
+            if num_attempts >= grasp_generator_iters:
+                return None
+            continue
+        # Motion planning succeeded, so update the plan.
+        for robot_joints in pregrasp_to_grasp_plan:
+            state = state.copy_with(robot_joints=robot_joints)
+            plan.append(state)
+        # Sync the simulator.
+        state.set_pybullet(robot)
+
+        # Update the state to include a grasp attachment.
+        state = KinematicState.from_pybullet(
+            robot, all_object_ids, attached_object_ids={object_id}
+        )
+        plan.append(state)
+
+        # Move off the surface.
+        end_effector_pose = robot.get_end_effector_pose()
+        post_grasp_pose = multiply_poses(postgrasp_translation, end_effector_pose)
+        end_effector_path = list(
+            iter_between_poses(
+                end_effector_pose,
+                post_grasp_pose,
+                include_start=False,
+            )
+        )
+
+        try:
+            grasp_to_postgrasp_plan = smoothly_follow_end_effector_path(
+                robot,
+                end_effector_path,
+                state.robot_joints,
+                collision_ids - {object_id, surface_id},
+                joint_distance_fn,
+                max_time=max_motion_planning_time,
+                max_smoothing_iters_per_step=max_smoothing_iters_per_step,
+                include_start=False,
+                held_object=object_id,
+                base_link_to_held_obj=relative_grasp.invert(),
+            )
+        except InverseKinematicsError:
+            grasp_to_postgrasp_plan = None
+        # If motion planning failed, try a different grasp.
+        if grasp_to_postgrasp_plan is None:
+            if num_attempts >= grasp_generator_iters:
+                return None
+            continue
+        # Motion planning succeeded, so update the plan.
+        for robot_joints in grasp_to_postgrasp_plan:
+            state = state.copy_with(robot_joints=robot_joints)
+            plan.append(state)
+
+        # Planning succeeded.
+        return plan
+
+    # No grasp worked.
+    return None
+
+
 def get_kinematic_plan_to_lift_place_object(
     initial_state: KinematicState,
     robot: FingeredSingleArmPyBulletRobot,
@@ -111,7 +284,7 @@ def get_kinematic_plan_to_lift_place_object(
     placement_generator_iters: int = int(1e6),
     object_link_id: int | None = None,
     surface_link_id: int | None = None,
-    lifting_height: float = 0.4,
+    lifting_height: float = 0.2,
     preplace_translation_magnitude: float = 0.05,
     max_motion_planning_time: float = 1.0,
     max_motion_planning_candidates: int | None = None,
@@ -180,6 +353,9 @@ def get_kinematic_plan_to_lift_place_object(
         for robot_joints in plan_to_lift:
             state = state.copy_with(robot_joints=robot_joints)
             plan.append(state)
+
+        # Set the state back to continue planning.
+        state.set_pybullet(robot)
 
         # Calculate the placement.
         surface_pose = state.object_poses[surface_id]
