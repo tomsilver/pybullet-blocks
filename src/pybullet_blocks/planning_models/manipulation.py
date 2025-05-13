@@ -356,7 +356,7 @@ def get_kinematic_plan_to_lift_place_object(
 
         # Set the state back to continue planning.
         state.set_pybullet(robot)
-
+        
         # Calculate the placement.
         surface_pose = state.object_poses[surface_id]
         object_to_surface_placement = multiply_poses(

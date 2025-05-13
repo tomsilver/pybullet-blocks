@@ -113,6 +113,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
         -0.01,
         0.01,
     )  # Z distance threshold for pick
+
     xy_dist_threshold: float = 0.025  # XY distance threshold for pick
 
     # Initial target block position offset
@@ -751,6 +752,40 @@ class ClutteredDrawerPyBulletBlocksEnv(
         collision_ids.update(all_blocks - {block_id})
         return collision_ids
 
+    def extract_relevant_object_features(self, obs, relevant_object_names):
+        """Extract features from relevant objects in the observation."""
+        if not hasattr(obs, "nodes"):
+            return obs  # Not a graph observation
+
+        nodes = obs.nodes
+        robot_node = None
+        drawer_node = None
+        block_nodes = {}
+
+        for node in nodes:
+            if np.isclose(node[0], 0):  # Robot
+                robot_node = node[1 : RobotState.get_dimension()]
+            elif np.isclose(node[0], 2):  # Drawer
+                drawer_node = node[1:3]
+            elif np.isclose(node[0], 1):  # Block
+                lettered_block_dim = LetteredBlockState.get_dimension()
+                if len(node) >= lettered_block_dim:
+                    letter_idx = lettered_block_dim - 2
+                    letter_val = int(node[letter_idx])
+                    letter = chr(int(letter_val + 65))
+                    if letter in relevant_object_names:
+                        block_nodes[letter] = node[1:lettered_block_dim]
+
+        features = []
+        features.extend(robot_node)
+        if "drawer" in relevant_object_names and drawer_node is not None:
+            features.extend(drawer_node)
+        for obj_name in sorted(relevant_object_names):
+            if obj_name in block_nodes:
+                features.extend(block_nodes[obj_name])
+
+        return np.array(features, dtype=np.float32)
+
     def clone(self) -> ClutteredDrawerPyBulletBlocksEnv:
         """Clone the environment."""
         clone_env = ClutteredDrawerPyBulletBlocksEnv(
@@ -841,11 +876,13 @@ class ClutteredDrawerPyBulletBlocksEnv(
                 Pose((block_position_xz[0], block_position_y, block_position_xz[1])),
                 self.physics_client_id,
             )
+
             relative_ori = [
                 p.getQuaternionFromEuler([0, 0, -np.pi / 2]),
                 p.getQuaternionFromEuler([0, 0, 0]),
             ]
             orientation = relative_ori[self.np_random.choice([0, 1])]
+
             collision_free = True
             p.performCollisionDetection(physicsClientId=self.physics_client_id)
             for collision_id in self.get_collision_check_ids(block_id):
