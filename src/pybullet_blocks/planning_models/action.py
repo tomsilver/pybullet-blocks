@@ -42,6 +42,7 @@ from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksState,
 )
 from pybullet_blocks.planning_models.manipulation import (
+    get_kinematic_plan_to_grasp_object,
     get_kinematic_plan_to_lift_place_object,
     get_kinematic_plan_to_reach_object,
 )
@@ -761,13 +762,20 @@ class ReachSkill(PyBulletBlocksSkill):
         collision_ids = set(state.object_poses)
 
         def reach_generator() -> Iterator[Pose]:
-            relative_x = 0.0
-            relative_y = 0.0
-            relative_z = self._sim.np_random.uniform(0.06, 0.09)
-            relative_reach = Pose(
-                (relative_x, relative_y, relative_z), self._robot_grasp_orientation
-            )
-            yield relative_reach
+            while True:
+                relative_x = 0.0
+                relative_y = 0.0
+                relative_z = self._sim.np_random.uniform(-0.005, 0.01)
+                grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
+                relative_pose = Pose(
+                    (0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])
+                )
+                grasp_2 = multiply_poses(grasp_1, relative_pose)
+                grasps = [grasp_1, grasp_2]
+                grasp = grasps[self._sim.np_random.choice([0, 1])]
+                orientation = grasp.orientation
+                relative_reach = Pose((relative_x, relative_y, relative_z), orientation)
+                yield relative_reach
 
         kinematic_plan = get_kinematic_plan_to_reach_object(
             state,
@@ -775,7 +783,7 @@ class ReachSkill(PyBulletBlocksSkill):
             block_id,
             collision_ids,
             reach_generator=reach_generator(),
-            reach_generator_iters=5,
+            reach_generator_iters=20,
         )
         return kinematic_plan
 
@@ -802,7 +810,7 @@ class GraspFrontBackSkill(PickSkill):
         relative_grasp_2 = multiply_poses(relative_grasp_1, relative_pose)
         relative_grasp = [relative_grasp_1, relative_grasp_2]
         grasp_generator = iter(relative_grasp)
-        kinematic_plan = get_kinematic_plan_to_pick_object(
+        kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
             self._sim.robot,
             block_id,
@@ -843,7 +851,7 @@ class GraspFullClearSkill(PickSkill):
         relative_grasp_2 = multiply_poses(relative_grasp_1, relative_pose)
         relative_grasp = [relative_grasp_1, relative_grasp_2]
         grasp_generator = iter(relative_grasp)
-        kinematic_plan = get_kinematic_plan_to_pick_object(
+        kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
             self._sim.robot,
             block_id,

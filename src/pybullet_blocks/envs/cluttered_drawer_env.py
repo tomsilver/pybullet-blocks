@@ -106,10 +106,14 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     placement_y_offset: float = 0.25  # from table center line
 
     # drawer placement sampling parameters
-    drawer_placement_y_offset: float = 0.1  # from drawer edge
+    drawer_placement_y_offset: float = 0.05  # from drawer edge
 
     # pick related settings
-    z_dist_threshold: tuple[float, float] = (0.05, 0.1)  # Z distance threshold for pick
+    z_dist_threshold: tuple[float, float] = (
+        -0.01,
+        0.01,
+    )  # Z distance threshold for pick
+
     xy_dist_threshold: float = 0.025  # XY distance threshold for pick
 
     # Initial target block position offset
@@ -569,7 +573,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             return (
                 (dy > self.scene_description.block_half_extents[1])
                 and (abs(dy) < 4 * self.scene_description.block_half_extents[1])
-                and (dx < self.scene_description.block_half_extents[0])
+                and (dx < 2 * self.scene_description.block_half_extents[0])
             )
         if side == "right":
             dx = abs(block1_pose.position[0] - block2_pose.position[0])
@@ -577,7 +581,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             return (
                 (dy < -self.scene_description.block_half_extents[1])
                 and (abs(dy) < 4 * self.scene_description.block_half_extents[1])
-                and (dx < self.scene_description.block_half_extents[0])
+                and (dx < 2 * self.scene_description.block_half_extents[0])
             )
         if side == "front":
             dx = block1_pose.position[0] - block2_pose.position[0]
@@ -585,7 +589,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             return (
                 (dx > self.scene_description.block_half_extents[1])
                 and (abs(dx) < 4 * self.scene_description.block_half_extents[1])
-                and (dy < self.scene_description.block_half_extents[0])
+                and (dy < 2 * self.scene_description.block_half_extents[0])
             )
         if side == "back":
             dx = block1_pose.position[0] - block2_pose.position[0]
@@ -593,7 +597,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             return (
                 (dx < -self.scene_description.block_half_extents[1])
                 and (abs(dx) < 4 * self.scene_description.block_half_extents[1])
-                and (dy < self.scene_description.block_half_extents[0])
+                and (dy < 2 * self.scene_description.block_half_extents[0])
             )
         raise ValueError(
             f"Invalid direction: {side}. Use 'left', 'right', 'front', or 'back'."
@@ -872,6 +876,13 @@ class ClutteredDrawerPyBulletBlocksEnv(
                 Pose((block_position_xz[0], block_position_y, block_position_xz[1])),
                 self.physics_client_id,
             )
+
+            relative_ori = [
+                p.getQuaternionFromEuler([0, 0, -np.pi / 2]),
+                p.getQuaternionFromEuler([0, 0, 0]),
+            ]
+            orientation = relative_ori[self.np_random.choice([0, 1])]
+
             collision_free = True
             p.performCollisionDetection(physicsClientId=self.physics_client_id)
             for collision_id in self.get_collision_check_ids(block_id):
@@ -886,6 +897,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
                     break
             if collision_free:
                 return Pose(
-                    (block_position_xz[0], block_position_y, block_position_xz[1])
+                    (block_position_xz[0], block_position_y, block_position_xz[1]),
+                    orientation=orientation,
                 )
         raise RuntimeError("Could not sample free block position.")
