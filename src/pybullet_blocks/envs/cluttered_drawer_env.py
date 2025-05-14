@@ -614,8 +614,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             + (hand_pose.position[1] - block_pose.position[1]) ** 2
         )
         xy_ok = xy_dist < self.scene_description.xy_dist_threshold
-        return (z_dist < self.scene_description.hand_ready_pick_z \
-                and xy_ok)
+        return z_dist < self.scene_description.hand_ready_pick_z and xy_ok
 
     def reset(  # type: ignore[override]
         self,
@@ -865,12 +864,18 @@ class ClutteredDrawerPyBulletBlocksEnv(
         max_x_dyn = min_x + scene_description.drawer_travel_distance
         max_x = min(max_x_kine, max_x_dyn)
         min_y = (
-            drawer_pos[1] - drawer_depth / 2 + block_half_extents[1] + wall_thickness \
+            drawer_pos[1]
+            - drawer_depth / 2
+            + block_half_extents[1]
+            + wall_thickness
             + scene_description.drawer_placement_y_offset[0]
         )
         min_middle_y = min_y + scene_description.drawer_placement_y_offset[1]
         max_y = (
-            drawer_pos[1] + drawer_depth / 2 - block_half_extents[1] - wall_thickness \
+            drawer_pos[1]
+            + drawer_depth / 2
+            - block_half_extents[1]
+            - wall_thickness
             - scene_description.drawer_placement_y_offset[0]
         )
         max_middle_y = max_y - scene_description.drawer_placement_y_offset[1]
