@@ -97,7 +97,7 @@ DRAWER_PREDICATES = {
     RightClear,
     FrontClear,
     BackClear,
-    HandReadyPick
+    HandReadyPick,
 }
 
 
@@ -549,7 +549,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
             self._interpret_RightClear,
             self._interpret_FrontClear,
             self._interpret_BackClear,
-            self._interpret_HandReadyPick
+            self._interpret_HandReadyPick,
         ]
 
     def _get_objects(self) -> set[Object]:
@@ -709,7 +709,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         if len(blocking_back_atoms) > 0:
             return set()
         return {GroundAtom(BackClear, [self._target_block])}
-    
+
     def _interpret_HandReadyPick(self) -> set[GroundAtom]:
         """Determine if the robot is ready to reach an object."""
         candidates = {o for o in self._get_objects() if o.is_instance(object_type)}

@@ -573,7 +573,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             dy = block1_pose.position[1] - block2_pose.position[1]
             return (
                 (dy > self.scene_description.block_half_extents[1])
-                and (abs(dy) < 5 * self.scene_description.block_half_extents[1])
+                and (abs(dy) < 4 * self.scene_description.block_half_extents[1])
                 and (dx < 2 * self.scene_description.block_half_extents[0])
             )
         if side == "right":
@@ -581,7 +581,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             dy = block1_pose.position[1] - block2_pose.position[1]
             return (
                 (dy < -self.scene_description.block_half_extents[1])
-                and (abs(dy) < 5 * self.scene_description.block_half_extents[1])
+                and (abs(dy) < 4 * self.scene_description.block_half_extents[1])
                 and (dx < 2 * self.scene_description.block_half_extents[0])
             )
         if side == "front":
@@ -589,7 +589,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             dy = abs(block1_pose.position[1] - block2_pose.position[1])
             return (
                 (dx > self.scene_description.block_half_extents[1])
-                and (abs(dx) < 5 * self.scene_description.block_half_extents[1])
+                and (abs(dx) < 4 * self.scene_description.block_half_extents[1])
                 and (dy < 2 * self.scene_description.block_half_extents[0])
             )
         if side == "back":
@@ -597,19 +597,18 @@ class ClutteredDrawerPyBulletBlocksEnv(
             dy = abs(block1_pose.position[1] - block2_pose.position[1])
             return (
                 (dx < -self.scene_description.block_half_extents[1])
-                and (abs(dx) < 5 * self.scene_description.block_half_extents[1])
+                and (abs(dx) < 4 * self.scene_description.block_half_extents[1])
                 and (dy < 2 * self.scene_description.block_half_extents[0])
             )
         raise ValueError(
             f"Invalid direction: {side}. Use 'left', 'right', 'front', or 'back'."
         )
-    
+
     def is_robot_closely_above(self, block_id: int) -> bool:
         """Check if the robot is closely above a block."""
         block_pose = get_pose(block_id, self.physics_client_id)
         hand_pose = self.robot.get_end_effector_pose()
         z_dist = abs(hand_pose.position[2] - block_pose.position[2])
-
         return z_dist < self.scene_description.hand_ready_pick_z
 
     def reset(  # type: ignore[override]
