@@ -106,13 +106,14 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     placement_y_offset: float = 0.25  # from table center line
 
     # drawer placement sampling parameters
-    drawer_placement_y_offset: float = 0.05  # from drawer edge
+    drawer_placement_y_offset: tuple[float, float] = (0.0, 0.12)  # from drawer edge
 
     # pick related settings
     z_dist_threshold: tuple[float, float] = (
-        -0.01,
-        0.01,
-    )  # Z distance threshold for pick
+        0.0,
+        0.02,
+    )  # Z distance threshold for grasp
+    hand_ready_pick_z: float = 0.042  # Z distance threshold for reach
 
     xy_dist_threshold: float = 0.025  # XY distance threshold for pick
 
@@ -603,6 +604,18 @@ class ClutteredDrawerPyBulletBlocksEnv(
             f"Invalid direction: {side}. Use 'left', 'right', 'front', or 'back'."
         )
 
+    def is_robot_closely_above(self, block_id: int) -> bool:
+        """Check if the robot is closely above a block."""
+        block_pose = get_pose(block_id, self.physics_client_id)
+        hand_pose = self.robot.get_end_effector_pose()
+        z_dist = abs(hand_pose.position[2] - block_pose.position[2])
+        xy_dist = np.sqrt(
+            (hand_pose.position[0] - block_pose.position[0]) ** 2
+            + (hand_pose.position[1] - block_pose.position[1]) ** 2
+        )
+        xy_ok = xy_dist < self.scene_description.xy_dist_threshold
+        return z_dist < self.scene_description.hand_ready_pick_z and xy_ok
+
     def reset(  # type: ignore[override]
         self,
         *,
@@ -851,13 +864,21 @@ class ClutteredDrawerPyBulletBlocksEnv(
         max_x_dyn = min_x + scene_description.drawer_travel_distance
         max_x = min(max_x_kine, max_x_dyn)
         min_y = (
-            drawer_pos[1] - drawer_depth / 2 + block_half_extents[1] + wall_thickness
+            drawer_pos[1]
+            - drawer_depth / 2
+            + block_half_extents[1]
+            + wall_thickness
+            + scene_description.drawer_placement_y_offset[0]
         )
-        min_middle_y = min_y + scene_description.drawer_placement_y_offset
+        min_middle_y = min_y + scene_description.drawer_placement_y_offset[1]
         max_y = (
-            drawer_pos[1] + drawer_depth / 2 - block_half_extents[1] - wall_thickness
+            drawer_pos[1]
+            + drawer_depth / 2
+            - block_half_extents[1]
+            - wall_thickness
+            - scene_description.drawer_placement_y_offset[0]
         )
-        max_middle_y = max_y - scene_description.drawer_placement_y_offset
+        max_middle_y = max_y - scene_description.drawer_placement_y_offset[1]
         z = scene_description.dimensions.on_drawer_block_z
         for _ in range(10000):
             block_position_y_range = self.np_random.choice(
@@ -884,6 +905,7 @@ class ClutteredDrawerPyBulletBlocksEnv(
             orientation = relative_ori[self.np_random.choice([0, 1])]
 
             collision_free = True
+            dist_blocks_ok = True
             p.performCollisionDetection(physicsClientId=self.physics_client_id)
             for collision_id in self.get_collision_check_ids(block_id):
                 collision = check_body_collisions(
@@ -895,7 +917,18 @@ class ClutteredDrawerPyBulletBlocksEnv(
                 if collision:
                     collision_free = False
                     break
-            if collision_free:
+            for block_id2 in self.drawer_block_ids:
+                if block_id2 == block_id:
+                    continue
+                block_pose2 = get_pose(block_id2, self.physics_client_id)
+                dist_xy = np.sqrt(
+                    (block_position_xz[0] - block_pose2.position[0]) ** 2
+                    + (block_position_y - block_pose2.position[1]) ** 2
+                )
+                if dist_xy < 4 * scene_description.block_half_extents[0]:
+                    dist_blocks_ok = False
+                    break
+            if collision_free and dist_blocks_ok:
                 return Pose(
                     (block_position_xz[0], block_position_y, block_position_xz[1]),
                     orientation=orientation,

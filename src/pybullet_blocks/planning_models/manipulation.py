@@ -85,7 +85,8 @@ def get_kinematic_plan_to_reach_object(
             max_time=max_motion_planning_time,
             max_candidate_plans=max_motion_planning_candidates,
         )
-        assert plan_to_lift is not None, "Lifting should always succeed."
+        if plan_to_lift is None:
+            return None
         # Motion planning succeeded, so update the plan.
         for robot_joints in plan_to_lift:
             state = state.copy_with(robot_joints=robot_joints)
@@ -304,7 +305,9 @@ def get_kinematic_plan_to_lift_place_object(
     NOTE: this function updates pybullet directly and arbitrarily. Users should
     reset the pybullet state as appropriate after calling this function.
     """
-    assert object_id in initial_state.attachments
+    if object_id not in initial_state.attachments:
+        print(f"Placing object {object_id} is not attached in the initial state.")
+        return None
 
     # Reset the simulator to the initial state to restart the planning.
     initial_state.set_pybullet(robot)
@@ -348,7 +351,8 @@ def get_kinematic_plan_to_lift_place_object(
             max_time=max_motion_planning_time,
             max_candidate_plans=max_motion_planning_candidates,
         )
-        assert plan_to_lift is not None, "Lifting should always succeed."
+        if plan_to_lift is None:
+            return None
         # Motion planning succeeded, so update the plan.
         for robot_joints in plan_to_lift:
             state = state.copy_with(robot_joints=robot_joints)

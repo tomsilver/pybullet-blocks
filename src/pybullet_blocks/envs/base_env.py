@@ -287,20 +287,20 @@ class BaseSceneDescription:
         t = timestep % period
         quarter_period = period // 4
         if 0 <= t < quarter_period:
-            yaw = (yaw_max - yaw_min) / 2 + (
+            _yaw = (yaw_max - yaw_min) / 2 + (
                 (yaw_max - (yaw_max - yaw_min) / 2) / quarter_period
             ) * t
         elif quarter_period <= t < 3 * quarter_period:
-            yaw = yaw_max - ((yaw_max - yaw_min) / (2 * quarter_period)) * (
+            _yaw = yaw_max - ((yaw_max - yaw_min) / (2 * quarter_period)) * (
                 t - quarter_period
             )
         else:
-            yaw = yaw_min + (((yaw_max - yaw_min) / 2 - yaw_min) / quarter_period) * (
+            _yaw = yaw_min + (((yaw_max - yaw_min) / 2 - yaw_min) / quarter_period) * (
                 t - 3 * quarter_period
             )
         return {
             "camera_target": self.robot_base_pose.position,
-            "camera_yaw": yaw,
+            "camera_yaw": 90,  # yaw,
             "camera_distance": 1.5,
             "camera_pitch": -20,
             # Use for fast testing.
