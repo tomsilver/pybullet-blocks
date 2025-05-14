@@ -63,6 +63,7 @@ LeftClear = Predicate("LeftClear", [object_type])
 RightClear = Predicate("RightClear", [object_type])
 FrontClear = Predicate("FrontClear", [object_type])
 BackClear = Predicate("BackClear", [object_type])
+HandReadyPick = Predicate("HandReadyPick", [robot_type])
 
 PREDICATES = {
     IsMovable,
@@ -96,6 +97,7 @@ DRAWER_PREDICATES = {
     RightClear,
     FrontClear,
     BackClear,
+    HandReadyPick
 }
 
 
@@ -547,6 +549,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
             self._interpret_RightClear,
             self._interpret_FrontClear,
             self._interpret_BackClear,
+            self._interpret_HandReadyPick
         ]
 
     def _get_objects(self) -> set[Object]:
@@ -706,6 +709,19 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         if len(blocking_back_atoms) > 0:
             return set()
         return {GroundAtom(BackClear, [self._target_block])}
+    
+    def _interpret_HandReadyPick(self) -> set[GroundAtom]:
+        """Determine if the robot is ready to reach an object."""
+        candidates = {o for o in self._get_objects() if o.is_instance(object_type)}
+        for obj in candidates:
+            if obj in [self._table, self._drawer]:
+                continue
+            obj_pybullet_id = self._pybullet_ids[obj]
+
+            # Check if the object is within the gripper's reach.
+            if self._sim.is_robot_closely_above(obj_pybullet_id):
+                return set()
+        return {GroundAtom(HandReadyPick, [self._robot])}
 
     def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
         on_relations = set()

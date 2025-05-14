@@ -67,6 +67,7 @@ from pybullet_blocks.planning_models.perception import (
     NotIsTarget,
     NotIsTargetBlock,
     NotReadyPick,
+    HandReadyPick,
     On,
     ReadyPick,
     RightClear,
@@ -129,12 +130,14 @@ ReachOperator = LiftedOperator(
         LiftedAtom(IsMovable, [Obj]),
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(HandReadyPick, [Robot]),
     },
     add_effects={
         LiftedAtom(ReadyPick, [Robot, Obj]),
     },
     delete_effects={
         LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(HandReadyPick, [Robot]),
     },
 )
 
@@ -286,6 +289,7 @@ PlaceFrontBlockOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NotHolding, [Robot, Obj]),
         LiftedAtom(FrontClear, [Obj_tgt]),
+        LiftedAtom(HandReadyPick, [Robot]),
     },
     delete_effects={
         LiftedAtom(Holding, [Robot, Obj]),
@@ -308,6 +312,7 @@ PlaceBackBlockOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NotHolding, [Robot, Obj]),
         LiftedAtom(BackClear, [Obj_tgt]),
+        LiftedAtom(HandReadyPick, [Robot]),
     },
     delete_effects={
         LiftedAtom(Holding, [Robot, Obj]),
@@ -330,6 +335,7 @@ PlaceLeftBlockOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NotHolding, [Robot, Obj]),
         LiftedAtom(LeftClear, [Obj_tgt]),
+        LiftedAtom(HandReadyPick, [Robot]),
     },
     delete_effects={
         LiftedAtom(Holding, [Robot, Obj]),
@@ -352,6 +358,7 @@ PlaceRightBlockOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NotHolding, [Robot, Obj]),
         LiftedAtom(RightClear, [Obj_tgt]),
+        LiftedAtom(HandReadyPick, [Robot]),
     },
     delete_effects={
         LiftedAtom(Holding, [Robot, Obj]),
@@ -373,6 +380,7 @@ PlaceTargetOperator = LiftedOperator(
         LiftedAtom(On, [Obj, Surface]),
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(HandReadyPick, [Robot]),
     },
     delete_effects={
         LiftedAtom(Holding, [Robot, Obj]),
@@ -765,7 +773,7 @@ class ReachSkill(PyBulletBlocksSkill):
             while True:
                 relative_x = 0.0
                 relative_y = 0.0
-                relative_z = self._sim.np_random.uniform(-0.005, 0.01)
+                relative_z = self._sim.np_random.uniform(0.005, 0.015)
                 grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
                 relative_pose = Pose(
                     (0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])
