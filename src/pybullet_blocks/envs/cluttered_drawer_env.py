@@ -25,7 +25,7 @@ from pybullet_blocks.envs.base_env import (
     PyBulletBlocksState,
     RobotState,
 )
-from pybullet_blocks.utils import create_lettered_block
+from pybullet_blocks.utils import create_lettered_block, create_pure_color_block
 
 
 @dataclass
@@ -98,6 +98,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     num_drawer_blocks: int = 4  # Num of blocks in addition to target block
     target_block_letter: str = "T"
     target_block_rgba: tuple[float, float, float, float] = (0.2, 0.8, 0.2, 1.0)
+    non_target_block_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
 
     # tabel placement sampling parameters, no collisions but also have contact points.
     # between 1e-6 and 1e-3.
@@ -262,11 +263,10 @@ class ClutteredDrawerPyBulletBlocksEnv(
 
         # Create blocks for drawer
         self.drawer_block_ids = [
-            create_lettered_block(
+            create_pure_color_block(
                 chr(65 + i + 1),
                 scene_description.block_half_extents,
-                scene_description.block_rgba,
-                scene_description.block_text_rgba,
+                scene_description.non_target_block_rgba,
                 self.physics_client_id,
                 mass=scene_description.block_mass,
                 friction=scene_description.block_friction,
