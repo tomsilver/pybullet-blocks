@@ -67,3 +67,36 @@ def create_lettered_block(
         physicsClientId=physics_client_id,
     )
     return block_id
+
+
+def create_pure_color_block(
+    letter: str,
+    half_extents: tuple[float, float, float],
+    face_rgba: tuple[float, float, float, float],
+    physics_client_id: int,
+    mass: float = 0.0,
+    friction: float | None = None,
+) -> int:
+    """Create a block with a letter on all sides."""
+    block_id = create_pybullet_block(
+        (1, 1, 1, 1),  # NOTE: important to default to white for texture
+        half_extents=half_extents,
+        physics_client_id=physics_client_id,
+        mass=mass,
+        friction=friction,
+    )
+    text_color = tuple(map(lambda x: int(255 * x), face_rgba))
+    background_color = tuple(map(lambda x: int(255 * x), face_rgba))
+    filepath = create_texture_with_letter(
+        letter,
+        text_color=text_color,
+        background_color=background_color,
+    )
+    texture_id = p.loadTexture(str(filepath), physicsClientId=physics_client_id)
+    p.changeVisualShape(
+        block_id,
+        -1,
+        textureUniqueId=texture_id,
+        physicsClientId=physics_client_id,
+    )
+    return block_id

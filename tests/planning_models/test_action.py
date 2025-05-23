@@ -14,8 +14,14 @@ from pybullet_blocks.envs.cluttered_drawer_env import (
     ClutteredDrawerSceneDescription,
 )
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
-from pybullet_blocks.planning_models.action import OPERATORS, SKILLS
+from pybullet_blocks.planning_models.action import (
+    OPERATORS,
+    OPERATORS_DRAWER,
+    SKILLS,
+    SKILLS_DRAWER,
+)
 from pybullet_blocks.planning_models.perception import (
+    DRAWER_PREDICATES,
     PREDICATES,
     TYPES,
     BlockStackingPyBulletBlocksPerceiver,
@@ -151,15 +157,12 @@ def test_clear_and_place_pybullet_blocks_action(env_cls, perceiver_cls):
     env.close()
 
 
-@pytest.mark.skip(
-    reason="TtMP without backtracking cannot generate valid plans for ClutteredDrawerBlocksEnv."  # pylint: disable=line-too-long
-)
 def test_cluttered_drawer_blocks_action():
     """Tests task then motion planning in ClutteredDrawerBlocksEnv()."""
     seed = 123
 
     scene_description = ClutteredDrawerSceneDescription(
-        num_drawer_blocks=3,
+        num_drawer_blocks=4,
     )
 
     env = ClutteredDrawerPyBulletBlocksEnv(
@@ -178,23 +181,29 @@ def test_cluttered_drawer_blocks_action():
     max_motion_planning_time = 0.1  # increase for prettier videos
 
     perceiver = ClutteredDrawerBlocksPerceiver(sim)
-    skills = {s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS}
+    skills = {
+        s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS_DRAWER
+    }
 
     # Create the planner
     planner = TaskThenMotionPlanner(
-        TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="pyperplan"
+        TYPES,
+        DRAWER_PREDICATES,
+        perceiver,
+        OPERATORS_DRAWER,
+        skills,
+        planner_id="pyperplan",
     )
 
     # Run an episode
     obs, info = env.reset(seed=seed)
     planner.reset(obs, info)
-    for step in range(10000):  # should terminate earlier
+    for _ in range(10000):  # should terminate earlier
         action = planner.step(obs)
         obs, reward, done, _, _ = env.step(action)
         if done:  # goal reached!
             assert reward > 0
             break
-        print(f"Step {step} finished!")
     else:
         assert False, "Goal not reached"
 
