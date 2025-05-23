@@ -87,6 +87,8 @@ DRAWER_PREDICATES = {
     Holding,
     NotHolding,
     GripperEmpty,
+    IsTable,
+    IsDrawer,
     IsTargetBlock,
     NotIsTargetBlock,
     BlockingLeft,

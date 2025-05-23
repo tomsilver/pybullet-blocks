@@ -68,6 +68,7 @@ def create_lettered_block(
     )
     return block_id
 
+
 def create_pure_color_block(
     letter: str,
     half_extents: tuple[float, float, float],
