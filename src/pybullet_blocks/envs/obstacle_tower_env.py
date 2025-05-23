@@ -27,8 +27,8 @@ from pybullet_blocks.utils import create_lettered_block
 
 
 @dataclass(frozen=True)
-class ClearAndPlaceSceneDescription(BaseSceneDescription):
-    """Container for clear and place task hyperparameters."""
+class ObstacleTowerSceneDescription(BaseSceneDescription):
+    """Container for obstacle tower task hyperparameters."""
 
     num_obstacle_blocks: int = 3
     num_irrelevant_blocks: int = 0
@@ -58,8 +58,8 @@ class ClearAndPlaceSceneDescription(BaseSceneDescription):
 
 
 @dataclass(frozen=True)
-class GraphClearAndPlacePyBulletBlocksState(PyBulletBlocksState):
-    """A state in the GraphClearAndPlacePyBulletBlocksEnv with graph
+class GraphObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
+    """A state in the GraphObstacleTowerPyBulletBlocksEnv with graph
     observation."""
 
     obstacle_block_states: Collection[LetteredBlockState]
@@ -100,7 +100,7 @@ class GraphClearAndPlacePyBulletBlocksState(PyBulletBlocksState):
     @classmethod
     def from_observation(
         cls, obs: spaces.GraphInstance
-    ) -> GraphClearAndPlacePyBulletBlocksState:
+    ) -> GraphObstacleTowerPyBulletBlocksState:
         """Build a state from a graph."""
         robot_state: RobotState | None = None
         target_state: BlockState | None = None
@@ -162,8 +162,8 @@ class GraphClearAndPlacePyBulletBlocksState(PyBulletBlocksState):
 
 
 @dataclass(frozen=True)
-class ClearAndPlacePyBulletBlocksState(PyBulletBlocksState):
-    """A state in the ClearAndPlacePyBulletBlocksEnv."""
+class ObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
+    """A state in the ObstacleTowerPyBulletBlocksEnv."""
 
     obstacle_block_states: Collection[LetteredBlockState]
     irrelevant_block_states: Collection[LetteredBlockState]
@@ -203,7 +203,7 @@ class ClearAndPlacePyBulletBlocksState(PyBulletBlocksState):
     @classmethod
     def from_observation(
         cls, obs: NDArray[np.float32]
-    ) -> ClearAndPlacePyBulletBlocksState:
+    ) -> ObstacleTowerPyBulletBlocksState:
         """Build a state from a vector."""
         block_dim = LetteredBlockState.get_dimension()
         target_dim = BlockState.get_dimension()
@@ -232,10 +232,10 @@ class ClearAndPlacePyBulletBlocksState(PyBulletBlocksState):
         return cls(obstacle_states, [], target_block_state, target_state, robot_state)
 
 
-class GraphClearAndPlacePyBulletBlocksEnv(
+class GraphObstacleTowerPyBulletBlocksEnv(
     PyBulletBlocksEnv[spaces.GraphInstance, NDArray[np.float32]]
 ):
-    """A PyBullet environment for the clear and place task with graph-based
+    """A PyBullet environment for the obstacle tower task with graph-based
     observations."""
 
     metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
@@ -248,13 +248,13 @@ class GraphClearAndPlacePyBulletBlocksEnv(
         seed: int = 0,
     ) -> None:
         if scene_description is None:
-            scene_description = ClearAndPlaceSceneDescription()
-        assert isinstance(scene_description, ClearAndPlaceSceneDescription)
+            scene_description = ObstacleTowerSceneDescription()
+        assert isinstance(scene_description, ObstacleTowerSceneDescription)
 
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space
-        obs_dim = GraphClearAndPlacePyBulletBlocksState.get_node_dimension()
+        obs_dim = GraphObstacleTowerPyBulletBlocksState.get_node_dimension()
         self.observation_space = spaces.Graph(
             node_space=spaces.Box(
                 low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
@@ -323,7 +323,7 @@ class GraphClearAndPlacePyBulletBlocksEnv(
         }
 
     def set_state(self, state: PyBulletBlocksState) -> None:
-        assert isinstance(state, GraphClearAndPlacePyBulletBlocksState)
+        assert isinstance(state, GraphObstacleTowerPyBulletBlocksState)
 
         # Set obstacle block poses
         for block_state in state.obstacle_block_states:
@@ -371,7 +371,7 @@ class GraphClearAndPlacePyBulletBlocksEnv(
         else:
             self.current_held_object_id = None
 
-    def get_state(self) -> GraphClearAndPlacePyBulletBlocksState:
+    def get_state(self) -> GraphObstacleTowerPyBulletBlocksState:
         # Get obstacle block states
         obstacle_states = []
         for block_id in self.obstacle_block_ids:
@@ -405,7 +405,7 @@ class GraphClearAndPlacePyBulletBlocksEnv(
         robot_joints = self.robot.get_joint_positions()
         robot_state = RobotState(robot_joints, self.current_grasp_transform)
 
-        return GraphClearAndPlacePyBulletBlocksState(
+        return GraphObstacleTowerPyBulletBlocksState(
             obstacle_states,
             irrelevant_states,
             target_block_state,
@@ -476,7 +476,7 @@ class GraphClearAndPlacePyBulletBlocksEnv(
             self._np_random, seed = seeding.np_random(seed)
 
         scene_description = self.scene_description
-        assert isinstance(scene_description, ClearAndPlaceSceneDescription)
+        assert isinstance(scene_description, ObstacleTowerSceneDescription)
 
         # Place target area at fixed position, in middle of table
         set_pose(
@@ -571,7 +571,7 @@ class GraphClearAndPlacePyBulletBlocksEnv(
 
     def reset_from_state(
         self,
-        state: spaces.GraphInstance | GraphClearAndPlacePyBulletBlocksState,
+        state: spaces.GraphInstance | GraphObstacleTowerPyBulletBlocksState,
         *,
         seed: int | None = None,
     ) -> tuple[spaces.GraphInstance, dict[str, Any]]:
@@ -579,7 +579,7 @@ class GraphClearAndPlacePyBulletBlocksEnv(
         super().reset(seed=seed)
 
         if isinstance(state, spaces.GraphInstance):
-            state = GraphClearAndPlacePyBulletBlocksState.from_observation(state)
+            state = GraphObstacleTowerPyBulletBlocksState.from_observation(state)
 
         self.set_state(state)
         return self.get_state().to_observation(), self._get_info()
@@ -640,9 +640,9 @@ class GraphClearAndPlacePyBulletBlocksEnv(
 
         return np.array(features, dtype=np.float32)
 
-    def clone(self) -> GraphClearAndPlacePyBulletBlocksEnv:
+    def clone(self) -> GraphObstacleTowerPyBulletBlocksEnv:
         """Clone the environment."""
-        clone_env = GraphClearAndPlacePyBulletBlocksEnv(
+        clone_env = GraphObstacleTowerPyBulletBlocksEnv(
             scene_description=self.scene_description,
             render_mode=self.render_mode,
             use_gui=False,
@@ -661,7 +661,7 @@ class GraphClearAndPlacePyBulletBlocksEnv(
         return ""
 
 
-class ClearAndPlacePyBulletBlocksEnv(
+class ObstacleTowerPyBulletBlocksEnv(
     PyBulletBlocksEnv[NDArray[np.float32], NDArray[np.float32]]
 ):
     """A PyBullet environment requiring clearing blocks before placing a target
@@ -677,13 +677,13 @@ class ClearAndPlacePyBulletBlocksEnv(
         seed: int = 0,
     ) -> None:
         if scene_description is None:
-            scene_description = ClearAndPlaceSceneDescription()
-        assert isinstance(scene_description, ClearAndPlaceSceneDescription)
+            scene_description = ObstacleTowerSceneDescription()
+        assert isinstance(scene_description, ObstacleTowerSceneDescription)
 
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space
-        obs_dim = ClearAndPlacePyBulletBlocksState.get_dimension()
+        obs_dim = ObstacleTowerPyBulletBlocksState.get_dimension()
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
@@ -749,7 +749,7 @@ class ClearAndPlacePyBulletBlocksEnv(
         }
 
     def set_state(self, state: PyBulletBlocksState) -> None:
-        assert isinstance(state, ClearAndPlacePyBulletBlocksState)
+        assert isinstance(state, ObstacleTowerPyBulletBlocksState)
 
         # Set obstacle block poses
         for block_state in state.obstacle_block_states:
@@ -797,7 +797,7 @@ class ClearAndPlacePyBulletBlocksEnv(
         else:
             self.current_held_object_id = None
 
-    def get_state(self) -> ClearAndPlacePyBulletBlocksState:
+    def get_state(self) -> ObstacleTowerPyBulletBlocksState:
         # Get obstacle block states
         obstacle_states = []
         for block_id in self.obstacle_block_ids:
@@ -831,7 +831,7 @@ class ClearAndPlacePyBulletBlocksEnv(
         robot_joints = self.robot.get_joint_positions()
         robot_state = RobotState(robot_joints, self.current_grasp_transform)
 
-        return ClearAndPlacePyBulletBlocksState(
+        return ObstacleTowerPyBulletBlocksState(
             obstacle_states,
             irrelevant_states,
             target_block_state,
@@ -902,7 +902,7 @@ class ClearAndPlacePyBulletBlocksEnv(
             self._np_random, seed = seeding.np_random(seed)
 
         scene_description = self.scene_description
-        assert isinstance(scene_description, ClearAndPlaceSceneDescription)
+        assert isinstance(scene_description, ObstacleTowerSceneDescription)
 
         # Place target area at fixed position, in middle of table
         set_pose(
@@ -997,7 +997,7 @@ class ClearAndPlacePyBulletBlocksEnv(
 
     def reset_from_state(
         self,
-        state: NDArray[np.float32] | ClearAndPlacePyBulletBlocksState,
+        state: NDArray[np.float32] | ObstacleTowerPyBulletBlocksState,
         *,
         seed: int | None = None,
     ) -> tuple[NDArray[np.float32], dict[str, Any]]:
@@ -1005,7 +1005,7 @@ class ClearAndPlacePyBulletBlocksEnv(
         super().reset(seed=seed)
 
         if isinstance(state, np.ndarray):
-            state = ClearAndPlacePyBulletBlocksState.from_observation(state)
+            state = ObstacleTowerPyBulletBlocksState.from_observation(state)
 
         self.set_state(state)
         return self.get_state().to_observation(), self._get_info()
@@ -1026,9 +1026,9 @@ class ClearAndPlacePyBulletBlocksEnv(
         assert object_id in set(self.obstacle_block_ids) | {self.target_block_id}
         return self.scene_description.block_half_extents
 
-    def clone(self) -> ClearAndPlacePyBulletBlocksEnv:
+    def clone(self) -> ObstacleTowerPyBulletBlocksEnv:
         """Clone the environment."""
-        clone_env = ClearAndPlacePyBulletBlocksEnv(
+        clone_env = ObstacleTowerPyBulletBlocksEnv(
             scene_description=self.scene_description,
             render_mode=self.render_mode,
             use_gui=False,

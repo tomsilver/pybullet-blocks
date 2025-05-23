@@ -3,16 +3,16 @@
 import pytest
 
 from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletBlocksEnv
-from pybullet_blocks.envs.clear_and_place_env import (
-    ClearAndPlacePyBulletBlocksEnv,
-    ClearAndPlaceSceneDescription,
-    GraphClearAndPlacePyBulletBlocksEnv,
+from pybullet_blocks.envs.obstacle_tower_env import (
+    GraphObstacleTowerPyBulletBlocksEnv,
+    ObstacleTowerPyBulletBlocksEnv,
+    ObstacleTowerSceneDescription,
 )
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
 from pybullet_blocks.planning_models.perception import (
     BlockStackingPyBulletBlocksPerceiver,
-    ClearAndPlacePyBulletBlocksPerceiver,
-    GraphClearAndPlacePyBulletBlocksPerceiver,
+    GraphObstacleTowerPyBulletBlocksPerceiver,
+    ObstacleTowerPyBulletBlocksPerceiver,
     PickPlacePyBulletBlocksPerceiver,
 )
 
@@ -61,15 +61,15 @@ def test_block_stacking_pybullet_blocks_perceiver():
     "env_cls,perceiver_cls",
     [
         (
-            GraphClearAndPlacePyBulletBlocksEnv,
-            GraphClearAndPlacePyBulletBlocksPerceiver,
+            GraphObstacleTowerPyBulletBlocksEnv,
+            GraphObstacleTowerPyBulletBlocksPerceiver,
         ),
-        (ClearAndPlacePyBulletBlocksEnv, ClearAndPlacePyBulletBlocksPerceiver),
+        (ObstacleTowerPyBulletBlocksEnv, ObstacleTowerPyBulletBlocksPerceiver),
     ],
 )
-def test_clear_and_place_pybullet_blocks_perceiver(env_cls, perceiver_cls):
-    """Tests for ClearAndPlacePyBulletBlocksPerceiver()."""
-    scene_description = ClearAndPlaceSceneDescription(
+def test_obstacle_tower_pybullet_blocks_perceiver(env_cls, perceiver_cls):
+    """Tests for ObstacleTowerPyBulletBlocksPerceiver()."""
+    scene_description = ObstacleTowerSceneDescription(
         num_obstacle_blocks=3,
         stack_blocks=True,
     )

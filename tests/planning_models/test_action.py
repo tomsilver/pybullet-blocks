@@ -4,14 +4,14 @@ import pytest
 from task_then_motion_planning.planning import TaskThenMotionPlanner
 
 from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletBlocksEnv
-from pybullet_blocks.envs.clear_and_place_env import (
-    ClearAndPlacePyBulletBlocksEnv,
-    ClearAndPlaceSceneDescription,
-    GraphClearAndPlacePyBulletBlocksEnv,
-)
 from pybullet_blocks.envs.cluttered_drawer_env import (
     ClutteredDrawerPyBulletBlocksEnv,
     ClutteredDrawerSceneDescription,
+)
+from pybullet_blocks.envs.obstacle_tower_env import (
+    GraphObstacleTowerPyBulletBlocksEnv,
+    ObstacleTowerPyBulletBlocksEnv,
+    ObstacleTowerSceneDescription,
 )
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
 from pybullet_blocks.planning_models.action import (
@@ -25,9 +25,9 @@ from pybullet_blocks.planning_models.perception import (
     PREDICATES,
     TYPES,
     BlockStackingPyBulletBlocksPerceiver,
-    ClearAndPlacePyBulletBlocksPerceiver,
     ClutteredDrawerBlocksPerceiver,
-    GraphClearAndPlacePyBulletBlocksPerceiver,
+    GraphObstacleTowerPyBulletBlocksPerceiver,
+    ObstacleTowerPyBulletBlocksPerceiver,
     PickPlacePyBulletBlocksPerceiver,
 )
 
@@ -104,17 +104,17 @@ def test_block_stacking_pybullet_blocks_action():
     "env_cls,perceiver_cls",
     [
         (
-            GraphClearAndPlacePyBulletBlocksEnv,
-            GraphClearAndPlacePyBulletBlocksPerceiver,
+            GraphObstacleTowerPyBulletBlocksEnv,
+            GraphObstacleTowerPyBulletBlocksPerceiver,
         ),
-        (ClearAndPlacePyBulletBlocksEnv, ClearAndPlacePyBulletBlocksPerceiver),
+        (ObstacleTowerPyBulletBlocksEnv, ObstacleTowerPyBulletBlocksPerceiver),
     ],
 )
-def test_clear_and_place_pybullet_blocks_action(env_cls, perceiver_cls):
-    """Tests task then motion planning in ClearAndPlacePyBulletBlocksEnv()."""
+def test_obstacle_tower_pybullet_blocks_action(env_cls, perceiver_cls):
+    """Tests task then motion planning in ObstacleTowerPyBulletBlocksEnv()."""
     seed = 123
 
-    scene_description = ClearAndPlaceSceneDescription(
+    scene_description = ObstacleTowerSceneDescription(
         num_obstacle_blocks=3,
         stack_blocks=True,
     )
@@ -131,7 +131,7 @@ def test_clear_and_place_pybullet_blocks_action(env_cls, perceiver_cls):
     )
 
     # from gymnasium.wrappers import RecordVideo
-    # env = RecordVideo(env, "videos/clear-and-place-ttmp-test")
+    # env = RecordVideo(env, "videos/obstacle-tower-ttmp-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
     perceiver = perceiver_cls(sim)

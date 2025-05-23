@@ -18,15 +18,15 @@ from pybullet_blocks.envs.block_stacking_env import (
     BlockStackingPyBulletBlocksEnv,
     BlockStackingPyBulletBlocksState,
 )
-from pybullet_blocks.envs.clear_and_place_env import (
-    ClearAndPlacePyBulletBlocksEnv,
-    ClearAndPlacePyBulletBlocksState,
-    GraphClearAndPlacePyBulletBlocksEnv,
-    GraphClearAndPlacePyBulletBlocksState,
-)
 from pybullet_blocks.envs.cluttered_drawer_env import (
     ClutteredDrawerPyBulletBlocksEnv,
     ClutteredDrawerPyBulletBlocksState,
+)
+from pybullet_blocks.envs.obstacle_tower_env import (
+    GraphObstacleTowerPyBulletBlocksEnv,
+    GraphObstacleTowerPyBulletBlocksState,
+    ObstacleTowerPyBulletBlocksEnv,
+    ObstacleTowerPyBulletBlocksState,
 )
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
@@ -383,16 +383,16 @@ class BlockStackingPyBulletBlocksPerceiver(
         return {GroundAtom(IsMovable, [block]) for block in self._active_blocks}
 
 
-class ClearAndPlacePyBulletBlocksPerceiver(
+class ObstacleTowerPyBulletBlocksPerceiver(
     PyBulletBlocksPerceiver[NDArray[np.float32]]
 ):
-    """A perceiver for the ClearAndPlacePyBulletBlocksEnv()."""
+    """A perceiver for the ObstacleTowerPyBulletBlocksEnv()."""
 
     def __init__(self, sim: PyBulletBlocksEnv) -> None:
         super().__init__(sim)
 
         # Create constant objects
-        assert isinstance(self._sim, ClearAndPlacePyBulletBlocksEnv)
+        assert isinstance(self._sim, ObstacleTowerPyBulletBlocksEnv)
         self._target_block = Object("T", object_type)
         self._target_area = Object("target", object_type)
         self._obstacle_blocks = sorted(
@@ -419,7 +419,7 @@ class ClearAndPlacePyBulletBlocksPerceiver(
         )
 
     def _set_sim_from_obs(self, obs: NDArray[np.float32]) -> None:
-        self._sim.set_state(ClearAndPlacePyBulletBlocksState.from_observation(obs))
+        self._sim.set_state(ObstacleTowerPyBulletBlocksState.from_observation(obs))
 
     def _get_goal(
         self, obs: NDArray[np.float32], info: dict[str, Any]
@@ -442,16 +442,16 @@ class ClearAndPlacePyBulletBlocksPerceiver(
         return {GroundAtom(IsTarget, [self._target_area])}
 
 
-class GraphClearAndPlacePyBulletBlocksPerceiver(
+class GraphObstacleTowerPyBulletBlocksPerceiver(
     PyBulletBlocksPerceiver[gym.spaces.GraphInstance]
 ):
-    """A perceiver for the GraphClearAndPlacePyBulletBlocksEnv."""
+    """A perceiver for the GraphObstacleTowerPyBulletBlocksEnv."""
 
     def __init__(self, sim: PyBulletBlocksEnv) -> None:
         super().__init__(sim)
 
         # Create constant objects
-        assert isinstance(self._sim, GraphClearAndPlacePyBulletBlocksEnv)
+        assert isinstance(self._sim, GraphObstacleTowerPyBulletBlocksEnv)
         self._target_block = Object("T", object_type)
         self._target_area = Object("target", object_type)
         self._obstacle_blocks = sorted(
@@ -478,7 +478,7 @@ class GraphClearAndPlacePyBulletBlocksPerceiver(
         )
 
     def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
-        self._sim.set_state(GraphClearAndPlacePyBulletBlocksState.from_observation(obs))
+        self._sim.set_state(GraphObstacleTowerPyBulletBlocksState.from_observation(obs))
 
     def _get_goal(
         self, obs: gym.spaces.GraphInstance, info: dict[str, Any]

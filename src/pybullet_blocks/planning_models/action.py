@@ -27,15 +27,15 @@ from pybullet_blocks.envs.block_stacking_env import (
     BlockStackingPyBulletBlocksEnv,
     BlockStackingPyBulletBlocksState,
 )
-from pybullet_blocks.envs.clear_and_place_env import (
-    ClearAndPlacePyBulletBlocksEnv,
-    ClearAndPlacePyBulletBlocksState,
-    GraphClearAndPlacePyBulletBlocksEnv,
-    GraphClearAndPlacePyBulletBlocksState,
-)
 from pybullet_blocks.envs.cluttered_drawer_env import (
     ClutteredDrawerPyBulletBlocksEnv,
     ClutteredDrawerPyBulletBlocksState,
+)
+from pybullet_blocks.envs.obstacle_tower_env import (
+    GraphObstacleTowerPyBulletBlocksEnv,
+    GraphObstacleTowerPyBulletBlocksState,
+    ObstacleTowerPyBulletBlocksEnv,
+    ObstacleTowerPyBulletBlocksState,
 )
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletBlocksEnv,
@@ -574,7 +574,7 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             return self._sim.letter_to_block_id[letter]
         if isinstance(
             self._sim,
-            (ClearAndPlacePyBulletBlocksEnv, GraphClearAndPlacePyBulletBlocksEnv),
+            (ObstacleTowerPyBulletBlocksEnv, GraphObstacleTowerPyBulletBlocksEnv),
         ):
             if obj.name == "table":
                 return self._sim.table_id
@@ -604,10 +604,10 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             return PickPlacePyBulletBlocksState.from_observation(obs)  # type: ignore
         if isinstance(self._sim, BlockStackingPyBulletBlocksEnv):
             return BlockStackingPyBulletBlocksState.from_observation(obs)  # type: ignore
-        if isinstance(self._sim, ClearAndPlacePyBulletBlocksEnv):
-            return ClearAndPlacePyBulletBlocksState.from_observation(obs)  # type: ignore
-        if isinstance(self._sim, GraphClearAndPlacePyBulletBlocksEnv):
-            return GraphClearAndPlacePyBulletBlocksState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
+        if isinstance(self._sim, ObstacleTowerPyBulletBlocksEnv):
+            return ObstacleTowerPyBulletBlocksState.from_observation(obs)  # type: ignore
+        if isinstance(self._sim, GraphObstacleTowerPyBulletBlocksEnv):
+            return GraphObstacleTowerPyBulletBlocksState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
         if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
             return ClutteredDrawerPyBulletBlocksState.from_observation(obs)  # type: ignore # pylint:disable=line-too-long
         raise NotImplementedError
@@ -649,11 +649,11 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
 
         if isinstance(
             sim_state,
-            (ClearAndPlacePyBulletBlocksState, GraphClearAndPlacePyBulletBlocksState),
+            (ObstacleTowerPyBulletBlocksState, GraphObstacleTowerPyBulletBlocksState),
         ):
             assert isinstance(
                 self._sim,
-                (ClearAndPlacePyBulletBlocksEnv, GraphClearAndPlacePyBulletBlocksEnv),
+                (ObstacleTowerPyBulletBlocksEnv, GraphObstacleTowerPyBulletBlocksEnv),
             )
             robot_points = sim_state.robot_state.joint_positions
             object_poses = {
@@ -1060,8 +1060,8 @@ class PlaceSkill(PyBulletBlocksSkill):
             self._sim,
             (
                 BlockStackingPyBulletBlocksEnv,
-                ClearAndPlacePyBulletBlocksEnv,
-                GraphClearAndPlacePyBulletBlocksEnv,
+                ObstacleTowerPyBulletBlocksEnv,
+                GraphObstacleTowerPyBulletBlocksEnv,
                 ClutteredDrawerPyBulletBlocksEnv,
             ),
         ):
