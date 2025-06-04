@@ -1,0 +1,603 @@
+"""Environment with toys on a table that need to be placed in a bin."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Collection
+
+import numpy as np
+import pybullet as p
+from gymnasium import spaces
+from gymnasium.utils import seeding
+from numpy.typing import NDArray
+from pybullet_helpers.geometry import Pose, get_pose, set_pose
+from pybullet_helpers.inverse_kinematics import check_body_collisions
+from pybullet_helpers.utils import create_pybullet_block
+
+from pybullet_blocks.envs.base_env import (
+    BaseSceneDescription,
+    BlockState,
+    LetteredBlockState,
+    PyBulletBlocksEnv,
+    PyBulletBlocksState,
+    RobotState,
+)
+from pybullet_blocks.utils import create_lettered_block
+
+
+@dataclass
+class BinDimensions:
+    """Dimensions for the bin container."""
+
+    # Bin outer dimensions
+    bin_size: tuple[float, float, float] = (0.3, 0.6, 0.1)
+    bin_wall_thickness: float = 0.02
+    bin_bottom_thickness: float = 0.02
+
+    @property
+    def interior_width(self) -> float:
+        """Width of the interior of the bin."""
+        return self.bin_size[0] - 2 * self.bin_wall_thickness
+
+    @property
+    def interior_depth(self) -> float:
+        """Depth of the interior of the bin."""
+        return self.bin_size[1] - 2 * self.bin_wall_thickness
+
+    @property
+    def interior_height(self) -> float:
+        """Height of the interior of the bin."""
+        return self.bin_size[2] - self.bin_bottom_thickness
+
+    @property
+    def interior_bottom_z_offset(self) -> float:
+        """Z offset from bin origin to interior bottom."""
+        return -self.bin_size[2] / 2 + self.bin_bottom_thickness
+
+
+@dataclass(frozen=True)
+class CleanupTableSceneDescription(BaseSceneDescription):
+    """Container for toy cleanup task hyperparameters."""
+
+    num_toys: int = 4
+
+    # Bin parameters
+    bin_position: tuple[float, float, float] = (0.95, 0.0, -0.375)
+    bin_rgba: tuple[float, float, float, float] = (0.2, 0.2, 0.8, 1.0)
+    bin_dimensions: BinDimensions = field(default_factory=BinDimensions)
+
+    # Toy parameters
+    toy_rgba: tuple[float, float, float, float] = (0.8, 0.2, 0.2, 1.0)
+    toy_half_extents: tuple[float, float, float] = (0.025, 0.025, 0.025)
+    toy_mass: float = 0.3
+    toy_friction: float = 0.9
+
+    # Table position
+    table_pose: Pose = Pose((0.5, 0.0, -0.175))
+    table_half_extents: tuple[float, float, float] = (0.3, 0.3, 0.25)
+
+    @property
+    def toy_init_position_lower(self) -> tuple[float, float, float]:
+        """Lower bounds for toy position on table."""
+        return (
+            self.table_pose.position[0]
+            - self.table_half_extents[0]
+            + self.toy_half_extents[0],
+            self.table_pose.position[1]
+            - self.table_half_extents[1]
+            + self.toy_half_extents[1],
+            self.table_pose.position[2]
+            + self.table_half_extents[2]
+            + self.toy_half_extents[2],
+        )
+
+    @property
+    def toy_init_position_upper(self) -> tuple[float, float, float]:
+        """Upper bounds for toy position on table."""
+        return (
+            self.table_pose.position[0]
+            + self.table_half_extents[0]
+            - self.toy_half_extents[0],
+            self.table_pose.position[1]
+            + self.table_half_extents[1]
+            - self.toy_half_extents[1],
+            self.table_pose.position[2]
+            + self.table_half_extents[2]
+            + self.toy_half_extents[2],
+        )
+
+
+@dataclass(frozen=True)
+class CleanupTablePyBulletBlocksState(PyBulletBlocksState):
+    """A state in the toy cleanup environment with graph representation."""
+
+    toy_states: Collection[LetteredBlockState]
+    bin_state: BlockState
+    robot_state: RobotState
+
+    @classmethod
+    def get_node_dimension(cls) -> int:
+        """Get the dimensionality of nodes."""
+        return max(
+            RobotState.get_dimension(),
+            LetteredBlockState.get_dimension(),
+            BlockState.get_dimension(),
+        )
+
+    def to_observation(self) -> spaces.GraphInstance:
+        """Create graph representation of the state."""
+        # Add bin as a special node type (type 2)
+        bin_node = np.zeros(self.get_node_dimension(), dtype=np.float32)
+        bin_node[0] = 2  # Distinguish bin from robot(0) and toys(1)
+        bin_vec = self.bin_state.to_vec()
+        bin_node[1 : 1 + len(bin_vec)] = bin_vec
+
+        inner_vecs: list[NDArray] = [
+            self.robot_state.to_vec(),
+            bin_node,
+        ]
+
+        for toy_state in self.toy_states:
+            inner_vecs.append(toy_state.to_vec())
+
+        padded_vecs: list[NDArray] = []
+        for vec in inner_vecs:
+            padded_vec = np.zeros(self.get_node_dimension(), dtype=np.float32)
+            padded_vec[: len(vec)] = vec
+            padded_vecs.append(padded_vec)
+
+        arr = np.array(padded_vecs, dtype=np.float32)
+        return spaces.GraphInstance(nodes=arr, edges=None, edge_links=None)
+
+    @classmethod
+    def from_observation(
+        cls, obs: spaces.GraphInstance
+    ) -> CleanupTablePyBulletBlocksState:
+        """Build a state from a graph."""
+        robot_state: RobotState | None = None
+        bin_state: BlockState | None = None
+        toy_states: list[LetteredBlockState] = []
+
+        for node in obs.nodes:
+            if np.isclose(node[0], 0):  # Robot
+                assert robot_state is None
+                vec = node[: RobotState.get_dimension()]
+                robot_state = RobotState.from_vec(vec)
+            elif np.isclose(node[0], 2):  # Bin
+                bin_vec = node[1 : BlockState.get_dimension()]
+                bin_state = BlockState.from_vec(bin_vec)
+            elif np.isclose(node[0], 1):  # Toy (LetteredBlockState)
+                vec = node[: LetteredBlockState.get_dimension()]
+                toy_state = LetteredBlockState.from_vec(vec)
+                toy_states.append(toy_state)
+
+        assert robot_state is not None
+        assert bin_state is not None
+
+        toy_states.sort(key=lambda x: x.letter)
+
+        return cls(toy_states, bin_state, robot_state)
+
+
+class CleanupTablePyBulletBlocksEnv(
+    PyBulletBlocksEnv[spaces.GraphInstance, NDArray[np.float32]]
+):
+    """A PyBullet environment for cleaning up toys from a table into a bin."""
+
+    metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
+
+    def __init__(
+        self,
+        scene_description: BaseSceneDescription | None = None,
+        render_mode: str | None = "rgb_array",
+        use_gui: bool = False,
+        seed: int = 0,
+    ) -> None:
+        if scene_description is None:
+            scene_description = CleanupTableSceneDescription()
+        assert isinstance(scene_description, CleanupTableSceneDescription)
+
+        super().__init__(scene_description, render_mode, use_gui, seed=seed)
+
+        # Set up observation space
+        obs_dim = CleanupTablePyBulletBlocksState.get_node_dimension()
+        self.observation_space = spaces.Graph(
+            node_space=spaces.Box(
+                low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
+            ),
+            edge_space=None,
+        )
+
+        # Create bin container
+        self._setup_bin()
+
+        # Create toys (using letters A, B, C, D, etc.)
+        # NOTE: Replace this with Objaverse objects
+        self.toy_ids = []
+        for i in range(scene_description.num_toys):
+            toy_id = create_lettered_block(
+                chr(65 + i),
+                scene_description.toy_half_extents,
+                scene_description.toy_rgba,
+                (1.0, 1.0, 1.0, 1.0),
+                self.physics_client_id,
+                mass=scene_description.toy_mass,
+                friction=scene_description.toy_friction,
+            )
+            self.toy_ids.append(toy_id)
+
+        # Set up toy ID to letter mapping
+        self._toy_id_to_letter = {
+            toy_id: chr(65 + i) for i, toy_id in enumerate(self.toy_ids)
+        }
+
+    def _setup_bin(self) -> None:
+        """Create bin container."""
+        scene_description = self.scene_description
+        assert isinstance(scene_description, CleanupTableSceneDescription)
+
+        bin_dim = scene_description.bin_dimensions
+        bin_pos = scene_description.bin_position  # Center of the whole bin
+
+        # --- Bottom ---
+        bottom_half_extents = (
+            bin_dim.bin_size[0] / 2,
+            bin_dim.bin_size[1] / 2,
+            bin_dim.bin_bottom_thickness / 2,
+        )
+        bottom_z = (
+            bin_pos[2] - bin_dim.bin_size[2] / 2 + bin_dim.bin_bottom_thickness / 2
+        )
+
+        self.bin_bottom_id = create_pybullet_block(
+            scene_description.bin_rgba,
+            half_extents=bottom_half_extents,
+            physics_client_id=self.physics_client_id,
+            mass=0.0,  # Make static
+        )
+        set_pose(
+            self.bin_bottom_id,
+            Pose((bin_pos[0], bin_pos[1], bottom_z)),
+            self.physics_client_id,
+        )
+
+        # --- Wall Z placement (centered on top of bottom) ---
+        wall_half_height = bin_dim.bin_size[2] / 2
+        wall_z = bottom_z + bin_dim.bin_bottom_thickness / 2 + wall_half_height
+
+        # --- Front & Back walls (along X axis) ---
+        x_wall_half_extents = (
+            bin_dim.bin_wall_thickness / 2,
+            bin_dim.bin_size[1] / 2,
+            wall_half_height,
+        )
+        x_offset = bin_dim.bin_size[0] / 2 - bin_dim.bin_wall_thickness / 2
+
+        self.bin_front_id = create_pybullet_block(
+            scene_description.bin_rgba,
+            half_extents=x_wall_half_extents,
+            physics_client_id=self.physics_client_id,
+            mass=0.0,
+        )
+        set_pose(
+            self.bin_front_id,
+            Pose((bin_pos[0] - x_offset, bin_pos[1], wall_z)),
+            self.physics_client_id,
+        )
+
+        self.bin_back_id = create_pybullet_block(
+            scene_description.bin_rgba,
+            half_extents=x_wall_half_extents,
+            physics_client_id=self.physics_client_id,
+            mass=0.0,
+        )
+        set_pose(
+            self.bin_back_id,
+            Pose((bin_pos[0] + x_offset, bin_pos[1], wall_z)),
+            self.physics_client_id,
+        )
+
+        # --- Left & Right walls (along Y axis) ---
+        y_wall_half_extents = (
+            bin_dim.bin_size[0] / 2,
+            bin_dim.bin_wall_thickness / 2,
+            wall_half_height,
+        )
+        y_offset = bin_dim.bin_size[1] / 2 - bin_dim.bin_wall_thickness / 2
+
+        self.bin_left_id = create_pybullet_block(
+            scene_description.bin_rgba,
+            half_extents=y_wall_half_extents,
+            physics_client_id=self.physics_client_id,
+            mass=0.0,
+        )
+        set_pose(
+            self.bin_left_id,
+            Pose((bin_pos[0], bin_pos[1] - y_offset, wall_z)),
+            self.physics_client_id,
+        )
+
+        self.bin_right_id = create_pybullet_block(
+            scene_description.bin_rgba,
+            half_extents=y_wall_half_extents,
+            physics_client_id=self.physics_client_id,
+            mass=0.0,
+        )
+        set_pose(
+            self.bin_right_id,
+            Pose((bin_pos[0], bin_pos[1] + y_offset, wall_z)),
+            self.physics_client_id,
+        )
+
+        # Store IDs
+        self.bin_id = self.bin_bottom_id
+        self.bin_part_ids = {
+            self.bin_bottom_id,
+            self.bin_front_id,
+            self.bin_back_id,
+            self.bin_left_id,
+            self.bin_right_id,
+        }
+
+    def set_state(self, state: PyBulletBlocksState) -> None:
+        """Reset the internal state to the given state."""
+        assert isinstance(state, CleanupTablePyBulletBlocksState)
+
+        # Set toy poses
+        for toy_state in state.toy_states:
+            toy_letter = toy_state.letter
+            toy_index = ord(toy_letter) - 65
+            if toy_index < len(self.toy_ids):
+                toy_id = self.toy_ids[toy_index]
+                set_pose(toy_id, toy_state.pose, self.physics_client_id)
+
+        # Bin pose is fixed, but we could update it if needed
+        # set_pose(self.bin_id, state.bin_state.pose, self.physics_client_id)
+
+        # Set robot state
+        self.robot.set_joints(state.robot_state.joint_positions)
+        self.current_grasp_transform = state.robot_state.grasp_transform
+
+        # Update held object if any
+        if state.robot_state.grasp_transform is not None:
+            for toy_state in state.toy_states:
+                if toy_state.held:
+                    toy_index = ord(toy_state.letter) - 65
+                    if toy_index < len(self.toy_ids):
+                        self.current_held_object_id = self.toy_ids[toy_index]
+                        break
+        else:
+            self.current_held_object_id = None
+
+    def get_state(self) -> CleanupTablePyBulletBlocksState:
+        """Expose the internal state for simulation."""
+        toy_states = []
+        for toy_id in self.toy_ids:
+            toy_pose = get_pose(toy_id, self.physics_client_id)
+            letter = self._toy_id_to_letter[toy_id]
+            held = bool(self.current_held_object_id == toy_id)
+            toy_state = LetteredBlockState(toy_pose, letter, held)
+            toy_states.append(toy_state)
+
+        bin_pose = get_pose(self.bin_id, self.physics_client_id)
+        bin_state = BlockState(bin_pose)
+
+        robot_joints = self.robot.get_joint_positions()
+        robot_state = RobotState(robot_joints, self.current_grasp_transform)
+
+        return CleanupTablePyBulletBlocksState(toy_states, bin_state, robot_state)
+
+    def get_collision_ids(self) -> set[int]:
+        """Expose all pybullet IDs for collision checking."""
+        ids = {self.table_id} | self.bin_part_ids
+
+        # Add toys that aren't currently held
+        if self.current_held_object_id is None:
+            ids.update(self.toy_ids)
+        else:
+            # Don't include held object in collision checking
+            ids.update(
+                toy_id
+                for toy_id in self.toy_ids
+                if toy_id != self.current_held_object_id
+            )
+
+        return ids
+
+    def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
+        """Get the half-extent of a given object from its pybullet ID."""
+        if object_id in self.toy_ids:
+            return self.scene_description.toy_half_extents
+        if object_id == self.bin_bottom_id:
+            # Return bin bottom dimensions
+            bin_dim = self.scene_description.bin_dimensions
+            return (
+                bin_dim.bin_size[0] / 2,
+                bin_dim.bin_size[1] / 2,
+                bin_dim.bin_bottom_thickness / 2,
+            )
+        if object_id in self.bin_part_ids:
+            # Return appropriate dimensions for each bin part
+            bin_dim = self.scene_description.bin_dimensions
+            if object_id in [self.bin_front_id, self.bin_back_id]:
+                return (
+                    bin_dim.bin_wall_thickness / 2,
+                    bin_dim.bin_size[1] / 2,
+                    bin_dim.bin_size[2] / 2,
+                )
+            if object_id in [self.bin_left_id, self.bin_right_id]:
+                return (
+                    bin_dim.bin_size[0] / 2,
+                    bin_dim.bin_wall_thickness / 2,
+                    bin_dim.bin_size[2] / 2,
+                )
+        return self.scene_description.table_half_extents
+
+    def _get_movable_block_ids(self) -> set[int]:
+        """Get all PyBullet IDs for movable objects."""
+        return set(self.toy_ids)
+
+    def _get_terminated(self) -> bool:
+        """Get whether the episode is terminated."""
+        # Check if all toys are in the bin and gripper is empty
+        all_toys_in_bin = all(self.is_toy_in_bin(toy_id) for toy_id in self.toy_ids)
+        gripper_empty = self.current_grasp_transform is None
+        return all_toys_in_bin and gripper_empty
+
+    def _get_reward(self) -> float:
+        """Get the current reward."""
+        # NOTE: Simple reward - count how many toys are in the bin
+        toys_in_bin = sum(1 for toy_id in self.toy_ids if self.is_toy_in_bin(toy_id))
+        max_reward = len(self.toy_ids)
+
+        # Bonus for completing the task
+        if self._get_terminated():
+            return float(max_reward + 1)
+
+        return float(toys_in_bin)
+
+    def is_toy_in_bin(self, toy_id: int) -> bool:
+        """Check if a toy is inside the bin container."""
+        toy_pose = get_pose(toy_id, self.physics_client_id)
+        bin_pos = self.scene_description.bin_position
+        bin_dim = self.scene_description.bin_dimensions
+
+        # Check if toy is within bin interior bounds
+        min_x = bin_pos[0] - bin_dim.interior_width / 2
+        max_x = bin_pos[0] + bin_dim.interior_width / 2
+        min_y = bin_pos[1] - bin_dim.interior_depth / 2
+        max_y = bin_pos[1] + bin_dim.interior_depth / 2
+        min_z = bin_pos[2] + bin_dim.interior_bottom_z_offset
+
+        toy_pos = toy_pose.position
+
+        # Check bounds
+        in_x_bounds = min_x <= toy_pos[0] <= max_x
+        in_y_bounds = min_y <= toy_pos[1] <= max_y
+        above_bottom = toy_pos[2] >= min_z
+
+        # Also check collision with bin bottom to ensure it's resting
+        on_bottom = check_body_collisions(
+            toy_id, self.bin_bottom_id, self.physics_client_id, distance_threshold=1e-3
+        )
+
+        return in_x_bounds and in_y_bounds and above_bottom and on_bottom
+
+    def reset(  # type: ignore[override]
+        self,
+        *,
+        seed: int | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> tuple[spaces.GraphInstance, dict[str, Any]]:
+        """Reset the environment to its initial state."""
+        if seed is not None:
+            self._np_random, seed = seeding.np_random(seed)
+        _ = super().reset(seed=seed)
+        self._place_toys_on_table()
+        return self.get_state().to_observation(), self._get_info()
+
+    def reset_from_state(
+        self,
+        state: spaces.GraphInstance | CleanupTablePyBulletBlocksState,
+        *,
+        seed: int | None = None,
+    ) -> tuple[spaces.GraphInstance, dict[str, Any]]:
+        """Reset environment to specific state."""
+        super().reset(seed=seed)
+        if isinstance(state, spaces.GraphInstance):
+            state = CleanupTablePyBulletBlocksState.from_observation(state)
+        self.set_state(state)
+        return self.get_state().to_observation(), self._get_info()
+
+    def _place_toys_on_table(self) -> None:
+        """Place toys randomly on the table."""
+        scene_description = self.scene_description
+        assert isinstance(scene_description, CleanupTableSceneDescription)
+
+        if self._np_random is None:
+            self._np_random, _ = seeding.np_random(0)
+
+        for toy_id in self.toy_ids:
+            # Try to place toy without collisions
+            placed = False
+            for _ in range(100):
+                position = self._np_random.uniform(
+                    scene_description.toy_init_position_lower,
+                    scene_description.toy_init_position_upper,
+                )
+                set_pose(toy_id, Pose(tuple(position)), self.physics_client_id)
+
+                collision_free = True
+                p.performCollisionDetection(physicsClientId=self.physics_client_id)
+
+                collision_ids = self.bin_part_ids | (set(self.toy_ids) - {toy_id})
+
+                for other_id in collision_ids:
+                    if check_body_collisions(
+                        toy_id,
+                        other_id,
+                        self.physics_client_id,
+                        perform_collision_detection=False,
+                    ):
+                        collision_free = False
+                        break
+
+                if collision_free:
+                    placed = True
+                    break
+
+            assert placed, f"Failed to place toy {toy_id} on table after 100 attempts."
+
+        for _ in range(50):
+            p.stepSimulation(physicsClientId=self.physics_client_id)
+
+    def get_collision_check_ids(self, toy_id: int) -> set[int]:
+        """Get IDs to check for collisions during free pose sampling."""
+        collision_ids = {self.table_id} | self.bin_part_ids
+        collision_ids.update(t_id for t_id in self.toy_ids if t_id != toy_id)
+        return collision_ids
+
+    def extract_relevant_object_features(self, obs, relevant_object_names):
+        """Extract features from relevant objects in the observation."""
+        if not hasattr(obs, "nodes"):
+            return obs  # Not a graph observation
+
+        nodes = obs.nodes
+        robot_node = None
+        bin_node = None
+        toy_nodes = {}
+
+        for node in nodes:
+            if np.isclose(node[0], 0):  # Robot
+                robot_node = node[1 : RobotState.get_dimension()]
+            elif np.isclose(node[0], 2):  # Bin
+                bin_node = node[1 : BlockState.get_dimension()]
+            elif np.isclose(node[0], 1):  # Toy
+                # Extract toy letter
+                lettered_block_dim = LetteredBlockState.get_dimension()
+                letter_idx = lettered_block_dim - 2
+                letter_val = int(node[letter_idx])
+                letter = chr(int(letter_val + 65))
+                if letter in relevant_object_names:
+                    toy_nodes[letter] = node[1:lettered_block_dim]
+
+        features = []
+        if robot_node is not None:
+            features.extend(robot_node)
+        if "bin" in relevant_object_names and bin_node is not None:
+            features.extend(bin_node)
+        for obj_name in sorted(relevant_object_names):
+            if obj_name in toy_nodes:
+                features.extend(toy_nodes[obj_name])
+
+        return np.array(features, dtype=np.float32)
+
+    def clone(self) -> CleanupTablePyBulletBlocksEnv:
+        """Clone the environment."""
+        clone_env = CleanupTablePyBulletBlocksEnv(
+            scene_description=self.scene_description,
+            render_mode=self.render_mode,
+            use_gui=False,
+        )
+        clone_env.set_state(self.get_state())
+        return clone_env
