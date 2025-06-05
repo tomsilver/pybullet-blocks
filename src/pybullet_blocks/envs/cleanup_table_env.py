@@ -571,9 +571,9 @@ class CleanupTablePyBulletBlocksEnv(
     def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
         """Get the half-extent of a given object from its pybullet ID."""
         if object_id in self.toy_ids:
-            return self.toy_half_extents_map.get(
-                object_id, self.scene_description.toy_half_extents
-            )
+            if object_id in self.toy_half_extents_map:
+                return self.toy_half_extents_map[object_id]
+            return self.scene_description.toy_half_extents
         if object_id == self.bin_bottom_id:
             # Return bin bottom dimensions
             bin_dim = self.scene_description.bin_dimensions
