@@ -96,7 +96,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     num_toys: int = 3
 
     # Bin parameters
-    bin_position: tuple[float, float, float] = (0.5, 0.45, -0.375)
+    bin_position: tuple[float, float, float] = (0.5, 0.45, -0.275)
     bin_rgba: tuple[float, float, float, float] = (0.6, 0.4, 0.2, 1.0)
     bin_dimensions: BinDimensions = field(default_factory=BinDimensions)
 
@@ -106,13 +106,40 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     toy_mass: float = 0.3
     toy_friction: float = 0.9
 
+    # Wall parameters
+    wall_rgba: tuple[float, float, float, float] = (0.9, 0.9, 0.9, 1.0)
+    wall_half_extents: tuple[float, float, float] = (0.05, 1.5, 1.0)
+    wall_offset_from_robot: float = 0.0
+
     # Objaverse configuration
     objaverse_config: ObjaverseConfig = field(default_factory=ObjaverseConfig)
     use_objaverse: bool = True
 
     # Table position
     table_pose: Pose = Pose((0.5, 0.0, -0.175))
-    table_half_extents: tuple[float, float, float] = (0.3, 0.3, 0.25)
+    table_half_extents: tuple[float, float, float] = (0.3, 0.3, 0.15)
+
+    # Robot base and stand position
+    robot_base_pose: Pose = Pose((0.0, 0.0, -0.1))
+    robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
+    robot_stand_half_extents: tuple[float, float, float] = (0.2, 0.2, 0.125)
+
+    @property
+    def wall_position(self) -> tuple[float, float, float]:
+        """Calculate wall position based on robot stand position."""
+        robot_stand_pos = self.robot_stand_pose.position
+        robot_stand_half_extents = self.robot_stand_half_extents
+        wall_x = (
+            robot_stand_pos[0]
+            - robot_stand_half_extents[0]
+            - self.wall_half_extents[0]
+            - self.wall_offset_from_robot
+        )
+        wall_y = robot_stand_pos[1]
+        wall_z = (
+            robot_stand_pos[2] - robot_stand_half_extents[2] + self.wall_half_extents[2]
+        )
+        return (wall_x, wall_y, wall_z)
 
     @property
     def toy_init_position_lower(self) -> tuple[float, float, float]:
@@ -346,6 +373,9 @@ class CleanupTablePyBulletObjectsEnv(
         # Create bin container
         self._setup_bin()
 
+        # Create wall behind robot
+        self._setup_wall()
+
         # Initialize Objaverse loader
         self.objaverse_loader = ObjaverseLoader(scene_description.objaverse_config)
 
@@ -484,6 +514,23 @@ class CleanupTablePyBulletObjectsEnv(
             self.bin_right_id,
         }
 
+    def _setup_wall(self) -> None:
+        """Create wall behind robot base."""
+        scene_description = self.scene_description
+        assert isinstance(scene_description, CleanupTableSceneDescription)
+
+        self.wall_id = create_pybullet_block(
+            scene_description.wall_rgba,
+            half_extents=scene_description.wall_half_extents,
+            physics_client_id=self.physics_client_id,
+            mass=0.0,  # Make static
+        )
+        set_pose(
+            self.wall_id,
+            Pose(scene_description.wall_position),
+            self.physics_client_id,
+        )
+
     def set_state(self, state: PyBulletObjectsState) -> None:
         """Reset the internal state to the given state."""
         assert isinstance(state, CleanupTablePyBulletObjectsState)
@@ -534,7 +581,7 @@ class CleanupTablePyBulletObjectsEnv(
 
     def get_collision_ids(self) -> set[int]:
         """Expose all pybullet IDs for collision checking."""
-        ids = {self.table_id} | self.bin_part_ids
+        ids = {self.table_id, self.wall_id} | self.bin_part_ids
 
         # Add toys that aren't currently held
         if self.current_held_object_id is None:
@@ -556,6 +603,8 @@ class CleanupTablePyBulletObjectsEnv(
                 object_id, physicsClientId=self.physics_client_id
             )
             return tuple((aabb_max[i] - aabb_min[i]) / 2 for i in range(3))
+        if object_id == self.wall_id:
+            return self.scene_description.wall_half_extents
         if object_id == self.bin_bottom_id:
             # Return bin bottom dimensions
             bin_dim = self.scene_description.bin_dimensions
@@ -677,7 +726,9 @@ class CleanupTablePyBulletObjectsEnv(
                 collision_free = True
                 p.performCollisionDetection(physicsClientId=self.physics_client_id)
 
-                collision_ids = self.bin_part_ids | (set(self.toy_ids) - {toy_id})
+                collision_ids = (
+                    self.bin_part_ids | {self.wall_id} | (set(self.toy_ids) - {toy_id})
+                )
 
                 for other_id in collision_ids:
                     if check_body_collisions(
@@ -700,7 +751,7 @@ class CleanupTablePyBulletObjectsEnv(
 
     def get_collision_check_ids(self, toy_id: int) -> set[int]:
         """Get IDs to check for collisions during free pose sampling."""
-        collision_ids = {self.table_id} | self.bin_part_ids
+        collision_ids = {self.table_id, self.wall_id} | self.bin_part_ids
         collision_ids.update(t_id for t_id in self.toy_ids if t_id != toy_id)
         return collision_ids
 
