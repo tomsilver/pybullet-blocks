@@ -64,7 +64,7 @@ class BinDimensions:
     """Dimensions for the bin container."""
 
     # Bin outer dimensions
-    bin_size: tuple[float, float, float] = (0.3, 0.6, 0.1)
+    bin_size: tuple[float, float, float] = (0.6, 0.3, 0.1)
     bin_wall_thickness: float = 0.02
     bin_bottom_thickness: float = 0.02
 
@@ -96,7 +96,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     num_toys: int = 3
 
     # Bin parameters
-    bin_position: tuple[float, float, float] = (0.95, 0.0, -0.375)
+    bin_position: tuple[float, float, float] = (0.5, 0.45, -0.375)
     bin_rgba: tuple[float, float, float, float] = (0.6, 0.4, 0.2, 1.0)
     bin_dimensions: BinDimensions = field(default_factory=BinDimensions)
 
