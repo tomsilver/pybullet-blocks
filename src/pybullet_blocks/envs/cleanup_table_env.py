@@ -33,7 +33,7 @@ from pybullet_blocks.utils import create_labeled_object
 class ObjaverseConfig:
     """Configuration for Objaverse objects."""
 
-    # Predefined toy objects with their Objaverse UIDs and scales
+    # Predefined objects with their Objaverse UIDs and scales
     toy_objects: dict[str, dict[str, Any]] = field(
         default_factory=lambda: {
             "A": {"uid": "a84cecb600c04eeba60d02f99b8b154b", "scale": 0.05},  # Duck toy
@@ -45,6 +45,12 @@ class ObjaverseConfig:
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
                 "scale": 5e-4,
             },
+        }
+    )
+    wiper_config: dict[str, Any] = field(
+        default_factory=lambda: {
+            "uid": "fd007cd7f27648678e263c137f30a6c8",
+            "scale": 0.5,
         }
     )
 
@@ -111,6 +117,15 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     wall_half_extents: tuple[float, float, float] = (0.05, 1.5, 1.0)
     wall_offset_from_robot: float = 0.0
 
+    # Floor parameters
+    floor_rgba: tuple[float, float, float, float] = (0.4, 0.25, 0.12, 1.0)
+    floor_half_extents: tuple[float, float, float] = (0.8, 1.5, 0.05)
+    floor_position: tuple[float, float, float] = (0.25, 0.0, -0.375)
+
+    # Wiper parameters
+    wiper_mass: float = 0.5
+    wiper_offset_from_wall: float = -0.075
+
     # Objaverse configuration
     objaverse_config: ObjaverseConfig = field(default_factory=ObjaverseConfig)
     use_objaverse: bool = True
@@ -170,6 +185,23 @@ class CleanupTableSceneDescription(BaseSceneDescription):
             + self.table_half_extents[2]
             + self.toy_half_extents[2],
         )
+
+    def get_wiper_position(
+        self, wiper_half_extents: tuple[float, float, float]
+    ) -> tuple[float, float, float]:
+        """Calculate wiper position based on its half extents."""
+        wall_pos = self.wall_position
+        wiper_x = (
+            wall_pos[0]
+            + self.wall_half_extents[0]
+            + wiper_half_extents[0]
+            + self.wiper_offset_from_wall
+        )
+        wiper_y = wall_pos[1] - self.robot_stand_half_extents[1] - wiper_half_extents[1]
+        floor_top_z = self.floor_position[2] + self.floor_half_extents[2]
+        wiper_z = floor_top_z + wiper_half_extents[2]
+        print(f"Wiper position: {wiper_x}, {wiper_y}, {wiper_z}")
+        return (wiper_x, wiper_y, wiper_z)
 
 
 @dataclass(frozen=True)
@@ -266,6 +298,7 @@ class ObjaverseLoader:
     def _download_all_objects(self) -> None:
         """Download all objects defined in configuration."""
         uids = [obj_config["uid"] for obj_config in self.config.toy_objects.values()]
+        uids.append(self.config.wiper_config["uid"])
         downloaded_objects = objaverse.load_objects(
             uids=uids,
             download_processes=1,
@@ -291,20 +324,28 @@ class ObjaverseLoader:
         print(f"Converted {glb_path} to {obj_path}")
         return obj_path
 
-    def load_toy_object(
+    def load_object(
         self,
-        label: str,
         physics_client_id: int,
+        label: str | None = None,
         mass: float | None = None,
         scale: float | None = None,
+        is_wiper: bool = False,
     ) -> int:
-        """Load a toy object from Objaverse."""
-        obj_config = self.config.toy_objects.get(label)
-        assert obj_config is not None, f"Object config for label {label} not found."
+        """Load toy objects or wiper object from Objaverse."""
+        if not is_wiper:
+            assert label is not None, "Label must be provided for toy objects."
+            obj_config = self.config.toy_objects.get(label)
+            assert obj_config is not None, f"Object config for label {label} not found."
+            uid = obj_config["uid"]
+            if scale is None:
+                scale = obj_config.get("scale", self.config.default_scale)
+        else:
+            wiper_config = self.config.wiper_config
+            uid = wiper_config["uid"]
+            if scale is None:
+                scale = wiper_config.get("scale", self.config.default_scale)
 
-        uid = obj_config["uid"]
-        if scale is None:
-            scale = obj_config.get("scale", self.config.default_scale)
         if mass is None:
             mass = self.config.default_mass
 
@@ -337,7 +378,7 @@ class ObjaverseLoader:
             lateralFriction=self.config.default_lateral_friction,
             physicsClientId=physics_client_id,
         )
-        print(f"Loaded Objaverse object {label} (UID: {uid}) with scale {scale}")
+        print(f"Loaded Objaverse {label} (UID: {uid}) with scale {scale}")
         return body_id
 
 
@@ -370,24 +411,24 @@ class CleanupTablePyBulletObjectsEnv(
             edge_space=None,
         )
 
-        # Create bin container
+        # Create other components
         self._setup_bin()
-
-        # Create wall behind robot
         self._setup_wall()
+        self._setup_floor()
 
-        # Initialize Objaverse loader
         self.objaverse_loader = ObjaverseLoader(scene_description.objaverse_config)
+        self._setup_wiper()
 
         # Create toys using Objaverse objects or labeled objects
         self.toy_ids = []
         for i in range(scene_description.num_toys):
             label = chr(65 + i)
             if scene_description.use_objaverse:
-                toy_id = self.objaverse_loader.load_toy_object(
-                    label,
+                toy_id = self.objaverse_loader.load_object(
                     self.physics_client_id,
+                    label,
                     mass=scene_description.toy_mass,
+                    is_wiper=False,
                 )
             else:
                 toy_id = create_labeled_object(
@@ -531,6 +572,47 @@ class CleanupTablePyBulletObjectsEnv(
             self.physics_client_id,
         )
 
+    def _setup_floor(self) -> None:
+        """Create floor."""
+        scene_description = self.scene_description
+        assert isinstance(scene_description, CleanupTableSceneDescription)
+
+        self.floor_id = create_pybullet_block(
+            scene_description.floor_rgba,
+            half_extents=scene_description.floor_half_extents,
+            physics_client_id=self.physics_client_id,
+            mass=0.0,  # Make static
+        )
+        set_pose(
+            self.floor_id,
+            Pose(scene_description.floor_position),
+            self.physics_client_id,
+        )
+
+    def _setup_wiper(self) -> None:
+        """Create wiper object against the wall."""
+        scene_description = self.scene_description
+        assert isinstance(scene_description, CleanupTableSceneDescription)
+
+        # Load wiper at origin first
+        self.wiper_id = self.objaverse_loader.load_object(
+            self.physics_client_id,
+            mass=scene_description.wiper_mass,
+            is_wiper=True,
+        )
+        rotation_quat = p.getQuaternionFromEuler([np.pi / 2 + 0.2, 0.5, np.pi])
+        temp_pose = Pose((0, 0, 0), rotation_quat)
+        set_pose(self.wiper_id, temp_pose, self.physics_client_id)
+
+        # Get actual half-extents and calculate proper position
+        aabb_min, aabb_max = p.getAABB(
+            self.wiper_id, physicsClientId=self.physics_client_id
+        )
+        wiper_half_extents = tuple((aabb_max[i] - aabb_min[i]) / 2 for i in range(3))
+        wiper_position = scene_description.get_wiper_position(wiper_half_extents)
+        final_wiper_pose = Pose(wiper_position, rotation_quat)
+        set_pose(self.wiper_id, final_wiper_pose, self.physics_client_id)
+
     def set_state(self, state: PyBulletObjectsState) -> None:
         """Reset the internal state to the given state."""
         assert isinstance(state, CleanupTablePyBulletObjectsState)
@@ -581,7 +663,12 @@ class CleanupTablePyBulletObjectsEnv(
 
     def get_collision_ids(self) -> set[int]:
         """Expose all pybullet IDs for collision checking."""
-        ids = {self.table_id, self.wall_id} | self.bin_part_ids
+        ids = {
+            self.table_id,
+            self.wall_id,
+            self.floor_id,
+            self.wiper_id,
+        } | self.bin_part_ids
 
         # Add toys that aren't currently held
         if self.current_held_object_id is None:
@@ -598,13 +685,15 @@ class CleanupTablePyBulletObjectsEnv(
 
     def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
         """Get the half-extent of a given object from its pybullet ID."""
-        if object_id in self.toy_ids:
+        if object_id in self.toy_ids or object_id == self.wiper_id:
             aabb_min, aabb_max = p.getAABB(
                 object_id, physicsClientId=self.physics_client_id
             )
             return tuple((aabb_max[i] - aabb_min[i]) / 2 for i in range(3))
         if object_id == self.wall_id:
             return self.scene_description.wall_half_extents
+        if object_id == self.floor_id:
+            return self.scene_description.floor_half_extents
         if object_id == self.bin_bottom_id:
             # Return bin bottom dimensions
             bin_dim = self.scene_description.bin_dimensions
@@ -727,7 +816,9 @@ class CleanupTablePyBulletObjectsEnv(
                 p.performCollisionDetection(physicsClientId=self.physics_client_id)
 
                 collision_ids = (
-                    self.bin_part_ids | {self.wall_id} | (set(self.toy_ids) - {toy_id})
+                    self.bin_part_ids
+                    | {self.wall_id, self.floor_id, self.wiper_id}
+                    | (set(self.toy_ids) - {toy_id})
                 )
 
                 for other_id in collision_ids:
@@ -751,7 +842,7 @@ class CleanupTablePyBulletObjectsEnv(
 
     def get_collision_check_ids(self, toy_id: int) -> set[int]:
         """Get IDs to check for collisions during free pose sampling."""
-        collision_ids = {self.table_id, self.wall_id} | self.bin_part_ids
+        collision_ids = {self.table_id, self.wall_id, self.wiper_id} | self.bin_part_ids
         collision_ids.update(t_id for t_id in self.toy_ids if t_id != toy_id)
         return collision_ids
 
