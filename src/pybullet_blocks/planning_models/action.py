@@ -22,24 +22,24 @@ from relational_structs import (
 )
 from task_then_motion_planning.structs import LiftedOperatorSkill
 
-from pybullet_blocks.envs.base_env import PyBulletBlocksEnv, PyBulletBlocksState
+from pybullet_blocks.envs.base_env import PyBulletObjectsEnv, PyBulletObjectsState
 from pybullet_blocks.envs.block_stacking_env import (
-    BlockStackingPyBulletBlocksEnv,
-    BlockStackingPyBulletBlocksState,
+    BlockStackingPyBulletObjectsEnv,
+    BlockStackingPyBulletObjectsState,
 )
 from pybullet_blocks.envs.cluttered_drawer_env import (
-    ClutteredDrawerPyBulletBlocksEnv,
-    ClutteredDrawerPyBulletBlocksState,
+    ClutteredDrawerPyBulletObjectsEnv,
+    ClutteredDrawerPyBulletObjectsState,
 )
 from pybullet_blocks.envs.obstacle_tower_env import (
-    GraphObstacleTowerPyBulletBlocksEnv,
-    GraphObstacleTowerPyBulletBlocksState,
-    ObstacleTowerPyBulletBlocksEnv,
-    ObstacleTowerPyBulletBlocksState,
+    GraphObstacleTowerPyBulletObjectsEnv,
+    GraphObstacleTowerPyBulletObjectsState,
+    ObstacleTowerPyBulletObjectsEnv,
+    ObstacleTowerPyBulletObjectsState,
 )
 from pybullet_blocks.envs.pick_place_env import (
-    PickPlacePyBulletBlocksEnv,
-    PickPlacePyBulletBlocksState,
+    PickPlacePyBulletObjectsEnv,
+    PickPlacePyBulletObjectsState,
 )
 from pybullet_blocks.planning_models.manipulation import (
     get_kinematic_plan_to_grasp_object,
@@ -60,13 +60,13 @@ from pybullet_blocks.planning_models.perception import (
     IsMovable,
     IsTable,
     IsTarget,
-    IsTargetBlock,
+    IsTargetObject,
     LeftClear,
     NothingOn,
     NotHolding,
     NotIsMovable,
     NotIsTarget,
-    NotIsTargetBlock,
+    NotIsTargetObject,
     NotReadyPick,
     On,
     ReadyPick,
@@ -153,7 +153,7 @@ GraspLeftRightOperator = LiftedOperator(
     "GraspLeftRight",
     [Robot, Obj, Obj_blo, Obj_blo2, Surface],
     preconditions={
-        LiftedAtom(IsTargetBlock, [Obj]),
+        LiftedAtom(IsTargetObject, [Obj]),
         LiftedAtom(IsMovable, [Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
         LiftedAtom(GripperEmpty, [Robot]),
@@ -186,7 +186,7 @@ GraspFrontBackOperator = LiftedOperator(
     "GraspFrontBack",
     [Robot, Obj, Obj_blo, Obj_blo2, Surface],
     preconditions={
-        LiftedAtom(IsTargetBlock, [Obj]),
+        LiftedAtom(IsTargetObject, [Obj]),
         LiftedAtom(IsMovable, [Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
         LiftedAtom(GripperEmpty, [Robot]),
@@ -219,7 +219,7 @@ GraspFullClearOperator = LiftedOperator(
     "GraspFullClear",
     [Robot, Obj, Surface],
     preconditions={
-        LiftedAtom(IsTargetBlock, [Obj]),
+        LiftedAtom(IsTargetObject, [Obj]),
         LiftedAtom(IsMovable, [Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
         LiftedAtom(GripperEmpty, [Robot]),
@@ -244,7 +244,7 @@ GraspFullClearOperator = LiftedOperator(
     },
 )
 
-# For grasping the blocking blocks
+# For grasping the blocking objects
 # Note that grasping does not involve changes in the
 # blocking predicates, only placement does.
 # Such that wiggling behavior connects two nodes without
@@ -254,7 +254,7 @@ GraspNonTargetOperator = LiftedOperator(
     [Robot, Obj, Surface],
     preconditions={
         LiftedAtom(IsMovable, [Obj]),
-        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(NotIsTargetObject, [Obj]),
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(On, [Obj, Surface]),
         LiftedAtom(IsDrawer, [Surface]),
@@ -273,14 +273,14 @@ GraspNonTargetOperator = LiftedOperator(
     },
 )
 
-# For Placing the blocking block
-PlaceFrontBlockOperator = LiftedOperator(
-    "PlaceFrontBlock",
+# For Placing the blocking object
+PlaceFrontObjectOperator = LiftedOperator(
+    "PlaceFrontObject",
     [Robot, Obj, Obj_tgt, Surface],
     preconditions={
-        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(IsTargetObject, [Obj_tgt]),
         LiftedAtom(Holding, [Robot, Obj]),
-        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(NotIsTargetObject, [Obj]),
         LiftedAtom(IsDrawer, [Surface]),
         LiftedAtom(BlockingFront, [Obj, Obj_tgt]),
     },
@@ -297,13 +297,13 @@ PlaceFrontBlockOperator = LiftedOperator(
     },
 )
 
-PlaceBackBlockOperator = LiftedOperator(
-    "PlaceBackBlock",
+PlaceBackObjectOperator = LiftedOperator(
+    "PlaceBackObject",
     [Robot, Obj, Obj_tgt, Surface],
     preconditions={
-        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(IsTargetObject, [Obj_tgt]),
         LiftedAtom(Holding, [Robot, Obj]),
-        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(NotIsTargetObject, [Obj]),
         LiftedAtom(IsDrawer, [Surface]),
         LiftedAtom(BlockingBack, [Obj, Obj_tgt]),
     },
@@ -320,13 +320,13 @@ PlaceBackBlockOperator = LiftedOperator(
     },
 )
 
-PlaceLeftBlockOperator = LiftedOperator(
-    "PlaceLeftBlock",
+PlaceLeftObjectOperator = LiftedOperator(
+    "PlaceLeftObject",
     [Robot, Obj, Obj_tgt, Surface],
     preconditions={
-        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(IsTargetObject, [Obj_tgt]),
         LiftedAtom(Holding, [Robot, Obj]),
-        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(NotIsTargetObject, [Obj]),
         LiftedAtom(IsDrawer, [Surface]),
         LiftedAtom(BlockingLeft, [Obj, Obj_tgt]),
     },
@@ -343,13 +343,13 @@ PlaceLeftBlockOperator = LiftedOperator(
     },
 )
 
-PlaceRightBlockOperator = LiftedOperator(
-    "PlaceRightBlock",
+PlaceRightObjectOperator = LiftedOperator(
+    "PlaceRightObject",
     [Robot, Obj, Obj_tgt, Surface],
     preconditions={
-        LiftedAtom(IsTargetBlock, [Obj_tgt]),
+        LiftedAtom(IsTargetObject, [Obj_tgt]),
         LiftedAtom(Holding, [Robot, Obj]),
-        LiftedAtom(NotIsTargetBlock, [Obj]),
+        LiftedAtom(NotIsTargetObject, [Obj]),
         LiftedAtom(IsDrawer, [Surface]),
         LiftedAtom(BlockingRight, [Obj, Obj_tgt]),
     },
@@ -366,14 +366,14 @@ PlaceRightBlockOperator = LiftedOperator(
     },
 )
 
-# For the target block
+# For the target object
 PlaceTargetOperator = LiftedOperator(
     "PlaceTarget",
     [Robot, Obj, Surface],
     preconditions={
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
-        LiftedAtom(IsTargetBlock, [Obj]),
+        LiftedAtom(IsTargetObject, [Obj]),
         LiftedAtom(IsTable, [Surface]),
     },
     add_effects={
@@ -484,20 +484,20 @@ OPERATORS_DRAWER = {
     GraspFullClearOperator,
     GraspNonTargetOperator,
     PlaceTargetOperator,
-    PlaceFrontBlockOperator,
-    PlaceBackBlockOperator,
-    PlaceLeftBlockOperator,
-    PlaceRightBlockOperator,
+    PlaceFrontObjectOperator,
+    PlaceBackObjectOperator,
+    PlaceLeftObjectOperator,
+    PlaceRightObjectOperator,
 }
 
 
 # Create skills.
-class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
+class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
     """Shared functionality."""
 
     def __init__(
         self,
-        sim: PyBulletBlocksEnv[ObsType, NDArray[np.float32]],
+        sim: PyBulletObjectsEnv[ObsType, NDArray[np.float32]],
         max_motion_planning_time: float = 1.0,
         seed: int = 0,
     ) -> None:
@@ -558,7 +558,7 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
         return action
 
     def _object_to_pybullet_id(self, obj: Object) -> int:
-        if isinstance(self._sim, PickPlacePyBulletBlocksEnv):
+        if isinstance(self._sim, PickPlacePyBulletObjectsEnv):
             if obj.name == "block":
                 return self._sim.block_id
             if obj.name == "target":
@@ -566,15 +566,15 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             if obj.name == "table":
                 return self._sim.table_id
             raise NotImplementedError
-        if isinstance(self._sim, BlockStackingPyBulletBlocksEnv):
+        if isinstance(self._sim, BlockStackingPyBulletObjectsEnv):
             if obj.name == "table":
                 return self._sim.table_id
             assert len(obj.name) == 1
-            letter = obj.name
-            return self._sim.letter_to_block_id[letter]
+            label = obj.name
+            return self._sim.label_to_block_id[label]
         if isinstance(
             self._sim,
-            (ObstacleTowerPyBulletBlocksEnv, GraphObstacleTowerPyBulletBlocksEnv),
+            (ObstacleTowerPyBulletObjectsEnv, GraphObstacleTowerPyBulletObjectsEnv),
         ):
             if obj.name == "table":
                 return self._sim.table_id
@@ -583,40 +583,44 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             if obj.name == "T":
                 return self._sim.target_block_id
             assert len(obj.name) == 1
-            letter = obj.name
-            return self._sim.obstacle_block_ids[ord(letter) - 65 - 1]
-        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
+            label = obj.name
+            return self._sim.obstacle_block_ids[ord(label) - 65 - 1]
+        if isinstance(self._sim, ClutteredDrawerPyBulletObjectsEnv):
             if obj.name in ["table", "drawer"]:
                 return self._sim.drawer_with_table_id
-            if obj.name == self._sim.scene_description.target_block_letter:
-                return self._sim.target_block_id
+            if obj.name == self._sim.scene_description.target_object_label:
+                return self._sim.target_object_id
             assert len(obj.name) == 1
-            letter = obj.name
-            return self._sim.drawer_block_ids[ord(letter) - 65 - 1]
+            label = obj.name
+            return self._sim.drawer_object_ids[ord(label) - 65 - 1]
         raise NotImplementedError
 
     def _obs_to_kinematic_state(self, obs: ObsType) -> KinematicState:
         sim_state = self._obs_to_sim_state(obs)
         return self._sim_state_to_kinematic_state(sim_state)
 
-    def _obs_to_sim_state(self, obs: ObsType) -> PyBulletBlocksState:
-        if isinstance(self._sim, PickPlacePyBulletBlocksEnv):
-            return PickPlacePyBulletBlocksState.from_observation(obs)  # type: ignore
-        if isinstance(self._sim, BlockStackingPyBulletBlocksEnv):
-            return BlockStackingPyBulletBlocksState.from_observation(obs)  # type: ignore
-        if isinstance(self._sim, ObstacleTowerPyBulletBlocksEnv):
-            return ObstacleTowerPyBulletBlocksState.from_observation(obs)  # type: ignore
-        if isinstance(self._sim, GraphObstacleTowerPyBulletBlocksEnv):
-            return GraphObstacleTowerPyBulletBlocksState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
-        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
-            return ClutteredDrawerPyBulletBlocksState.from_observation(obs)  # type: ignore # pylint:disable=line-too-long
+    def _obs_to_sim_state(self, obs: ObsType) -> PyBulletObjectsState:
+        if isinstance(self._sim, PickPlacePyBulletObjectsEnv):
+            return PickPlacePyBulletObjectsState.from_observation(obs)  # type: ignore
+        if isinstance(self._sim, BlockStackingPyBulletObjectsEnv):
+            return BlockStackingPyBulletObjectsState.from_observation(
+                obs  # type:ignore
+            )
+        if isinstance(self._sim, ObstacleTowerPyBulletObjectsEnv):
+            return ObstacleTowerPyBulletObjectsState.from_observation(
+                obs  # type:ignore
+            )
+        if isinstance(self._sim, GraphObstacleTowerPyBulletObjectsEnv):
+            return GraphObstacleTowerPyBulletObjectsState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
+        if isinstance(self._sim, ClutteredDrawerPyBulletObjectsEnv):
+            return ClutteredDrawerPyBulletObjectsState.from_observation(obs)  # type: ignore # pylint:disable=line-too-long
         raise NotImplementedError
 
     def _sim_state_to_kinematic_state(
-        self, sim_state: PyBulletBlocksState
+        self, sim_state: PyBulletObjectsState
     ) -> KinematicState:
-        if isinstance(sim_state, PickPlacePyBulletBlocksState):
-            assert isinstance(self._sim, PickPlacePyBulletBlocksEnv)
+        if isinstance(sim_state, PickPlacePyBulletObjectsState):
+            assert isinstance(self._sim, PickPlacePyBulletObjectsEnv)
             robot_joints = sim_state.robot_state.joint_positions
             object_poses = {
                 self._sim.block_id: sim_state.block_state.pose,
@@ -628,15 +632,15 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 attachments[self._sim.block_id] = sim_state.robot_state.grasp_transform
             return KinematicState(robot_joints, object_poses, attachments)
 
-        if isinstance(sim_state, BlockStackingPyBulletBlocksState):
-            assert isinstance(self._sim, BlockStackingPyBulletBlocksEnv)
+        if isinstance(sim_state, BlockStackingPyBulletObjectsState):
+            assert isinstance(self._sim, BlockStackingPyBulletObjectsEnv)
             robot_joints = sim_state.robot_state.joint_positions
             object_poses = {
                 self._sim.table_id: self._sim.scene_description.table_pose,
             }
             held_block_id = -1
             for block_state in sim_state.block_states:
-                block_id = self._sim.letter_to_block_id[block_state.letter]
+                block_id = self._sim.label_to_block_id[block_state.label]
                 object_poses[block_id] = block_state.pose
                 if block_state.held:
                     assert held_block_id == -1
@@ -649,11 +653,11 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
 
         if isinstance(
             sim_state,
-            (ObstacleTowerPyBulletBlocksState, GraphObstacleTowerPyBulletBlocksState),
+            (ObstacleTowerPyBulletObjectsState, GraphObstacleTowerPyBulletObjectsState),
         ):
             assert isinstance(
                 self._sim,
-                (ObstacleTowerPyBulletBlocksEnv, GraphObstacleTowerPyBulletBlocksEnv),
+                (ObstacleTowerPyBulletObjectsEnv, GraphObstacleTowerPyBulletObjectsEnv),
             )
             robot_points = sim_state.robot_state.joint_positions
             object_poses = {
@@ -662,9 +666,7 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 self._sim.target_block_id: sim_state.target_block_state.pose,
             }
             for block_state in sim_state.obstacle_block_states:
-                block_id = self._sim.obstacle_block_ids[
-                    ord(block_state.letter) - 65 - 1
-                ]
+                block_id = self._sim.obstacle_block_ids[ord(block_state.label) - 65 - 1]
                 object_poses[block_id] = block_state.pose
             attachments = {}
             if sim_state.robot_state.grasp_transform is not None:
@@ -676,7 +678,7 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                     for block_state in sim_state.obstacle_block_states:
                         if block_state.held:
                             block_id = self._sim.obstacle_block_ids[
-                                ord(block_state.letter) - 65 - 1
+                                ord(block_state.label) - 65 - 1
                             ]
                             attachments[block_id] = (
                                 sim_state.robot_state.grasp_transform
@@ -684,31 +686,35 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                             break
             return KinematicState(robot_points, object_poses, attachments)
 
-        if isinstance(sim_state, ClutteredDrawerPyBulletBlocksState):
-            assert isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv)
+        if isinstance(sim_state, ClutteredDrawerPyBulletObjectsState):
+            assert isinstance(self._sim, ClutteredDrawerPyBulletObjectsEnv)
             robot_joints = sim_state.robot_state.joint_positions
             object_poses = {
                 self._sim.drawer_with_table_id: get_pose(
                     self._sim.drawer_with_table_id, self._sim.physics_client_id
                 ),
             }
-            for block_state in sim_state.drawer_blocks:
-                block_id = self._sim.drawer_block_ids[ord(block_state.letter) - 65 - 1]
-                object_poses[block_id] = block_state.pose
-            object_poses[self._sim.target_block_id] = sim_state.target_block_state.pose
+            for object_state in sim_state.drawer_objects:
+                object_id = self._sim.drawer_object_ids[
+                    ord(object_state.label) - 65 - 1
+                ]
+                object_poses[object_id] = object_state.pose
+            object_poses[self._sim.target_object_id] = (
+                sim_state.target_object_state.pose
+            )
             attachments = {}
             if sim_state.robot_state.grasp_transform is not None:
-                if sim_state.target_block_state.held:
-                    attachments[self._sim.target_block_id] = (
+                if sim_state.target_object_state.held:
+                    attachments[self._sim.target_object_id] = (
                         sim_state.robot_state.grasp_transform
                     )
                 else:
-                    for block_state in sim_state.drawer_blocks:
-                        if block_state.held:
-                            block_id = self._sim.drawer_block_ids[
-                                ord(block_state.letter) - 65 - 1
+                    for object_state in sim_state.drawer_objects:
+                        if object_state.held:
+                            object_id = self._sim.drawer_object_ids[
+                                ord(object_state.label) - 65 - 1
                             ]
-                            attachments[block_id] = (
+                            attachments[object_id] = (
                                 sim_state.robot_state.grasp_transform
                             )
                             break
@@ -717,7 +723,7 @@ class PyBulletBlocksSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
         raise NotImplementedError
 
 
-class PickSkill(PyBulletBlocksSkill):
+class PickSkill(PyBulletObjectsSkill):
     """Skill for picking."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
@@ -728,8 +734,8 @@ class PickSkill(PyBulletBlocksSkill):
         objects: Sequence[Object],
         state: KinematicState,
     ) -> list[KinematicState] | None:
-        _, block, surface = objects
-        block_id = self._object_to_pybullet_id(block)
+        _, obj, surface = objects
+        object_id = self._object_to_pybullet_id(obj)
         surface_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses)
         relative_grasp = Pose((0, 0, 0), self._robot_grasp_orientation)
@@ -737,7 +743,7 @@ class PickSkill(PyBulletBlocksSkill):
         kinematic_plan = get_kinematic_plan_to_pick_object(
             state,
             self._sim.robot,
-            block_id,
+            object_id,
             surface_id,
             collision_ids,
             grasp_generator=grasp_generator,
@@ -753,7 +759,7 @@ class PickFromTargetSkill(PickSkill):
         return PickFromTargetOperator
 
 
-class ReachSkill(PyBulletBlocksSkill):
+class ReachSkill(PyBulletObjectsSkill):
     """Skill for reaching."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
@@ -765,8 +771,8 @@ class ReachSkill(PyBulletBlocksSkill):
         state: KinematicState,
     ) -> list[KinematicState] | None:
         # same as pick
-        _, block = objects
-        block_id = self._object_to_pybullet_id(block)
+        _, obj = objects
+        object_id = self._object_to_pybullet_id(obj)
         collision_ids = set(state.object_poses)
 
         def reach_generator() -> Iterator[Pose]:
@@ -788,7 +794,7 @@ class ReachSkill(PyBulletBlocksSkill):
         kinematic_plan = get_kinematic_plan_to_reach_object(
             state,
             self._sim.robot,
-            block_id,
+            object_id,
             collision_ids,
             reach_generator=reach_generator(),
             reach_generator_iters=20,
@@ -808,8 +814,8 @@ class GraspFrontBackSkill(PickSkill):
         state: KinematicState,
     ) -> list[KinematicState] | None:
         # same as pick
-        _, block, _, _, surface = objects
-        block_id = self._object_to_pybullet_id(block)
+        _, obj, _, _, surface = objects
+        object_id = self._object_to_pybullet_id(obj)
         surface_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses)
         # add one more possible relative grasp (orientation)
@@ -821,7 +827,7 @@ class GraspFrontBackSkill(PickSkill):
         kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
             self._sim.robot,
-            block_id,
+            object_id,
             surface_id,
             collision_ids,
             grasp_generator=grasp_generator,
@@ -849,8 +855,8 @@ class GraspFullClearSkill(PickSkill):
         state: KinematicState,
     ) -> list[KinematicState] | None:
         # same as pick
-        _, block, surface = objects
-        block_id = self._object_to_pybullet_id(block)
+        _, obj, surface = objects
+        object_id = self._object_to_pybullet_id(obj)
         surface_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses)
         # add one more possible relative grasp (orientation)
@@ -862,7 +868,7 @@ class GraspFullClearSkill(PickSkill):
         kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
             self._sim.robot,
-            block_id,
+            object_id,
             surface_id,
             collision_ids,
             grasp_generator=grasp_generator,
@@ -878,11 +884,11 @@ class GraspNonTargetSkill(GraspFullClearSkill):
         return GraspNonTargetOperator
 
 
-class PlaceTargetSkill(PyBulletBlocksSkill):
+class PlaceTargetSkill(PyBulletObjectsSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it. This is for placing the target block on the Table.
+    it. This is for placing the target object on the Table.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
@@ -891,19 +897,19 @@ class PlaceTargetSkill(PyBulletBlocksSkill):
     def _get_kinematic_plan_given_objects(
         self, objects: Sequence[Object], state: KinematicState
     ) -> list[KinematicState] | None:
-        _, block, surface = objects
+        _, obj, surface = objects
 
-        block_id = self._object_to_pybullet_id(block)
+        object_id = self._object_to_pybullet_id(obj)
         surface_id = self._object_to_pybullet_id(surface)
-        collision_ids = set(state.object_poses) - {block_id}
+        collision_ids = set(state.object_poses) - {object_id}
         placement_generator = self._generate_surface_placements(
-            block_id, surface_id, state
+            object_id, surface_id, state
         )
         # use customized motion planner
         kinematic_plan = get_kinematic_plan_to_lift_place_object(
             state,
             self._sim.robot,
-            block_id,
+            object_id,
             surface_id,
             collision_ids,
             placement_generator=placement_generator,
@@ -917,7 +923,7 @@ class PlaceTargetSkill(PyBulletBlocksSkill):
     def _generate_surface_placements(
         self, held_obj_id: int, table_id: int, state: KinematicState
     ) -> Iterator[Pose]:
-        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
+        if isinstance(self._sim, ClutteredDrawerPyBulletObjectsEnv):
             # For cluttered drawer, sample placements on the table top region.
             while True:
                 world_to_placement = self._sim.sample_free_table_place_pose(held_obj_id)
@@ -930,32 +936,32 @@ class PlaceTargetSkill(PyBulletBlocksSkill):
             raise NotImplementedError
 
 
-class PlaceFrontBlockSkill(PyBulletBlocksSkill):
+class PlaceFrontObjectSkill(PyBulletObjectsSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it. This is for placing the non target block on the drawer.
+    it. This is for placing the non target object on the drawer.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceFrontBlockOperator
+        return PlaceFrontObjectOperator
 
     def _get_kinematic_plan_given_objects(
         self, objects: Sequence[Object], state: KinematicState
     ) -> list[KinematicState] | None:
-        _, block, _, surface = objects
+        _, obj, _, surface = objects
 
-        block_id = self._object_to_pybullet_id(block)
+        object_id = self._object_to_pybullet_id(obj)
         surface_id = self._object_to_pybullet_id(surface)
-        collision_ids = set(state.object_poses) - {block_id}
+        collision_ids = set(state.object_poses) - {object_id}
         placement_generator = self._generate_surface_placements(
-            block_id, surface_id, state
+            object_id, surface_id, state
         )
         # use customized motion planner
         kinematic_plan = get_kinematic_plan_to_lift_place_object(
             state,
             self._sim.robot,
-            block_id,
+            object_id,
             surface_id,
             collision_ids,
             placement_generator=placement_generator,
@@ -969,7 +975,7 @@ class PlaceFrontBlockSkill(PyBulletBlocksSkill):
     def _generate_surface_placements(
         self, held_obj_id: int, table_id: int, state: KinematicState
     ) -> Iterator[Pose]:
-        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
+        if isinstance(self._sim, ClutteredDrawerPyBulletObjectsEnv):
             # For cluttered drawer, sample placements on the table top region.
             while True:
                 world_to_placement = self._sim.sample_free_drawer_place_pose(
@@ -984,40 +990,40 @@ class PlaceFrontBlockSkill(PyBulletBlocksSkill):
             raise NotImplementedError
 
 
-class PlaceBackBlockSkill(PlaceFrontBlockSkill):
+class PlaceBackObjectSkill(PlaceFrontObjectSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it. This is for placing the non target block on the drawer.
+    it. This is for placing the non target object on the drawer.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceBackBlockOperator
+        return PlaceBackObjectOperator
 
 
-class PlaceLeftBlockSkill(PlaceFrontBlockSkill):
+class PlaceLeftObjectSkill(PlaceFrontObjectSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it. This is for placing the non target block on the drawer.
+    it. This is for placing the non target object on the drawer.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceLeftBlockOperator
+        return PlaceLeftObjectOperator
 
 
-class PlaceRightBlockSkill(PlaceFrontBlockSkill):
+class PlaceRightObjectSkill(PlaceFrontObjectSkill):
     """Skill for placing in the drawer domain.
 
     The drawer is cluttered, so we uniquely design motion planning for
-    it. This is for placing the non target block on the drawer.
+    it. This is for placing the non target object on the drawer.
     """
 
     def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceRightBlockOperator
+        return PlaceRightObjectOperator
 
 
-class PlaceSkill(PyBulletBlocksSkill):
+class PlaceSkill(PyBulletObjectsSkill):
     """Skill for placing."""
 
     def _get_lifted_operator(self) -> LiftedOperator:
@@ -1026,23 +1032,23 @@ class PlaceSkill(PyBulletBlocksSkill):
     def _get_kinematic_plan_given_objects(
         self, objects: Sequence[Object], state: KinematicState
     ) -> list[KinematicState] | None:
-        _, block, surface = objects
+        _, obj, surface = objects
 
-        block_id = self._object_to_pybullet_id(block)
+        object_id = self._object_to_pybullet_id(obj)
         surface_id = self._object_to_pybullet_id(surface)
-        collision_ids = set(state.object_poses) - {block_id}
+        collision_ids = set(state.object_poses) - {object_id}
         if surface.name == "table":
             placement_generator = self._generate_table_placements(
-                block_id, surface_id, state
+                object_id, surface_id, state
             )
         else:
-            placement_generator = self._generate_block_placements(
-                block_id, surface_id, state
+            placement_generator = self._generate_object_placements(
+                object_id, surface_id, state
             )
         kinematic_plan = get_kinematic_plan_to_place_object(
             state,
             self._sim.robot,
-            block_id,
+            object_id,
             surface_id,
             collision_ids,
             placement_generator=placement_generator,
@@ -1059,14 +1065,14 @@ class PlaceSkill(PyBulletBlocksSkill):
         if isinstance(
             self._sim,
             (
-                BlockStackingPyBulletBlocksEnv,
-                ObstacleTowerPyBulletBlocksEnv,
-                GraphObstacleTowerPyBulletBlocksEnv,
-                ClutteredDrawerPyBulletBlocksEnv,
+                BlockStackingPyBulletObjectsEnv,
+                ObstacleTowerPyBulletObjectsEnv,
+                GraphObstacleTowerPyBulletObjectsEnv,
+                ClutteredDrawerPyBulletObjectsEnv,
             ),
         ):
             while True:
-                world_to_placement = self._sim.sample_free_block_pose(held_obj_id)
+                world_to_placement = self._sim.sample_free_object_pose(held_obj_id)
                 world_to_table = state.object_poses[table_id]
                 table_to_placement = multiply_poses(
                     world_to_table.invert(), world_to_placement
@@ -1075,7 +1081,7 @@ class PlaceSkill(PyBulletBlocksSkill):
         else:
             raise NotImplementedError
 
-    def _generate_block_placements(
+    def _generate_object_placements(
         self, held_obj_id: int, target_id: int, _state: KinematicState
     ) -> Iterator[Pose]:
         held_obj_half_height = self._sim.get_object_half_extents(held_obj_id)[2]
@@ -1127,8 +1133,8 @@ SKILLS_DRAWER = {
     GraspFullClearSkill,
     GraspNonTargetSkill,
     PlaceTargetSkill,
-    PlaceFrontBlockSkill,
-    PlaceBackBlockSkill,
-    PlaceLeftBlockSkill,
-    PlaceRightBlockSkill,
+    PlaceFrontObjectSkill,
+    PlaceBackObjectSkill,
+    PlaceLeftObjectSkill,
+    PlaceRightObjectSkill,
 }

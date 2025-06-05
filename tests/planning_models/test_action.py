@@ -3,17 +3,17 @@
 import pytest
 from task_then_motion_planning.planning import TaskThenMotionPlanner
 
-from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletBlocksEnv
+from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletObjectsEnv
 from pybullet_blocks.envs.cluttered_drawer_env import (
-    ClutteredDrawerPyBulletBlocksEnv,
+    ClutteredDrawerPyBulletObjectsEnv,
     ClutteredDrawerSceneDescription,
 )
 from pybullet_blocks.envs.obstacle_tower_env import (
-    GraphObstacleTowerPyBulletBlocksEnv,
-    ObstacleTowerPyBulletBlocksEnv,
+    GraphObstacleTowerPyBulletObjectsEnv,
+    ObstacleTowerPyBulletObjectsEnv,
     ObstacleTowerSceneDescription,
 )
-from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
+from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletObjectsEnv
 from pybullet_blocks.planning_models.action import (
     OPERATORS,
     OPERATORS_DRAWER,
@@ -24,25 +24,25 @@ from pybullet_blocks.planning_models.perception import (
     DRAWER_PREDICATES,
     PREDICATES,
     TYPES,
-    BlockStackingPyBulletBlocksPerceiver,
-    ClutteredDrawerBlocksPerceiver,
-    GraphObstacleTowerPyBulletBlocksPerceiver,
-    ObstacleTowerPyBulletBlocksPerceiver,
-    PickPlacePyBulletBlocksPerceiver,
+    BlockStackingPyBulletObjectsPerceiver,
+    ClutteredDrawerObjectsPerceiver,
+    GraphObstacleTowerPyBulletObjectsPerceiver,
+    ObstacleTowerPyBulletObjectsPerceiver,
+    PickPlacePyBulletObjectsPerceiver,
 )
 
 
 def test_pick_place_pybullet_blocks_action():
-    """Tests task then motion planning in PickPlacePyBulletBlocksEnv()."""
+    """Tests task then motion planning in PickPlacePyBulletObjectsEnv()."""
 
-    env = PickPlacePyBulletBlocksEnv(use_gui=False)
-    sim = PickPlacePyBulletBlocksEnv(env.scene_description, use_gui=False)
+    env = PickPlacePyBulletObjectsEnv(use_gui=False)
+    sim = PickPlacePyBulletObjectsEnv(env.scene_description, use_gui=False)
 
     # from gymnasium.wrappers import RecordVideo
     # env = RecordVideo(env, "videos/pick-place-ttmp-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
-    perceiver = PickPlacePyBulletBlocksPerceiver(sim)
+    perceiver = PickPlacePyBulletObjectsPerceiver(sim)
     skills = {s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS}
 
     # Create the planner.
@@ -66,16 +66,16 @@ def test_pick_place_pybullet_blocks_action():
 
 
 def test_block_stacking_pybullet_blocks_action():
-    """Tests task then motion planning in BlockStackingPyBulletBlocksEnv()."""
+    """Tests task then motion planning in BlockStackingPyBulletObjectsEnv()."""
 
-    env = BlockStackingPyBulletBlocksEnv(use_gui=False)
-    sim = BlockStackingPyBulletBlocksEnv(env.scene_description, use_gui=False)
+    env = BlockStackingPyBulletObjectsEnv(use_gui=False)
+    sim = BlockStackingPyBulletObjectsEnv(env.scene_description, use_gui=False)
 
     # from gymnasium.wrappers import RecordVideo
     # env = RecordVideo(env, "videos/block-stacking-ttmp-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
-    perceiver = BlockStackingPyBulletBlocksPerceiver(sim)
+    perceiver = BlockStackingPyBulletObjectsPerceiver(sim)
     skills = {s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS}
 
     # Create the planner.
@@ -104,14 +104,14 @@ def test_block_stacking_pybullet_blocks_action():
     "env_cls,perceiver_cls",
     [
         (
-            GraphObstacleTowerPyBulletBlocksEnv,
-            GraphObstacleTowerPyBulletBlocksPerceiver,
+            GraphObstacleTowerPyBulletObjectsEnv,
+            GraphObstacleTowerPyBulletObjectsPerceiver,
         ),
-        (ObstacleTowerPyBulletBlocksEnv, ObstacleTowerPyBulletBlocksPerceiver),
+        (ObstacleTowerPyBulletObjectsEnv, ObstacleTowerPyBulletObjectsPerceiver),
     ],
 )
 def test_obstacle_tower_pybullet_blocks_action(env_cls, perceiver_cls):
-    """Tests task then motion planning in ObstacleTowerPyBulletBlocksEnv()."""
+    """Tests task then motion planning in ObstacleTowerPyBulletObjectsEnv()."""
     seed = 123
 
     scene_description = ObstacleTowerSceneDescription(
@@ -157,20 +157,21 @@ def test_obstacle_tower_pybullet_blocks_action(env_cls, perceiver_cls):
     env.close()
 
 
-def test_cluttered_drawer_blocks_action():
-    """Tests task then motion planning in ClutteredDrawerBlocksEnv()."""
+def test_cluttered_drawer_objects_action():
+    """Tests task then motion planning in
+    ClutteredDrawerPyBulletObjectsEnv()."""
     seed = 123
 
     scene_description = ClutteredDrawerSceneDescription(
-        num_drawer_blocks=4,
+        num_drawer_objects=4,
     )
 
-    env = ClutteredDrawerPyBulletBlocksEnv(
+    env = ClutteredDrawerPyBulletObjectsEnv(
         scene_description=scene_description,
         use_gui=False,
         seed=seed,
     )
-    sim = ClutteredDrawerPyBulletBlocksEnv(
+    sim = ClutteredDrawerPyBulletObjectsEnv(
         scene_description=scene_description,
         use_gui=False,
         seed=seed,
@@ -180,7 +181,7 @@ def test_cluttered_drawer_blocks_action():
     # env = RecordVideo(env, "videos/cluttered-drawer-ttmp-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
-    perceiver = ClutteredDrawerBlocksPerceiver(sim)
+    perceiver = ClutteredDrawerObjectsPerceiver(sim)
     skills = {
         s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS_DRAWER
     }

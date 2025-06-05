@@ -4,7 +4,7 @@ import pybullet as p
 import pytest
 
 from pybullet_blocks.envs.cleanup_table_env import (
-    CleanupTablePyBulletBlocksEnv,
+    CleanupTablePyBulletObjectsEnv,
     CleanupTableSceneDescription,
     ObjaverseConfig,
 )
@@ -12,11 +12,8 @@ from pybullet_blocks.envs.cleanup_table_env import (
 
 @pytest.mark.skip(reason="Requires GUI for testing")
 def test_cleanup_table_env_init():
-    """Test initialization of CleanupTablePyBulletBlocksEnv."""
-    objaverse_config = ObjaverseConfig(
-        default_scale=0.05,
-        use_simplified_collision=False,
-    )
+    """Test initialization of CleanupTablePyBulletObjectsEnv."""
+    objaverse_config = ObjaverseConfig()
     objaverse_config.toy_objects["A"]["scale"] = 0.05
     objaverse_config.toy_objects["B"]["scale"] = 3e-6
     objaverse_config.toy_objects["C"]["scale"] = 5e-4
@@ -25,7 +22,7 @@ def test_cleanup_table_env_init():
         use_objaverse=True,
         objaverse_config=objaverse_config,
     )
-    env = CleanupTablePyBulletBlocksEnv(
+    env = CleanupTablePyBulletObjectsEnv(
         scene_description=scene_description, use_gui=True
     )
     _ = env.reset(seed=123)

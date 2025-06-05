@@ -55,5 +55,6 @@ exclude = [".venv/*", "build/*"]
 [[tool.mypy.overrides]]
 module = [
     "pybullet.*",
+    "objaverse.*",
 ]
 ignore_missing_imports = true

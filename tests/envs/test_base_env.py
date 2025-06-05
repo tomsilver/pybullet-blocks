@@ -3,17 +3,17 @@
 import numpy as np
 
 from pybullet_blocks.envs.obstacle_tower_env import (
-    ObstacleTowerPyBulletBlocksEnv,
-    ObstacleTowerPyBulletBlocksState,
+    ObstacleTowerPyBulletObjectsEnv,
+    ObstacleTowerPyBulletObjectsState,
 )
 
 
 def test_table_penetration_prevention():
     """Test that the environment prevents robot-table penetration."""
-    env = ObstacleTowerPyBulletBlocksEnv(use_gui=False)
+    env = ObstacleTowerPyBulletObjectsEnv(use_gui=False)
 
     obs, _ = env.reset(seed=42)
-    initial_state = ObstacleTowerPyBulletBlocksState.from_observation(obs)
+    initial_state = ObstacleTowerPyBulletObjectsState.from_observation(obs)
     initial_joints = np.array(initial_state.robot_state.joint_positions)
 
     # Calculate a joint movement that would cause penetration into the table
@@ -26,7 +26,7 @@ def test_table_penetration_prevention():
 
     # Take the penetration action.
     new_obs, reward, _, _, _ = env.step(penetration_action)
-    new_state = ObstacleTowerPyBulletBlocksState.from_observation(new_obs)
+    new_state = ObstacleTowerPyBulletObjectsState.from_observation(new_obs)
     new_joints = np.array(new_state.robot_state.joint_positions)
 
     # The environment should have prevented penetration.

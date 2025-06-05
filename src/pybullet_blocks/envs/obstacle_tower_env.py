@@ -17,13 +17,13 @@ from pybullet_helpers.utils import create_pybullet_block
 
 from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
-    BlockState,
-    LetteredBlockState,
-    PyBulletBlocksEnv,
-    PyBulletBlocksState,
+    LabeledObjectState,
+    ObjectState,
+    PyBulletObjectsEnv,
+    PyBulletObjectsState,
     RobotState,
 )
-from pybullet_blocks.utils import create_lettered_block
+from pybullet_blocks.utils import create_labeled_object
 
 
 @dataclass(frozen=True)
@@ -53,19 +53,19 @@ class ObstacleTowerSceneDescription(BaseSceneDescription):
             self.target_area_position[1] - self.table_half_extents[1] / 2,
             self.table_pose.position[2]
             + self.table_half_extents[2]
-            + self.block_half_extents[2],
+            + self.object_half_extents[2],
         )
 
 
 @dataclass(frozen=True)
-class GraphObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
-    """A state in the GraphObstacleTowerPyBulletBlocksEnv with graph
+class GraphObstacleTowerPyBulletObjectsState(PyBulletObjectsState):
+    """A state in the GraphObstacleTowerPyBulletObjectsEnv with graph
     observation."""
 
-    obstacle_block_states: Collection[LetteredBlockState]
-    irrelevant_block_states: Collection[LetteredBlockState]
-    target_block_state: LetteredBlockState
-    target_state: BlockState
+    obstacle_block_states: Collection[LabeledObjectState]
+    irrelevant_block_states: Collection[LabeledObjectState]
+    target_block_state: LabeledObjectState
+    target_state: ObjectState
     robot_state: RobotState
 
     @classmethod
@@ -73,8 +73,8 @@ class GraphObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
         """Get the dimensionality of nodes."""
         return max(
             RobotState.get_dimension(),
-            LetteredBlockState.get_dimension(),
-            BlockState.get_dimension(),
+            LabeledObjectState.get_dimension(),
+            ObjectState.get_dimension(),
         )
 
     def to_observation(self) -> spaces.GraphInstance:
@@ -100,14 +100,14 @@ class GraphObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
     @classmethod
     def from_observation(
         cls, obs: spaces.GraphInstance
-    ) -> GraphObstacleTowerPyBulletBlocksState:
+    ) -> GraphObstacleTowerPyBulletObjectsState:
         """Build a state from a graph."""
         robot_state: RobotState | None = None
-        target_state: BlockState | None = None
-        target_block_state: LetteredBlockState | None = None
-        obstacle_states: list[LetteredBlockState] = []
-        irrelevant_states: list[LetteredBlockState] = []
-        all_lettered_block_states: list[LetteredBlockState] = []
+        target_state: ObjectState | None = None
+        target_block_state: LabeledObjectState | None = None
+        obstacle_states: list[LabeledObjectState] = []
+        irrelevant_states: list[LabeledObjectState] = []
+        all_labeled_block_states: list[LabeledObjectState] = []
 
         for node in obs.nodes:
             if np.isclose(node[0], 0):  # Robot
@@ -115,35 +115,35 @@ class GraphObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
                 vec = node[: RobotState.get_dimension()]
                 robot_state = RobotState.from_vec(vec)
             elif np.isclose(node[0], 1):  # Block
-                # Check if it's a LetterBlockState or a regular BlockState (target area)
-                if len(node) >= LetteredBlockState.get_dimension() and not np.isclose(
-                    node[LetteredBlockState.get_dimension() - 2], 0
+                # Check if it's a labelObjectState or a regular ObjectState (target area)
+                if len(node) >= LabeledObjectState.get_dimension() and not np.isclose(
+                    node[LabeledObjectState.get_dimension() - 2], 0
                 ):
-                    # It's a LetteredBlockState
-                    vec = node[: LetteredBlockState.get_dimension()]
-                    block_state = LetteredBlockState.from_vec(vec)
+                    # It's a LabeledObjectState
+                    vec = node[: LabeledObjectState.get_dimension()]
+                    block_state = LabeledObjectState.from_vec(vec)
 
                     # Identify if it's the target block (T) or an obstacle (A, B, C)
-                    if block_state.letter == "T":
+                    if block_state.label == "T":
                         target_block_state = block_state
                     else:
-                        all_lettered_block_states.append(block_state)
+                        all_labeled_block_states.append(block_state)
                 else:
                     # It's the target area
-                    vec = node[: BlockState.get_dimension()]
-                    target_state = BlockState.from_vec(vec)
+                    vec = node[: ObjectState.get_dimension()]
+                    target_state = ObjectState.from_vec(vec)
 
-        all_lettered_block_states.sort(key=lambda x: x.letter)
-        obstacle_letters = set()
-        for block_state in all_lettered_block_states:
-            letter_ord = ord(block_state.letter)
-            if 66 <= letter_ord < 66 + len(all_lettered_block_states):
-                obstacle_letters.add(block_state.letter)
-                if len(obstacle_letters) >= 3:  # Common default, adjustable
+        all_labeled_block_states.sort(key=lambda x: x.label)
+        obstacle_labels = set()
+        for block_state in all_labeled_block_states:
+            label_ord = ord(block_state.label)
+            if 66 <= label_ord < 66 + len(all_labeled_block_states):
+                obstacle_labels.add(block_state.label)
+                if len(obstacle_labels) >= 3:  # Common default, adjustable
                     break
 
-        for block_state in all_lettered_block_states:
-            if block_state.letter in obstacle_letters:
+        for block_state in all_labeled_block_states:
+            if block_state.label in obstacle_labels:
                 obstacle_states.append(block_state)
             else:
                 irrelevant_states.append(block_state)
@@ -162,22 +162,22 @@ class GraphObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
 
 
 @dataclass(frozen=True)
-class ObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
-    """A state in the ObstacleTowerPyBulletBlocksEnv."""
+class ObstacleTowerPyBulletObjectsState(PyBulletObjectsState):
+    """A state in the ObstacleTowerPyBulletObjectsEnv."""
 
-    obstacle_block_states: Collection[LetteredBlockState]
-    irrelevant_block_states: Collection[LetteredBlockState]
-    target_block_state: LetteredBlockState
-    target_state: BlockState
+    obstacle_block_states: Collection[LabeledObjectState]
+    irrelevant_block_states: Collection[LabeledObjectState]
+    target_block_state: LabeledObjectState
+    target_state: ObjectState
     robot_state: RobotState
 
     @classmethod
     def get_dimension(cls) -> int:
         """Get the dimension of this state."""
         return (
-            LetteredBlockState.get_dimension()
+            LabeledObjectState.get_dimension()
             * 4  # Up to 4 blocks (3 obstacles + 1 target)
-            + BlockState.get_dimension()
+            + ObjectState.get_dimension()
             + RobotState.get_dimension()
         )
 
@@ -203,10 +203,10 @@ class ObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
     @classmethod
     def from_observation(
         cls, obs: NDArray[np.float32]
-    ) -> ObstacleTowerPyBulletBlocksState:
+    ) -> ObstacleTowerPyBulletObjectsState:
         """Build a state from a vector."""
-        block_dim = LetteredBlockState.get_dimension()
-        target_dim = BlockState.get_dimension()
+        block_dim = LabeledObjectState.get_dimension()
+        target_dim = ObjectState.get_dimension()
 
         obs_parts = np.split(
             obs,
@@ -223,17 +223,17 @@ class ObstacleTowerPyBulletBlocksState(PyBulletBlocksState):
         obstacle_states = []
         for i in range(3):
             if np.any(obs_parts[i]):
-                obstacle_states.append(LetteredBlockState.from_vec(obs_parts[i]))
+                obstacle_states.append(LabeledObjectState.from_vec(obs_parts[i]))
 
-        target_block_state = LetteredBlockState.from_vec(obs_parts[3])
-        target_state = BlockState.from_vec(obs_parts[4])
+        target_block_state = LabeledObjectState.from_vec(obs_parts[3])
+        target_state = ObjectState.from_vec(obs_parts[4])
         robot_state = RobotState.from_vec(obs_parts[5])
 
         return cls(obstacle_states, [], target_block_state, target_state, robot_state)
 
 
-class GraphObstacleTowerPyBulletBlocksEnv(
-    PyBulletBlocksEnv[spaces.GraphInstance, NDArray[np.float32]]
+class GraphObstacleTowerPyBulletObjectsEnv(
+    PyBulletObjectsEnv[spaces.GraphInstance, NDArray[np.float32]]
 ):
     """A PyBullet environment for the obstacle tower task with graph-based
     observations."""
@@ -254,7 +254,7 @@ class GraphObstacleTowerPyBulletBlocksEnv(
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space
-        obs_dim = GraphObstacleTowerPyBulletBlocksState.get_node_dimension()
+        obs_dim = GraphObstacleTowerPyBulletObjectsState.get_node_dimension()
         self.observation_space = spaces.Graph(
             node_space=spaces.Box(
                 low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
@@ -264,14 +264,14 @@ class GraphObstacleTowerPyBulletBlocksEnv(
 
         # Create obstacle blocks (B, C, D)
         self.obstacle_block_ids = [
-            create_lettered_block(
+            create_labeled_object(
                 chr(65 + i + 1),
-                self.scene_description.block_half_extents,
-                self.scene_description.block_rgba,
-                self.scene_description.block_text_rgba,
+                self.scene_description.object_half_extents,
+                self.scene_description.object_rgba,
+                self.scene_description.object_text_rgba,
                 self.physics_client_id,
-                mass=self.scene_description.block_mass,
-                friction=self.scene_description.block_friction,
+                mass=self.scene_description.object_mass,
+                friction=self.scene_description.object_friction,
             )
             for i in range(scene_description.num_obstacle_blocks)
         ]
@@ -279,27 +279,27 @@ class GraphObstacleTowerPyBulletBlocksEnv(
         # Create irrlevant blocks
         offset = scene_description.num_obstacle_blocks + 1
         self.irrelevant_block_ids = [
-            create_lettered_block(
+            create_labeled_object(
                 chr(65 + i + offset),
-                self.scene_description.block_half_extents,
-                self.scene_description.block_rgba,
-                self.scene_description.block_text_rgba,
+                self.scene_description.object_half_extents,
+                self.scene_description.object_rgba,
+                self.scene_description.object_text_rgba,
                 self.physics_client_id,
-                mass=self.scene_description.block_mass,
-                friction=self.scene_description.block_friction,
+                mass=self.scene_description.object_mass,
+                friction=self.scene_description.object_friction,
             )
             for i in range(scene_description.num_irrelevant_blocks)
         ]
 
         # Create target block (T)
-        self.target_block_id = create_lettered_block(
+        self.target_block_id = create_labeled_object(
             "T",
-            self.scene_description.block_half_extents,
+            self.scene_description.object_half_extents,
             (0.2, 0.8, 0.2, 1.0),  # Different color to distinguish
-            self.scene_description.block_text_rgba,
+            self.scene_description.object_text_rgba,
             self.physics_client_id,
-            mass=self.scene_description.block_mass,
-            friction=self.scene_description.block_friction,
+            mass=self.scene_description.object_mass,
+            friction=self.scene_description.object_friction,
         )
 
         # Create target area
@@ -309,8 +309,8 @@ class GraphObstacleTowerPyBulletBlocksEnv(
             physics_client_id=self.physics_client_id,
         )
 
-        # Map block IDs to letters
-        self._block_id_to_letter = {
+        # Map block IDs to labels
+        self._block_id_to_label = {
             **{
                 block_id: chr(65 + i + 1)
                 for i, block_id in enumerate(self.obstacle_block_ids)
@@ -322,18 +322,18 @@ class GraphObstacleTowerPyBulletBlocksEnv(
             self.target_block_id: "T",
         }
 
-    def set_state(self, state: PyBulletBlocksState) -> None:
-        assert isinstance(state, GraphObstacleTowerPyBulletBlocksState)
+    def set_state(self, state: PyBulletObjectsState) -> None:
+        assert isinstance(state, GraphObstacleTowerPyBulletObjectsState)
 
         # Set obstacle block poses
         for block_state in state.obstacle_block_states:
-            block_id = self.obstacle_block_ids[ord(block_state.letter) - 65 - 1]
+            block_id = self.obstacle_block_ids[ord(block_state.label) - 65 - 1]
             set_pose(block_id, block_state.pose, self.physics_client_id)
 
         # Set irrelevant block poses
         offset = self.scene_description.num_obstacle_blocks + 1
         for block_state in state.irrelevant_block_states:
-            block_id = self.irrelevant_block_ids[ord(block_state.letter) - 65 - offset]
+            block_id = self.irrelevant_block_ids[ord(block_state.label) - 65 - offset]
             set_pose(block_id, block_state.pose, self.physics_client_id)
 
         # Set target block pose
@@ -356,7 +356,7 @@ class GraphObstacleTowerPyBulletBlocksEnv(
                 for block_state in state.obstacle_block_states:
                     if block_state.held:
                         block_id = self.obstacle_block_ids[
-                            ord(block_state.letter) - 65 - 1
+                            ord(block_state.label) - 65 - 1
                         ]
                         self.current_held_object_id = block_id
                         break
@@ -364,48 +364,48 @@ class GraphObstacleTowerPyBulletBlocksEnv(
                     offset = self.scene_description.num_obstacle_blocks + 1
                     if block_state.held:
                         block_id = self.irrelevant_block_ids[
-                            ord(block_state.letter) - 65 - offset
+                            ord(block_state.label) - 65 - offset
                         ]
                         self.current_held_object_id = block_id
                         break
         else:
             self.current_held_object_id = None
 
-    def get_state(self) -> GraphObstacleTowerPyBulletBlocksState:
+    def get_state(self) -> GraphObstacleTowerPyBulletObjectsState:
         # Get obstacle block states
         obstacle_states = []
         for block_id in self.obstacle_block_ids:
             block_pose = get_pose(block_id, self.physics_client_id)
-            letter = self._block_id_to_letter[block_id]
+            label = self._block_id_to_label[block_id]
             held = bool(self.current_held_object_id == block_id)
-            block_state = LetteredBlockState(block_pose, letter, held)
+            block_state = LabeledObjectState(block_pose, label, held)
             obstacle_states.append(block_state)
 
         # Get irrelevant block states
         irrelevant_states = []
         for block_id in self.irrelevant_block_ids:
             block_pose = get_pose(block_id, self.physics_client_id)
-            letter = self._block_id_to_letter[block_id]
+            label = self._block_id_to_label[block_id]
             held = bool(self.current_held_object_id == block_id)
-            block_state = LetteredBlockState(block_pose, letter, held)
+            block_state = LabeledObjectState(block_pose, label, held)
             irrelevant_states.append(block_state)
 
         # Get target block state
         target_block_pose = get_pose(self.target_block_id, self.physics_client_id)
         target_block_held = bool(self.current_held_object_id == self.target_block_id)
-        target_block_state = LetteredBlockState(
+        target_block_state = LabeledObjectState(
             target_block_pose, "T", target_block_held
         )
 
         # Get target area state
         target_pose = get_pose(self.target_area_id, self.physics_client_id)
-        target_state = BlockState(target_pose)
+        target_state = ObjectState(target_pose)
 
         # Get robot state
         robot_joints = self.robot.get_joint_positions()
         robot_state = RobotState(robot_joints, self.current_grasp_transform)
 
-        return GraphObstacleTowerPyBulletBlocksState(
+        return GraphObstacleTowerPyBulletObjectsState(
             obstacle_states,
             irrelevant_states,
             target_block_state,
@@ -438,7 +438,7 @@ class GraphObstacleTowerPyBulletBlocksEnv(
                 ids.update(self.obstacle_block_ids)
         return ids
 
-    def _get_movable_block_ids(self) -> set[int]:
+    def _get_movable_object_ids(self) -> set[int]:
         return (
             set(self.obstacle_block_ids)
             | {self.target_block_id}
@@ -487,7 +487,7 @@ class GraphObstacleTowerPyBulletBlocksEnv(
 
         # Stack obstacle blocks in the middle of the target area
         base_dz = (
-            self.scene_description.block_half_extents[2]
+            self.scene_description.object_half_extents[2]
             + self.scene_description.target_half_extents[2]
         )
         for i, block_id in enumerate(self.obstacle_block_ids):
@@ -498,13 +498,13 @@ class GraphObstacleTowerPyBulletBlocksEnv(
                     self.scene_description.target_area_position[1],
                     self.scene_description.target_area_position[2]
                     + base_dz
-                    + (i * 2 * self.scene_description.block_half_extents[2]),
+                    + (i * 2 * self.scene_description.object_half_extents[2]),
                 )
             else:
                 # Place blocks side by side
                 position = (
                     self.scene_description.target_area_position[0]
-                    + (i - 1) * 3 * scene_description.block_half_extents[0],
+                    + (i - 1) * 3 * scene_description.object_half_extents[0],
                     self.scene_description.target_area_position[1],
                     self.scene_description.target_area_position[2] + base_dz,
                 )
@@ -530,8 +530,8 @@ class GraphObstacleTowerPyBulletBlocksEnv(
             for _ in range(100):
                 position = tuple(
                     self._np_random.uniform(
-                        self.scene_description.block_init_position_lower,
-                        self.scene_description.block_init_position_upper,
+                        self.scene_description.object_init_position_lower,
+                        self.scene_description.object_init_position_upper,
                     )
                 )
                 dx = position[0] - self.scene_description.target_area_position[0]
@@ -561,8 +561,8 @@ class GraphObstacleTowerPyBulletBlocksEnv(
             else:
                 position = tuple(
                     self._np_random.uniform(
-                        self.scene_description.block_init_position_lower,
-                        self.scene_description.block_init_position_upper,
+                        self.scene_description.object_init_position_lower,
+                        self.scene_description.object_init_position_upper,
                     )
                 )
                 set_pose(block_id, Pose(tuple(position)), self.physics_client_id)
@@ -571,7 +571,7 @@ class GraphObstacleTowerPyBulletBlocksEnv(
 
     def reset_from_state(
         self,
-        state: spaces.GraphInstance | GraphObstacleTowerPyBulletBlocksState,
+        state: spaces.GraphInstance | GraphObstacleTowerPyBulletObjectsState,
         *,
         seed: int | None = None,
     ) -> tuple[spaces.GraphInstance, dict[str, Any]]:
@@ -579,7 +579,7 @@ class GraphObstacleTowerPyBulletBlocksEnv(
         super().reset(seed=seed)
 
         if isinstance(state, spaces.GraphInstance):
-            state = GraphObstacleTowerPyBulletBlocksState.from_observation(state)
+            state = GraphObstacleTowerPyBulletObjectsState.from_observation(state)
 
         self.set_state(state)
         return self.get_state().to_observation(), self._get_info()
@@ -598,7 +598,7 @@ class GraphObstacleTowerPyBulletBlocksEnv(
         if object_id == self.target_area_id:
             return self.scene_description.target_half_extents
         assert object_id in set(self.obstacle_block_ids) | {self.target_block_id}
-        return self.scene_description.block_half_extents
+        return self.scene_description.object_half_extents
 
     def extract_relevant_object_features(self, obs, relevant_object_names):
         """Extract features from relevant objects in the observation."""
@@ -614,21 +614,21 @@ class GraphObstacleTowerPyBulletBlocksEnv(
             if np.isclose(node[0], 0):  # Robot
                 robot_node = node[1 : RobotState.get_dimension()]
             elif np.isclose(node[0], 1):  # Block or target area
-                # Check if it's a lettered block or the target area
-                lettered_block_dim = LetteredBlockState.get_dimension()
-                if len(node) >= lettered_block_dim and not np.isclose(
-                    node[lettered_block_dim - 2], 0
+                # Check if it's a labeled block or the target area
+                labeled_block_dim = LabeledObjectState.get_dimension()
+                if len(node) >= labeled_block_dim and not np.isclose(
+                    node[labeled_block_dim - 2], 0
                 ):
-                    # It's a lettered block - check the letter
-                    letter_idx = lettered_block_dim - 2
-                    letter_val = int(node[letter_idx])
-                    letter = chr(int(letter_val + 65))
-                    if letter in relevant_object_names:
-                        block_nodes[letter] = node[1:lettered_block_dim]
+                    # It's a labeled block - check the label
+                    label_idx = labeled_block_dim - 2
+                    label_val = int(node[label_idx])
+                    label = chr(int(label_val + 65))
+                    if label in relevant_object_names:
+                        block_nodes[label] = node[1:labeled_block_dim]
                 else:
                     # It's the target area
                     if "target" in relevant_object_names:
-                        target_area_node = node[1 : BlockState.get_dimension()]
+                        target_area_node = node[1 : ObjectState.get_dimension()]
 
         features = []
         features.extend(robot_node)
@@ -640,9 +640,9 @@ class GraphObstacleTowerPyBulletBlocksEnv(
 
         return np.array(features, dtype=np.float32)
 
-    def clone(self) -> GraphObstacleTowerPyBulletBlocksEnv:
+    def clone(self) -> GraphObstacleTowerPyBulletObjectsEnv:
         """Clone the environment."""
-        clone_env = GraphObstacleTowerPyBulletBlocksEnv(
+        clone_env = GraphObstacleTowerPyBulletObjectsEnv(
             scene_description=self.scene_description,
             render_mode=self.render_mode,
             use_gui=False,
@@ -657,12 +657,12 @@ class GraphObstacleTowerPyBulletBlocksEnv(
         if obj_name == "target":
             return "target_area"
         if len(obj_name) == 1 and obj_name in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-            return "lettered_block"
+            return "labeled_block"
         return ""
 
 
-class ObstacleTowerPyBulletBlocksEnv(
-    PyBulletBlocksEnv[NDArray[np.float32], NDArray[np.float32]]
+class ObstacleTowerPyBulletObjectsEnv(
+    PyBulletObjectsEnv[NDArray[np.float32], NDArray[np.float32]]
 ):
     """A PyBullet environment requiring clearing blocks before placing a target
     block."""
@@ -683,21 +683,21 @@ class ObstacleTowerPyBulletBlocksEnv(
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space
-        obs_dim = ObstacleTowerPyBulletBlocksState.get_dimension()
+        obs_dim = ObstacleTowerPyBulletObjectsState.get_dimension()
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
 
         # Create obstacle blocks (B, C, D)
         self.obstacle_block_ids = [
-            create_lettered_block(
+            create_labeled_object(
                 chr(65 + i + 1),
-                self.scene_description.block_half_extents,
-                self.scene_description.block_rgba,
-                self.scene_description.block_text_rgba,
+                self.scene_description.object_half_extents,
+                self.scene_description.object_rgba,
+                self.scene_description.object_text_rgba,
                 self.physics_client_id,
-                mass=self.scene_description.block_mass,
-                friction=self.scene_description.block_friction,
+                mass=self.scene_description.object_mass,
+                friction=self.scene_description.object_friction,
             )
             for i in range(scene_description.num_obstacle_blocks)
         ]
@@ -705,27 +705,27 @@ class ObstacleTowerPyBulletBlocksEnv(
         # Create irrelevant blocks
         offset = scene_description.num_obstacle_blocks + 1
         self.irrelevant_block_ids = [
-            create_lettered_block(
+            create_labeled_object(
                 chr(65 + i + offset),
-                self.scene_description.block_half_extents,
-                self.scene_description.block_rgba,
-                self.scene_description.block_text_rgba,
+                self.scene_description.object_half_extents,
+                self.scene_description.object_rgba,
+                self.scene_description.object_text_rgba,
                 self.physics_client_id,
-                mass=self.scene_description.block_mass,
-                friction=self.scene_description.block_friction,
+                mass=self.scene_description.object_mass,
+                friction=self.scene_description.object_friction,
             )
             for i in range(scene_description.num_irrelevant_blocks)
         ]
 
         # Create target block (T)
-        self.target_block_id = create_lettered_block(
+        self.target_block_id = create_labeled_object(
             "T",
-            self.scene_description.block_half_extents,
+            self.scene_description.object_half_extents,
             (0.2, 0.8, 0.2, 1.0),  # Different color to distinguish
-            self.scene_description.block_text_rgba,
+            self.scene_description.object_text_rgba,
             self.physics_client_id,
-            mass=self.scene_description.block_mass,
-            friction=self.scene_description.block_friction,
+            mass=self.scene_description.object_mass,
+            friction=self.scene_description.object_friction,
         )
 
         # Create target area
@@ -735,8 +735,8 @@ class ObstacleTowerPyBulletBlocksEnv(
             physics_client_id=self.physics_client_id,
         )
 
-        # Map block IDs to letters
-        self._block_id_to_letter = {
+        # Map block IDs to labels
+        self._block_id_to_label = {
             **{
                 block_id: chr(65 + i + 1)
                 for i, block_id in enumerate(self.obstacle_block_ids)
@@ -748,18 +748,18 @@ class ObstacleTowerPyBulletBlocksEnv(
             self.target_block_id: "T",
         }
 
-    def set_state(self, state: PyBulletBlocksState) -> None:
-        assert isinstance(state, ObstacleTowerPyBulletBlocksState)
+    def set_state(self, state: PyBulletObjectsState) -> None:
+        assert isinstance(state, ObstacleTowerPyBulletObjectsState)
 
         # Set obstacle block poses
         for block_state in state.obstacle_block_states:
-            block_id = self.obstacle_block_ids[ord(block_state.letter) - 65 - 1]
+            block_id = self.obstacle_block_ids[ord(block_state.label) - 65 - 1]
             set_pose(block_id, block_state.pose, self.physics_client_id)
 
         # Set irrelevant block poses
         offset = self.scene_description.num_obstacle_blocks + 1
         for block_state in state.irrelevant_block_states:
-            block_id = self.irrelevant_block_ids[ord(block_state.letter) - 65 - offset]
+            block_id = self.irrelevant_block_ids[ord(block_state.label) - 65 - offset]
             set_pose(block_id, block_state.pose, self.physics_client_id)
 
         # Set target block pose
@@ -782,7 +782,7 @@ class ObstacleTowerPyBulletBlocksEnv(
                 for block_state in state.obstacle_block_states:
                     if block_state.held:
                         block_id = self.obstacle_block_ids[
-                            ord(block_state.letter) - 65 - 1
+                            ord(block_state.label) - 65 - 1
                         ]
                         self.current_held_object_id = block_id
                         break
@@ -790,48 +790,48 @@ class ObstacleTowerPyBulletBlocksEnv(
                     offset = self.scene_description.num_obstacle_blocks + 1
                     if block_state.held:
                         block_id = self.irrelevant_block_ids[
-                            ord(block_state.letter) - 65 - offset
+                            ord(block_state.label) - 65 - offset
                         ]
                         self.current_held_object_id = block_id
                         break
         else:
             self.current_held_object_id = None
 
-    def get_state(self) -> ObstacleTowerPyBulletBlocksState:
+    def get_state(self) -> ObstacleTowerPyBulletObjectsState:
         # Get obstacle block states
         obstacle_states = []
         for block_id in self.obstacle_block_ids:
             block_pose = get_pose(block_id, self.physics_client_id)
-            letter = self._block_id_to_letter[block_id]
+            label = self._block_id_to_label[block_id]
             held = bool(self.current_held_object_id == block_id)
-            block_state = LetteredBlockState(block_pose, letter, held)
+            block_state = LabeledObjectState(block_pose, label, held)
             obstacle_states.append(block_state)
 
         # Get irrelevant block states
         irrelevant_states = []
         for block_id in self.irrelevant_block_ids:
             block_pose = get_pose(block_id, self.physics_client_id)
-            letter = self._block_id_to_letter[block_id]
+            label = self._block_id_to_label[block_id]
             held = bool(self.current_held_object_id == block_id)
-            block_state = LetteredBlockState(block_pose, letter, held)
+            block_state = LabeledObjectState(block_pose, label, held)
             irrelevant_states.append(block_state)
 
         # Get target block state
         target_block_pose = get_pose(self.target_block_id, self.physics_client_id)
         target_block_held = bool(self.current_held_object_id == self.target_block_id)
-        target_block_state = LetteredBlockState(
+        target_block_state = LabeledObjectState(
             target_block_pose, "T", target_block_held
         )
 
         # Get target area state
         target_pose = get_pose(self.target_area_id, self.physics_client_id)
-        target_state = BlockState(target_pose)
+        target_state = ObjectState(target_pose)
 
         # Get robot state
         robot_joints = self.robot.get_joint_positions()
         robot_state = RobotState(robot_joints, self.current_grasp_transform)
 
-        return ObstacleTowerPyBulletBlocksState(
+        return ObstacleTowerPyBulletObjectsState(
             obstacle_states,
             irrelevant_states,
             target_block_state,
@@ -864,7 +864,7 @@ class ObstacleTowerPyBulletBlocksEnv(
                 ids.update(self.obstacle_block_ids)
         return ids
 
-    def _get_movable_block_ids(self) -> set[int]:
+    def _get_movable_object_ids(self) -> set[int]:
         return (
             set(self.obstacle_block_ids)
             | {self.target_block_id}
@@ -913,7 +913,7 @@ class ObstacleTowerPyBulletBlocksEnv(
 
         # Stack obstacle blocks in the middle of the target area
         base_dz = (
-            self.scene_description.block_half_extents[2]
+            self.scene_description.object_half_extents[2]
             + self.scene_description.target_half_extents[2]
         )
         for i, block_id in enumerate(self.obstacle_block_ids):
@@ -924,13 +924,13 @@ class ObstacleTowerPyBulletBlocksEnv(
                     self.scene_description.target_area_position[1],
                     self.scene_description.target_area_position[2]
                     + base_dz
-                    + (i * 2 * self.scene_description.block_half_extents[2]),
+                    + (i * 2 * self.scene_description.object_half_extents[2]),
                 )
             else:
                 # Place blocks side by side
                 position = (
                     self.scene_description.target_area_position[0]
-                    + (i - 1) * 3 * scene_description.block_half_extents[0],
+                    + (i - 1) * 3 * scene_description.object_half_extents[0],
                     self.scene_description.target_area_position[1],
                     self.scene_description.target_area_position[2] + base_dz,
                 )
@@ -956,8 +956,8 @@ class ObstacleTowerPyBulletBlocksEnv(
             for _ in range(100):
                 position = tuple(
                     self._np_random.uniform(
-                        self.scene_description.block_init_position_lower,
-                        self.scene_description.block_init_position_upper,
+                        self.scene_description.object_init_position_lower,
+                        self.scene_description.object_init_position_upper,
                     )
                 )
                 dx = position[0] - self.scene_description.target_area_position[0]
@@ -987,8 +987,8 @@ class ObstacleTowerPyBulletBlocksEnv(
             else:
                 position = tuple(
                     self._np_random.uniform(
-                        self.scene_description.block_init_position_lower,
-                        self.scene_description.block_init_position_upper,
+                        self.scene_description.object_init_position_lower,
+                        self.scene_description.object_init_position_upper,
                     )
                 )
                 set_pose(block_id, Pose(tuple(position)), self.physics_client_id)
@@ -997,7 +997,7 @@ class ObstacleTowerPyBulletBlocksEnv(
 
     def reset_from_state(
         self,
-        state: NDArray[np.float32] | ObstacleTowerPyBulletBlocksState,
+        state: NDArray[np.float32] | ObstacleTowerPyBulletObjectsState,
         *,
         seed: int | None = None,
     ) -> tuple[NDArray[np.float32], dict[str, Any]]:
@@ -1005,7 +1005,7 @@ class ObstacleTowerPyBulletBlocksEnv(
         super().reset(seed=seed)
 
         if isinstance(state, np.ndarray):
-            state = ObstacleTowerPyBulletBlocksState.from_observation(state)
+            state = ObstacleTowerPyBulletObjectsState.from_observation(state)
 
         self.set_state(state)
         return self.get_state().to_observation(), self._get_info()
@@ -1024,11 +1024,11 @@ class ObstacleTowerPyBulletBlocksEnv(
         if object_id == self.target_area_id:
             return self.scene_description.target_half_extents
         assert object_id in set(self.obstacle_block_ids) | {self.target_block_id}
-        return self.scene_description.block_half_extents
+        return self.scene_description.object_half_extents
 
-    def clone(self) -> ObstacleTowerPyBulletBlocksEnv:
+    def clone(self) -> ObstacleTowerPyBulletObjectsEnv:
         """Clone the environment."""
-        clone_env = ObstacleTowerPyBulletBlocksEnv(
+        clone_env = ObstacleTowerPyBulletObjectsEnv(
             scene_description=self.scene_description,
             render_mode=self.render_mode,
             use_gui=False,

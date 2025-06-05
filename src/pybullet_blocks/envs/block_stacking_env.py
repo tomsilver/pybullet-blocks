@@ -15,25 +15,25 @@ from pybullet_helpers.inverse_kinematics import check_body_collisions
 
 from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
-    LetteredBlockState,
-    PyBulletBlocksEnv,
-    PyBulletBlocksState,
+    LabeledObjectState,
+    PyBulletObjectsEnv,
+    PyBulletObjectsState,
     RobotState,
 )
-from pybullet_blocks.utils import create_lettered_block
+from pybullet_blocks.utils import create_labeled_object
 
 
 @dataclass(frozen=True)
-class BlockStackingPyBulletBlocksState(PyBulletBlocksState):
-    """A state in the BlockStackingPyBulletBlocksEnv."""
+class BlockStackingPyBulletObjectsState(PyBulletObjectsState):
+    """A state in the BlockStackingPyBulletObjectsEnv."""
 
-    block_states: Collection[LetteredBlockState]
+    block_states: Collection[LabeledObjectState]
     robot_state: RobotState
 
     @classmethod
     def get_node_dimension(cls) -> int:
         """Get the dimensionality of nodes."""
-        return max(RobotState.get_dimension(), LetteredBlockState.get_dimension())
+        return max(RobotState.get_dimension(), LabeledObjectState.get_dimension())
 
     def to_observation(self) -> spaces.GraphInstance:
         """Create graph representation of the state."""
@@ -53,10 +53,10 @@ class BlockStackingPyBulletBlocksState(PyBulletBlocksState):
     @classmethod
     def from_observation(
         cls, obs: spaces.GraphInstance
-    ) -> BlockStackingPyBulletBlocksState:
+    ) -> BlockStackingPyBulletObjectsState:
         """Build a state from a graph."""
         robot_state: RobotState | None = None
-        block_states: list[LetteredBlockState] = []
+        block_states: list[LabeledObjectState] = []
         for node in obs.nodes:
             if np.isclose(node[0], 0):  # is robot
                 assert robot_state is None
@@ -64,8 +64,8 @@ class BlockStackingPyBulletBlocksState(PyBulletBlocksState):
                 robot_state = RobotState.from_vec(vec)
             else:
                 assert np.isclose(node[0], 1)  # is block
-                vec = node[: LetteredBlockState.get_dimension()]
-                block_state = LetteredBlockState.from_vec(vec)
+                vec = node[: LabeledObjectState.get_dimension()]
+                block_state = LabeledObjectState.from_vec(vec)
                 block_states.append(block_state)
         assert robot_state is not None
         return cls(block_states, robot_state)
@@ -84,10 +84,10 @@ class BlockStackingSceneDescription(BaseSceneDescription):
     new_goal_pile_prob: float = 0.25
 
 
-class BlockStackingPyBulletBlocksEnv(
-    PyBulletBlocksEnv[spaces.GraphInstance, NDArray[np.float32]]
+class BlockStackingPyBulletObjectsEnv(
+    PyBulletObjectsEnv[spaces.GraphInstance, NDArray[np.float32]]
 ):
-    """A PyBullet environment with multiple lettered blocks for stacking."""
+    """A PyBullet environment with multiple labeled blocks for stacking."""
 
     metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
 
@@ -104,7 +104,7 @@ class BlockStackingPyBulletBlocksEnv(
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space.
-        obs_dim = BlockStackingPyBulletBlocksState.get_node_dimension()
+        obs_dim = BlockStackingPyBulletObjectsState.get_node_dimension()
         self.observation_space = spaces.Graph(
             node_space=spaces.Box(
                 low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
@@ -113,17 +113,17 @@ class BlockStackingPyBulletBlocksEnv(
         )
 
         # Create blocks. For now, assume that we won't need more than 26.
-        self.letter_to_block_id: dict[str, int] = {
-            letter: create_lettered_block(
-                letter,
-                self.scene_description.block_half_extents,
-                self.scene_description.block_rgba,
-                self.scene_description.block_text_rgba,
+        self.label_to_block_id: dict[str, int] = {
+            label: create_labeled_object(
+                label,
+                self.scene_description.object_half_extents,
+                self.scene_description.object_rgba,
+                self.scene_description.object_text_rgba,
                 self.physics_client_id,
             )
-            for letter in string.ascii_uppercase
+            for label in string.ascii_uppercase
         }
-        self._block_id_to_letter = {v: k for k, v in self.letter_to_block_id.items()}
+        self._block_id_to_label = {v: k for k, v in self.label_to_block_id.items()}
 
         # Put all of the blocks off screen by default.
         self._banish_all_blocks()
@@ -131,15 +131,15 @@ class BlockStackingPyBulletBlocksEnv(
         # Keep track of the blocks that are currently active.
         self.active_block_ids: set[int] = set()
 
-        # Keep track of the current goal in terms of letter piles.
+        # Keep track of the current goal in terms of label piles.
         self._goal_piles: list[list[str]] | None = None
 
-    def set_state(self, state: PyBulletBlocksState) -> None:
-        assert isinstance(state, BlockStackingPyBulletBlocksState)
+    def set_state(self, state: PyBulletObjectsState) -> None:
+        assert isinstance(state, BlockStackingPyBulletObjectsState)
         self._banish_all_blocks()
         self.current_held_object_id = None
         for block_state in state.block_states:
-            block_id = self.letter_to_block_id[block_state.letter]
+            block_id = self.label_to_block_id[block_state.label]
             set_pose(block_id, block_state.pose, self.physics_client_id)
             self.active_block_ids.add(block_id)
             if block_state.held:
@@ -147,18 +147,18 @@ class BlockStackingPyBulletBlocksEnv(
         self.robot.set_joints(state.robot_state.joint_positions)
         self.current_grasp_transform = state.robot_state.grasp_transform
 
-    def get_state(self) -> BlockStackingPyBulletBlocksState:
+    def get_state(self) -> BlockStackingPyBulletObjectsState:
         block_states = []
         for block_id in self.active_block_ids:
             block_pose = get_pose(block_id, self.physics_client_id)
-            letter = self._block_id_to_letter[block_id]
+            label = self._block_id_to_label[block_id]
             held = bool(self.current_held_object_id == block_id)
-            block_state = LetteredBlockState(block_pose, letter, held)
+            block_state = LabeledObjectState(block_pose, label, held)
             block_states.append(block_state)
         robot_joints = self.robot.get_joint_positions()
         grasp_transform = self.current_grasp_transform
         robot_state = RobotState(robot_joints, grasp_transform)
-        return BlockStackingPyBulletBlocksState(
+        return BlockStackingPyBulletObjectsState(
             block_states,
             robot_state,
         )
@@ -169,7 +169,7 @@ class BlockStackingPyBulletBlocksEnv(
             ids.remove(self.current_held_object_id)
         return ids
 
-    def _get_movable_block_ids(self) -> set[int]:
+    def _get_movable_object_ids(self) -> set[int]:
         return self.active_block_ids
 
     def _get_info(self) -> dict[str, Any]:
@@ -187,8 +187,8 @@ class BlockStackingPyBulletBlocksEnv(
         assert self._goal_piles is not None
         for pile in self._goal_piles:
             for bottom, top in zip(pile[:-1], pile[1:], strict=True):
-                bottom_id = self.letter_to_block_id[bottom]
-                top_id = self.letter_to_block_id[top]
+                bottom_id = self.label_to_block_id[bottom]
+                top_id = self.label_to_block_id[top]
                 top_on_bottom = check_body_collisions(
                     bottom_id,
                     top_id,
@@ -225,11 +225,11 @@ class BlockStackingPyBulletBlocksEnv(
             num_blocks = self.np_random.integers(
                 scene_description.min_num_blocks, scene_description.max_num_blocks + 1
             )
-            letters = self.np_random.choice(
+            labels = self.np_random.choice(
                 list(string.ascii_uppercase), num_blocks, replace=False
             )
             new_pile_prob = scene_description.new_initial_pile_prob
-            init_piles = self._sample_piles(letters, new_pile_prob)
+            init_piles = self._sample_piles(labels, new_pile_prob)
 
         # Allow user to manually specify goal.
         if options is not None and "goal_piles" in options:
@@ -239,28 +239,28 @@ class BlockStackingPyBulletBlocksEnv(
                 scene_description.min_num_goal_blocks,
                 scene_description.max_num_goal_blocks + 1,
             )
-            all_letters = np.hstack(init_piles)
-            num_goal_blocks = min(num_goal_blocks, len(all_letters))
-            goal_letters = self.np_random.choice(
-                all_letters, num_goal_blocks, replace=False
+            all_labels = np.hstack(init_piles)
+            num_goal_blocks = min(num_goal_blocks, len(all_labels))
+            goal_labels = self.np_random.choice(
+                all_labels, num_goal_blocks, replace=False
             )
             new_pile_prob = scene_description.new_goal_pile_prob
-            goal_piles = self._sample_piles(goal_letters, new_pile_prob)
+            goal_piles = self._sample_piles(goal_labels, new_pile_prob)
         self._goal_piles = goal_piles
 
         # Sample positions.
         for pile in init_piles:
             # Sample position for the first block.
-            letter = pile[0]
-            block_id = self.letter_to_block_id[letter]
-            block_pose = self.sample_free_block_pose(block_id)
+            label = pile[0]
+            block_id = self.label_to_block_id[label]
+            block_pose = self.sample_free_object_pose(block_id)
             block_position = block_pose.position
-            block_height = 2 * scene_description.block_half_extents[2]
+            block_height = 2 * scene_description.object_half_extents[2]
             self.active_block_ids.add(block_id)
-            for i, letter in enumerate(pile[1:]):
+            for i, label in enumerate(pile[1:]):
                 dz = (i + 1) * block_height
                 position = np.add(block_position, (0, 0, dz))
-                block_id = self.letter_to_block_id[letter]
+                block_id = self.label_to_block_id[label]
                 set_pose(block_id, Pose(tuple(position)), self.physics_client_id)
                 self.active_block_ids.add(block_id)
 
@@ -268,17 +268,17 @@ class BlockStackingPyBulletBlocksEnv(
 
     def _banish_all_blocks(self) -> None:
         self.active_block_ids = set()
-        for block_id in self.letter_to_block_id.values():
+        for block_id in self.label_to_block_id.values():
             set_pose(block_id, Pose((-1000, -1000, -1000)), self.physics_client_id)
 
     def _sample_piles(
-        self, letters: Collection[str], new_pile_prob: float
+        self, labels: Collection[str], new_pile_prob: float
     ) -> list[list[str]]:
         piles: list[list[str]] = [[]]
-        for letter in letters:
+        for label in labels:
             if len(piles[-1]) > 0 and self.np_random.uniform() < new_pile_prob:
                 piles.append([])
-            piles[-1].append(letter)
+            piles[-1].append(label)
         return piles
 
     def get_collision_check_ids(self, block_id: int) -> set[int]:
@@ -288,4 +288,4 @@ class BlockStackingPyBulletBlocksEnv(
 
     def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
         assert object_id in self.active_block_ids
-        return self.scene_description.block_half_extents
+        return self.scene_description.object_half_extents

@@ -2,27 +2,27 @@
 
 import pytest
 
-from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletBlocksEnv
+from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletObjectsEnv
 from pybullet_blocks.envs.obstacle_tower_env import (
-    GraphObstacleTowerPyBulletBlocksEnv,
-    ObstacleTowerPyBulletBlocksEnv,
+    GraphObstacleTowerPyBulletObjectsEnv,
+    ObstacleTowerPyBulletObjectsEnv,
     ObstacleTowerSceneDescription,
 )
-from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletBlocksEnv
+from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletObjectsEnv
 from pybullet_blocks.planning_models.perception import (
-    BlockStackingPyBulletBlocksPerceiver,
-    GraphObstacleTowerPyBulletBlocksPerceiver,
-    ObstacleTowerPyBulletBlocksPerceiver,
-    PickPlacePyBulletBlocksPerceiver,
+    BlockStackingPyBulletObjectsPerceiver,
+    GraphObstacleTowerPyBulletObjectsPerceiver,
+    ObstacleTowerPyBulletObjectsPerceiver,
+    PickPlacePyBulletObjectsPerceiver,
 )
 
 
 def test_pick_place_pybullet_blocks_perceiver():
-    """Tests for PickPlacePyBulletBlocksPerceiver()."""
+    """Tests for PickPlacePyBulletObjectsPerceiver()."""
 
-    env = PickPlacePyBulletBlocksEnv(use_gui=False)
-    sim = PickPlacePyBulletBlocksEnv(env.scene_description, use_gui=False)
-    perceiver = PickPlacePyBulletBlocksPerceiver(sim)
+    env = PickPlacePyBulletObjectsEnv(use_gui=False)
+    sim = PickPlacePyBulletObjectsEnv(env.scene_description, use_gui=False)
+    perceiver = PickPlacePyBulletObjectsPerceiver(sim)
 
     obs, info = env.reset(seed=123)
     objects, atoms, goal = perceiver.reset(obs, info)
@@ -35,11 +35,11 @@ def test_pick_place_pybullet_blocks_perceiver():
 
 
 def test_block_stacking_pybullet_blocks_perceiver():
-    """Tests for BlockStackingPyBulletBlocksPerceiver()."""
+    """Tests for BlockStackingPyBulletObjectsPerceiver()."""
 
-    env = BlockStackingPyBulletBlocksEnv(use_gui=False)
-    sim = BlockStackingPyBulletBlocksEnv(env.scene_description, use_gui=False)
-    perceiver = BlockStackingPyBulletBlocksPerceiver(sim)
+    env = BlockStackingPyBulletObjectsEnv(use_gui=False)
+    sim = BlockStackingPyBulletObjectsEnv(env.scene_description, use_gui=False)
+    perceiver = BlockStackingPyBulletObjectsPerceiver(sim)
 
     obs, info = env.reset(
         seed=123,
@@ -61,14 +61,14 @@ def test_block_stacking_pybullet_blocks_perceiver():
     "env_cls,perceiver_cls",
     [
         (
-            GraphObstacleTowerPyBulletBlocksEnv,
-            GraphObstacleTowerPyBulletBlocksPerceiver,
+            GraphObstacleTowerPyBulletObjectsEnv,
+            GraphObstacleTowerPyBulletObjectsPerceiver,
         ),
-        (ObstacleTowerPyBulletBlocksEnv, ObstacleTowerPyBulletBlocksPerceiver),
+        (ObstacleTowerPyBulletObjectsEnv, ObstacleTowerPyBulletObjectsPerceiver),
     ],
 )
 def test_obstacle_tower_pybullet_blocks_perceiver(env_cls, perceiver_cls):
-    """Tests for ObstacleTowerPyBulletBlocksPerceiver()."""
+    """Tests for ObstacleTowerPyBulletObjectsPerceiver()."""
     scene_description = ObstacleTowerSceneDescription(
         num_obstacle_blocks=3,
         stack_blocks=True,

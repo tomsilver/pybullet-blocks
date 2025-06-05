@@ -12,8 +12,8 @@ from pybullet_helpers.motion_planning import (
 )
 
 from pybullet_blocks.envs.cluttered_drawer_env import (
-    ClutteredDrawerPyBulletBlocksEnv,
-    ClutteredDrawerPyBulletBlocksState,
+    ClutteredDrawerPyBulletObjectsEnv,
+    ClutteredDrawerPyBulletObjectsState,
     ClutteredDrawerSceneDescription,
 )
 
@@ -22,10 +22,10 @@ from pybullet_blocks.envs.cluttered_drawer_env import (
 def test_cluttered_drawer_env_init():
     """Test for the cluttered drawer environment initialization."""
     scene_description = ClutteredDrawerSceneDescription(
-        num_drawer_blocks=4,
+        num_drawer_objects=4,
         drawer_travel_distance=0.25,
     )
-    env = ClutteredDrawerPyBulletBlocksEnv(
+    env = ClutteredDrawerPyBulletObjectsEnv(
         scene_description=scene_description,
         use_gui=True,
     )
@@ -35,12 +35,12 @@ def test_cluttered_drawer_env_init():
 
 
 def test_cluttered_drawer_env_contacts():
-    """Test placing blocks on the table and check contacts."""
+    """Test placing objects on the table and check contacts."""
     scene_description = ClutteredDrawerSceneDescription(
-        num_drawer_blocks=4,
+        num_drawer_objects=4,
         drawer_travel_distance=0.25,
     )
-    env = ClutteredDrawerPyBulletBlocksEnv(
+    env = ClutteredDrawerPyBulletObjectsEnv(
         scene_description=scene_description,
         use_gui=False,
     )
@@ -67,57 +67,57 @@ def test_cluttered_drawer_env_contacts():
 
     print_link_info()
 
-    # Place blocks on the table
-    block_ids = [env.target_block_id] + env.drawer_block_ids
+    # Place objects on the table
+    object_ids = [env.target_object_id] + env.drawer_object_ids
     table_z = scene_description.drawer_table_pos[2]  # Z position of table
-    block_half_extents = scene_description.block_half_extents
+    object_half_extents = scene_description.object_half_extents
     positions = [
         (
             scene_description.drawer_table_pos[0] - 0.2,
             scene_description.drawer_table_pos[1],
-            table_z + block_half_extents[2],
+            table_z + object_half_extents[2],
         ),
         (
             scene_description.drawer_table_pos[0] - 0.2,
             scene_description.drawer_table_pos[1] + 0.1,
-            table_z + block_half_extents[2],
+            table_z + object_half_extents[2],
         ),
         (
             scene_description.drawer_table_pos[0] - 0.2,
             scene_description.drawer_table_pos[1] - 0.1,
-            table_z + block_half_extents[2],
+            table_z + object_half_extents[2],
         ),
         (
             scene_description.drawer_table_pos[0] - 0.3,
             scene_description.drawer_table_pos[1],
-            table_z + block_half_extents[2],
+            table_z + object_half_extents[2],
         ),
     ]
-    for i, block_id in enumerate(block_ids):
+    for i, object_id in enumerate(object_ids):
         if i < len(positions):
-            set_pose(block_id, Pose(positions[i]), env.physics_client_id)
+            set_pose(object_id, Pose(positions[i]), env.physics_client_id)
 
     for _ in range(50):
         p.stepSimulation(env.physics_client_id)
 
     print("\nChecking contacts after placement:")
-    for i, block_id in enumerate(block_ids):
+    for i, object_id in enumerate(object_ids):
         p.performCollisionDetection(env.physics_client_id)
 
         # Get contacts with tabletop (using env.tabletop_link_index)
         table_contacts = p.getContactPoints(
-            bodyA=block_id,
+            bodyA=object_id,
             bodyB=env.drawer_with_table_id,
             linkIndexB=env.tabletop_link_index,
             physicsClientId=env.physics_client_id,
         )
 
         all_contacts = p.getContactPoints(
-            bodyA=block_id,
+            bodyA=object_id,
             physicsClientId=env.physics_client_id,
         )
 
-        print(f"\nBlock {block_id} contacts:")
+        print(f"\nobject {object_id} contacts:")
         print(f"  Total contacts: {len(all_contacts)}")
         print(f"  Tabletop contacts: {len(table_contacts)}")
 
@@ -126,7 +126,7 @@ def test_cluttered_drawer_env_contacts():
             -1, p.getNumJoints(env.drawer_with_table_id, env.physics_client_id)
         ):
             link_contacts = p.getContactPoints(
-                bodyA=block_id,
+                bodyA=object_id,
                 bodyB=env.drawer_with_table_id,
                 linkIndexB=link_idx,
                 physicsClientId=env.physics_client_id,
@@ -134,26 +134,28 @@ def test_cluttered_drawer_env_contacts():
             if link_contacts:
                 print(f"  Link {link_idx} contacts: {len(link_contacts)}")
 
-        is_on_table = env.is_block_on_table(block_id)  # pylint:disable=protected-access
-        print(f"  env.is_block_on_table(): {is_on_table}")
-        block_pose = get_pose(block_id, env.physics_client_id)
-        print(f"  Block position: {block_pose.position}")
+        is_on_table = env.is_object_on_table(
+            object_id
+        )  # pylint:disable=protected-access
+        print(f"  env.is_object_on_table(): {is_on_table}")
+        object_pose = get_pose(object_id, env.physics_client_id)
+        print(f"  object position: {object_pose.position}")
 
     env.close()
 
 
 def test_cluttered_drawer_env():
-    """Test for the cluttered drawer environment by retrieving all blocks."""
-    env = ClutteredDrawerPyBulletBlocksEnv(use_gui=False)
-    sim = ClutteredDrawerPyBulletBlocksEnv(env.scene_description, use_gui=False)
+    """Test for the cluttered drawer environment by retrieving all objects."""
+    env = ClutteredDrawerPyBulletObjectsEnv(use_gui=False)
+    sim = ClutteredDrawerPyBulletObjectsEnv(env.scene_description, use_gui=False)
     joint_distance_fn = create_joint_distance_fn(sim.robot)
 
     max_motion_planning_time = 2.0
 
     obs, _ = env.reset(seed=123)
-    state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
+    state = ClutteredDrawerPyBulletObjectsState.from_observation(obs)
     drawer_position = state.drawer_joint_pos
-    target_block_id = env.target_block_id
+    target_object_id = env.target_object_id
 
     # Assume that the initial orientation of the robot end effector works for
     # picking and placing.
@@ -169,21 +171,21 @@ def test_cluttered_drawer_env():
             action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert env.action_space.contains(action)
             obs, _, _, _, _ = env.step(action)
-            state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
+            state = ClutteredDrawerPyBulletObjectsState.from_observation(obs)
         return state
 
-    def _pick_block(block_id, state):
-        """Helper function to pick up a block."""
+    def _pick_object(object_id, state):
+        """Helper function to pick up a object."""
         # Set simulation state
         sim.set_state(state)
 
-        # Get block pose
-        if block_id == target_block_id:
-            block_pose = state.target_block_state.pose
+        # Get object pose
+        if object_id == target_object_id:
+            object_pose = state.target_object_state.pose
         else:
-            # Find the correct block in drawer_blocks
-            block_idx = env.drawer_block_ids.index(block_id)
-            block_pose = state.drawer_blocks[block_idx].pose
+            # Find the correct object in drawer_objects
+            object_idx = env.drawer_object_ids.index(object_id)
+            object_pose = state.drawer_objects[object_idx].pose
 
         # Get the current end-effector orientation
         current_orientation = sim.robot.get_end_effector_pose().orientation
@@ -191,18 +193,18 @@ def test_cluttered_drawer_env():
         # Compute a rotated orientation (90 degrees around Z-axis)
         # Convert the quaternion to Euler, add 90 degrees to yaw, convert back
         euler = p.getEulerFromQuaternion(current_orientation)
-        if block_id in [5, 6]:
+        if object_id in [5, 6]:
             rotated_euler = (euler[0], euler[1], euler[2] + np.pi / 4)
         else:
             rotated_euler = (euler[0], euler[1], euler[2] - np.pi / 2)
-        print(f"For block {block_id}, rotated euler: {rotated_euler}")
+        print(f"For object {object_id}, rotated euler: {rotated_euler}")
         rotated_orientation = p.getQuaternionFromEuler(rotated_euler)
 
-        # Move to above the block
-        above_block_position = np.add(block_pose.position, (0.0, 0.0, 0.075))
-        above_block_pose = Pose(tuple(above_block_position), rotated_orientation)
+        # Move to above the object
+        above_object_position = np.add(object_pose.position, (0.0, 0.0, 0.075))
+        above_object_pose = Pose(tuple(above_object_position), rotated_orientation)
         plan = run_smooth_motion_planning_to_pose(
-            above_block_pose,
+            above_object_pose,
             sim.robot,
             collision_ids=sim.get_collision_ids(),
             end_effector_frame_to_plan_frame=Pose.identity(),
@@ -211,12 +213,12 @@ def test_cluttered_drawer_env():
         )
         state = _execute_pybullet_helpers_plan(plan, state)
 
-        # Move down to grasp the block
+        # Move down to grasp the object
         sim.set_state(state)
         end_effector_path = list(
             iter_between_poses(
                 sim.robot.get_end_effector_pose(),
-                Pose(block_pose.position, rotated_orientation),
+                Pose(object_pose.position, rotated_orientation),
                 include_start=False,
             )
         )
@@ -235,7 +237,7 @@ def test_cluttered_drawer_env():
         # Close the gripper
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0], dtype=np.float32)
         obs, _, _, _, _ = env.step(action)
-        state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
+        state = ClutteredDrawerPyBulletObjectsState.from_observation(obs)
 
         # Move up to remove contact
         grasp_to_pregrasp_plan = pregrasp_to_grasp_plan[::-1]
@@ -243,8 +245,8 @@ def test_cluttered_drawer_env():
 
         return state
 
-    def _place_block_on_table(state, offset_x, offset_y):
-        """Helper function to place a block on the table."""
+    def _place_object_on_table(state, offset_x, offset_y):
+        """Helper function to place a object on the table."""
         sim.set_state(state)
 
         # Define a position on the table
@@ -257,7 +259,7 @@ def test_cluttered_drawer_env():
             scene_desc.drawer_table_pos[1] + offset_y,
             scene_desc.drawer_table_pos[2]
             + scene_desc.table_half_extents[2]
-            + scene_desc.block_half_extents[2]
+            + scene_desc.object_half_extents[2]
             + 0.02,
         )
 
@@ -303,7 +305,7 @@ def test_cluttered_drawer_env():
         # Open the gripper
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
         obs, _, _, _, _ = env.step(action)
-        state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
+        state = ClutteredDrawerPyBulletObjectsState.from_observation(obs)
 
         # Move up from placement
         place_to_preplace_plan = preplace_to_place_plan[::-1]
@@ -370,7 +372,7 @@ def test_cluttered_drawer_env():
         # Close gripper on handle
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0], dtype=np.float32)
         obs, _, _, _, _ = env.step(action)
-        state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
+        state = ClutteredDrawerPyBulletObjectsState.from_observation(obs)
 
         # Move drawer
         # For opening: move in -X direction
@@ -382,12 +384,12 @@ def test_cluttered_drawer_env():
                 [direction * 0.01, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32
             )
             obs, _, _, _, _ = env.step(action)
-            state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
+            state = ClutteredDrawerPyBulletObjectsState.from_observation(obs)
 
         # Release handle
         action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0], dtype=np.float32)
         obs, _, _, _, _ = env.step(action)
-        state = ClutteredDrawerPyBulletBlocksState.from_observation(obs)
+        state = ClutteredDrawerPyBulletObjectsState.from_observation(obs)
 
         # Move away from handle
         from_handle_plan = to_handle_plan[::-1]
@@ -401,36 +403,36 @@ def test_cluttered_drawer_env():
     if drawer_position < env.scene_description.drawer_travel_distance * 0.9:
         state = _interact_with_drawer(state, open_drawer=True)
 
-    # 2. Retrieve and place each regular block
+    # 2. Retrieve and place each regular object
     offsets = [(0.0, 0.15), (0.0, -0.15), (0.0, 0.3)]  # Different table positions
-    for i, block_id in enumerate(env.drawer_block_ids):
-        # Pick the block
-        if block_id == 4:
-            # Block 4 is skipped
+    for i, object_id in enumerate(env.drawer_object_ids):
+        # Pick the object
+        if object_id == 4:
+            # object 4 is skipped
             continue
-        state = _pick_block(block_id, state)
+        state = _pick_object(object_id, state)
 
         # Place on table with offset
         offset_idx = min(i, len(offsets) - 1)
-        print(f"Placing block {block_id} at offset {offsets[offset_idx]}")
-        state = _place_block_on_table(
+        print(f"Placing object {object_id} at offset {offsets[offset_idx]}")
+        state = _place_object_on_table(
             state, offsets[offset_idx][0], offsets[offset_idx][1]
         )
 
-    # 3. Retrieve the target block and place it on the table
-    state = _pick_block(target_block_id, state)
-    state = _place_block_on_table(state, 0.0, 0.0)
+    # 3. Retrieve the target object and place it on the table
+    state = _pick_object(target_object_id, state)
+    state = _place_object_on_table(state, 0.0, 0.0)
 
     # 4. Close the drawer (optional)
     # state = _interact_with_drawer(state, open_drawer=False)
 
-    # Verify that target block is now on the table and not held
-    target_on_table = env.is_block_on_table(  # pylint:disable=protected-access
-        target_block_id
+    # Verify that target object is now on the table and not held
+    target_on_table = env.is_object_on_table(  # pylint:disable=protected-access
+        target_object_id
     )
     gripper_empty = env.current_grasp_transform is None
 
-    assert target_on_table, "Target block should be on the table"
+    assert target_on_table, "Target object should be on the table"
     assert gripper_empty, "Gripper should be empty"
     assert (
         env._get_terminated()  # pylint: disable=protected-access

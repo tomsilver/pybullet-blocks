@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Collection
 
 import numpy as np
-import objaverse  # type: ignore[import-untyped]
+import objaverse
 import pybullet as p
 import trimesh
 from gymnasium import spaces
@@ -20,13 +20,13 @@ from pybullet_helpers.utils import create_pybullet_block
 
 from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
-    BlockState,
-    LetteredBlockState,
-    PyBulletBlocksEnv,
-    PyBulletBlocksState,
+    LabeledObjectState,
+    ObjectState,
+    PyBulletObjectsEnv,
+    PyBulletObjectsState,
     RobotState,
 )
-from pybullet_blocks.utils import create_lettered_block
+from pybullet_blocks.utils import create_labeled_object
 
 
 @dataclass
@@ -52,10 +52,11 @@ class ObjaverseConfig:
     cache_dir: str = field(
         default_factory=lambda: os.path.expanduser("~/.objaverse_cache")
     )
+    max_downloads: int = 10
 
     default_scale: float = 0.05
-    use_simplified_collision: bool = True
-    max_downloads: int = 10
+    default_mass: float = 0.3
+    default_lateral_friction: float = 0.9
 
 
 @dataclass
@@ -145,11 +146,11 @@ class CleanupTableSceneDescription(BaseSceneDescription):
 
 
 @dataclass(frozen=True)
-class CleanupTablePyBulletBlocksState(PyBulletBlocksState):
+class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
     """A state in the toy cleanup environment with graph representation."""
 
-    toy_states: Collection[LetteredBlockState]
-    bin_state: BlockState
+    toy_states: Collection[LabeledObjectState]
+    bin_state: ObjectState
     robot_state: RobotState
 
     @classmethod
@@ -157,8 +158,8 @@ class CleanupTablePyBulletBlocksState(PyBulletBlocksState):
         """Get the dimensionality of nodes."""
         return max(
             RobotState.get_dimension(),
-            LetteredBlockState.get_dimension(),
-            BlockState.get_dimension(),
+            LabeledObjectState.get_dimension(),
+            ObjectState.get_dimension(),
         )
 
     def to_observation(self) -> spaces.GraphInstance:
@@ -189,11 +190,11 @@ class CleanupTablePyBulletBlocksState(PyBulletBlocksState):
     @classmethod
     def from_observation(
         cls, obs: spaces.GraphInstance
-    ) -> CleanupTablePyBulletBlocksState:
+    ) -> CleanupTablePyBulletObjectsState:
         """Build a state from a graph."""
         robot_state: RobotState | None = None
-        bin_state: BlockState | None = None
-        toy_states: list[LetteredBlockState] = []
+        bin_state: ObjectState | None = None
+        toy_states: list[LabeledObjectState] = []
 
         for node in obs.nodes:
             if np.isclose(node[0], 0):  # Robot
@@ -201,17 +202,17 @@ class CleanupTablePyBulletBlocksState(PyBulletBlocksState):
                 vec = node[: RobotState.get_dimension()]
                 robot_state = RobotState.from_vec(vec)
             elif np.isclose(node[0], 2):  # Bin
-                bin_vec = node[1 : BlockState.get_dimension()]
-                bin_state = BlockState.from_vec(bin_vec)
-            elif np.isclose(node[0], 1):  # Toy (LetteredBlockState)
-                vec = node[: LetteredBlockState.get_dimension()]
-                toy_state = LetteredBlockState.from_vec(vec)
+                bin_vec = node[1 : ObjectState.get_dimension()]
+                bin_state = ObjectState.from_vec(bin_vec)
+            elif np.isclose(node[0], 1):  # Toy (LabeledObjectState)
+                vec = node[: LabeledObjectState.get_dimension()]
+                toy_state = LabeledObjectState.from_vec(vec)
                 toy_states.append(toy_state)
 
         assert robot_state is not None
         assert bin_state is not None
 
-        toy_states.sort(key=lambda x: x.letter)
+        toy_states.sort(key=lambda x: x.label)
 
         return cls(toy_states, bin_state, robot_state)
 
@@ -225,14 +226,6 @@ class ObjaverseLoader:
         self._downloaded_objects: dict[str, str] = {}
         self._setup_ssl_context()
         self._download_all_objects()
-
-    def get_object_half_extents(
-        self, physics_client_id: int, body_id: int
-    ) -> tuple[float, float, float]:
-        """Get actual half-extents of a loaded object."""
-        aabb_min, aabb_max = p.getAABB(body_id, physicsClientId=physics_client_id)
-        half_extents = tuple((aabb_max[i] - aabb_min[i]) / 2 for i in range(3))
-        return half_extents
 
     def _setup_ssl_context(self) -> None:
         """Set up SSL context to handle certificate verification."""
@@ -261,48 +254,43 @@ class ObjaverseLoader:
         # Load GLB and export to OBJ
         mesh = trimesh.load(glb_path)
         if hasattr(mesh, "geometry"):
-            # if it's a Scene, extract the first geometry
+            # If it's a Scene, extract the first geometry
             if len(mesh.geometry) > 0:
                 mesh = list(mesh.geometry.values())[0]
             else:
                 raise ValueError("No geometry found in GLB file")
-        mesh.export(obj_path)  # type: ignore[no-untyped-call]
+        assert isinstance(mesh, trimesh.Trimesh)
+        mesh.export(obj_path)
         print(f"Converted {glb_path} to {obj_path}")
         return obj_path
 
     def load_toy_object(
         self,
-        letter: str,
+        label: str,
         physics_client_id: int,
-        mass: float = 0.3,
+        mass: float | None = None,
         scale: float | None = None,
     ) -> int:
         """Load a toy object from Objaverse."""
-        obj_config = self.config.toy_objects.get(letter)
-        assert obj_config is not None, f"Object config for letter {letter} not found."
+        obj_config = self.config.toy_objects.get(label)
+        assert obj_config is not None, f"Object config for label {label} not found."
 
         uid = obj_config["uid"]
         if scale is None:
             scale = obj_config.get("scale", self.config.default_scale)
+        if mass is None:
+            mass = self.config.default_mass
 
         mesh_path = self._downloaded_objects.get(uid)
         assert mesh_path is not None, f"Mesh for UID {uid} not downloaded."
 
         obj_path = self._convert_glb_to_obj(mesh_path)
-        if self.config.use_simplified_collision:
-            # Use a simple bounding box for collision
-            collision_shape = p.createCollisionShape(
-                shapeType=p.GEOM_BOX,
-                halfExtents=[0.025, 0.025, 0.025],
-                physicsClientId=physics_client_id,
-            )
-        else:
-            collision_shape = p.createCollisionShape(
-                shapeType=p.GEOM_MESH,
-                fileName=obj_path,
-                meshScale=[scale, scale, scale],
-                physicsClientId=physics_client_id,
-            )
+        collision_shape = p.createCollisionShape(
+            shapeType=p.GEOM_MESH,
+            fileName=obj_path,
+            meshScale=[scale, scale, scale],
+            physicsClientId=physics_client_id,
+        )
         visual_shape = p.createVisualShape(
             shapeType=p.GEOM_MESH,
             fileName=obj_path,
@@ -319,15 +307,15 @@ class ObjaverseLoader:
             bodyUniqueId=body_id,
             linkIndex=-1,  # Base link
             mass=mass,
-            lateralFriction=0.9,
+            lateralFriction=self.config.default_lateral_friction,
             physicsClientId=physics_client_id,
         )
-        print(f"Loaded Objaverse object {letter} (UID: {uid}) with scale {scale}")
+        print(f"Loaded Objaverse object {label} (UID: {uid}) with scale {scale}")
         return body_id
 
 
-class CleanupTablePyBulletBlocksEnv(
-    PyBulletBlocksEnv[spaces.GraphInstance, NDArray[np.float32]]
+class CleanupTablePyBulletObjectsEnv(
+    PyBulletObjectsEnv[spaces.GraphInstance, NDArray[np.float32]]
 ):
     """A PyBullet environment for cleaning up toys from a table into a bin."""
 
@@ -347,7 +335,7 @@ class CleanupTablePyBulletBlocksEnv(
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space
-        obs_dim = CleanupTablePyBulletBlocksState.get_node_dimension()
+        obs_dim = CleanupTablePyBulletObjectsState.get_node_dimension()
         self.observation_space = spaces.Graph(
             node_space=spaces.Box(
                 low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
@@ -361,24 +349,18 @@ class CleanupTablePyBulletBlocksEnv(
         # Initialize Objaverse loader
         self.objaverse_loader = ObjaverseLoader(scene_description.objaverse_config)
 
-        # Create toys using Objaverse objects or lettered blocks
+        # Create toys using Objaverse objects or labeled objects
         self.toy_ids = []
-        self.toy_half_extents_map = {}
         for i in range(scene_description.num_toys):
-            letter = chr(65 + i)
+            label = chr(65 + i)
             if scene_description.use_objaverse:
                 toy_id = self.objaverse_loader.load_toy_object(
-                    letter,
+                    label,
                     self.physics_client_id,
                     mass=scene_description.toy_mass,
                 )
-                self.toy_half_extents_map[toy_id] = (
-                    self.objaverse_loader.get_object_half_extents(
-                        self.physics_client_id, toy_id
-                    )
-                )
             else:
-                toy_id = create_lettered_block(
+                toy_id = create_labeled_object(
                     chr(65 + i),
                     scene_description.toy_half_extents,
                     scene_description.toy_rgba,
@@ -387,11 +369,10 @@ class CleanupTablePyBulletBlocksEnv(
                     mass=scene_description.toy_mass,
                     friction=scene_description.toy_friction,
                 )
-                self.toy_half_extents_map[toy_id] = scene_description.toy_half_extents
             self.toy_ids.append(toy_id)
 
-        # Set up toy ID to letter mapping
-        self._toy_id_to_letter = {
+        # Set up toy ID to label mapping
+        self._toy_id_to_label = {
             toy_id: chr(65 + i) for i, toy_id in enumerate(self.toy_ids)
         }
 
@@ -503,14 +484,14 @@ class CleanupTablePyBulletBlocksEnv(
             self.bin_right_id,
         }
 
-    def set_state(self, state: PyBulletBlocksState) -> None:
+    def set_state(self, state: PyBulletObjectsState) -> None:
         """Reset the internal state to the given state."""
-        assert isinstance(state, CleanupTablePyBulletBlocksState)
+        assert isinstance(state, CleanupTablePyBulletObjectsState)
 
         # Set toy poses
         for toy_state in state.toy_states:
-            toy_letter = toy_state.letter
-            toy_index = ord(toy_letter) - 65
+            toy_label = toy_state.label
+            toy_index = ord(toy_label) - 65
             if toy_index < len(self.toy_ids):
                 toy_id = self.toy_ids[toy_index]
                 set_pose(toy_id, toy_state.pose, self.physics_client_id)
@@ -526,30 +507,30 @@ class CleanupTablePyBulletBlocksEnv(
         if state.robot_state.grasp_transform is not None:
             for toy_state in state.toy_states:
                 if toy_state.held:
-                    toy_index = ord(toy_state.letter) - 65
+                    toy_index = ord(toy_state.label) - 65
                     if toy_index < len(self.toy_ids):
                         self.current_held_object_id = self.toy_ids[toy_index]
                         break
         else:
             self.current_held_object_id = None
 
-    def get_state(self) -> CleanupTablePyBulletBlocksState:
+    def get_state(self) -> CleanupTablePyBulletObjectsState:
         """Expose the internal state for simulation."""
         toy_states = []
         for toy_id in self.toy_ids:
             toy_pose = get_pose(toy_id, self.physics_client_id)
-            letter = self._toy_id_to_letter[toy_id]
+            label = self._toy_id_to_label[toy_id]
             held = bool(self.current_held_object_id == toy_id)
-            toy_state = LetteredBlockState(toy_pose, letter, held)
+            toy_state = LabeledObjectState(toy_pose, label, held)
             toy_states.append(toy_state)
 
         bin_pose = get_pose(self.bin_id, self.physics_client_id)
-        bin_state = BlockState(bin_pose)
+        bin_state = ObjectState(bin_pose)
 
         robot_joints = self.robot.get_joint_positions()
         robot_state = RobotState(robot_joints, self.current_grasp_transform)
 
-        return CleanupTablePyBulletBlocksState(toy_states, bin_state, robot_state)
+        return CleanupTablePyBulletObjectsState(toy_states, bin_state, robot_state)
 
     def get_collision_ids(self) -> set[int]:
         """Expose all pybullet IDs for collision checking."""
@@ -571,9 +552,10 @@ class CleanupTablePyBulletBlocksEnv(
     def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
         """Get the half-extent of a given object from its pybullet ID."""
         if object_id in self.toy_ids:
-            if object_id in self.toy_half_extents_map:
-                return self.toy_half_extents_map[object_id]
-            return self.scene_description.toy_half_extents
+            aabb_min, aabb_max = p.getAABB(
+                object_id, physicsClientId=self.physics_client_id
+            )
+            return tuple((aabb_max[i] - aabb_min[i]) / 2 for i in range(3))
         if object_id == self.bin_bottom_id:
             # Return bin bottom dimensions
             bin_dim = self.scene_description.bin_dimensions
@@ -599,7 +581,7 @@ class CleanupTablePyBulletBlocksEnv(
                 )
         return self.scene_description.table_half_extents
 
-    def _get_movable_block_ids(self) -> set[int]:
+    def _get_movable_object_ids(self) -> set[int]:
         """Get all PyBullet IDs for movable objects."""
         return set(self.toy_ids)
 
@@ -664,14 +646,14 @@ class CleanupTablePyBulletBlocksEnv(
 
     def reset_from_state(
         self,
-        state: spaces.GraphInstance | CleanupTablePyBulletBlocksState,
+        state: spaces.GraphInstance | CleanupTablePyBulletObjectsState,
         *,
         seed: int | None = None,
     ) -> tuple[spaces.GraphInstance, dict[str, Any]]:
         """Reset environment to specific state."""
         super().reset(seed=seed)
         if isinstance(state, spaces.GraphInstance):
-            state = CleanupTablePyBulletBlocksState.from_observation(state)
+            state = CleanupTablePyBulletObjectsState.from_observation(state)
         self.set_state(state)
         return self.get_state().to_observation(), self._get_info()
 
@@ -736,15 +718,14 @@ class CleanupTablePyBulletBlocksEnv(
             if np.isclose(node[0], 0):  # Robot
                 robot_node = node[1 : RobotState.get_dimension()]
             elif np.isclose(node[0], 2):  # Bin
-                bin_node = node[1 : BlockState.get_dimension()]
+                bin_node = node[1 : ObjectState.get_dimension()]
             elif np.isclose(node[0], 1):  # Toy
-                # Extract toy letter
-                lettered_block_dim = LetteredBlockState.get_dimension()
-                letter_idx = lettered_block_dim - 2
-                letter_val = int(node[letter_idx])
-                letter = chr(int(letter_val + 65))
-                if letter in relevant_object_names:
-                    toy_nodes[letter] = node[1:lettered_block_dim]
+                labeled_object_dim = LabeledObjectState.get_dimension()
+                label_idx = labeled_object_dim - 2
+                label_val = int(node[label_idx])
+                label = chr(int(label_val + 65))
+                if label in relevant_object_names:
+                    toy_nodes[label] = node[1:labeled_object_dim]
 
         features = []
         if robot_node is not None:
@@ -757,9 +738,9 @@ class CleanupTablePyBulletBlocksEnv(
 
         return np.array(features, dtype=np.float32)
 
-    def clone(self) -> CleanupTablePyBulletBlocksEnv:
+    def clone(self) -> CleanupTablePyBulletObjectsEnv:
         """Clone the environment."""
-        clone_env = CleanupTablePyBulletBlocksEnv(
+        clone_env = CleanupTablePyBulletObjectsEnv(
             scene_description=self.scene_description,
             render_mode=self.render_mode,
             use_gui=False,
