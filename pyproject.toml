@@ -14,6 +14,7 @@ dependencies = [
    "task_then_motion_planning@git+https://github.com/tomsilver/task-then-motion-planning.git",
    "gymnasium==1.0.0",
    "moviepy",
+   "objaverse",
 ]
 
 [project.optional-dependencies]
