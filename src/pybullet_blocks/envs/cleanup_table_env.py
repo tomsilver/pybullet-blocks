@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import ssl
 from dataclasses import dataclass, field
 from typing import Any, Collection
 
 import numpy as np
+import objaverse  # type: ignore[import-untyped]
 import pybullet as p
+import trimesh
 from gymnasium import spaces
 from gymnasium.utils import seeding
 from numpy.typing import NDArray
@@ -23,6 +27,35 @@ from pybullet_blocks.envs.base_env import (
     RobotState,
 )
 from pybullet_blocks.utils import create_lettered_block
+
+
+@dataclass
+class ObjaverseConfig:
+    """Configuration for Objaverse objects."""
+
+    # Predefined toy objects with their Objaverse UIDs and scales
+    toy_objects: dict[str, dict[str, Any]] = field(
+        default_factory=lambda: {
+            "A": {"uid": "a84cecb600c04eeba60d02f99b8b154b", "scale": 0.05},  # Duck toy
+            "B": {
+                "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
+                "scale": 3e-6,
+            },
+            "C": {
+                "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
+                "scale": 5e-4,
+            },
+        }
+    )
+
+    # Local cache directory for downloaded meshes
+    cache_dir: str = field(
+        default_factory=lambda: os.path.expanduser("~/.objaverse_cache")
+    )
+
+    default_scale: float = 0.05
+    use_simplified_collision: bool = True
+    max_downloads: int = 10
 
 
 @dataclass
@@ -59,18 +92,22 @@ class BinDimensions:
 class CleanupTableSceneDescription(BaseSceneDescription):
     """Container for toy cleanup task hyperparameters."""
 
-    num_toys: int = 4
+    num_toys: int = 3
 
     # Bin parameters
     bin_position: tuple[float, float, float] = (0.95, 0.0, -0.375)
-    bin_rgba: tuple[float, float, float, float] = (0.2, 0.2, 0.8, 1.0)
+    bin_rgba: tuple[float, float, float, float] = (0.6, 0.4, 0.2, 1.0)
     bin_dimensions: BinDimensions = field(default_factory=BinDimensions)
 
     # Toy parameters
     toy_rgba: tuple[float, float, float, float] = (0.8, 0.2, 0.2, 1.0)
-    toy_half_extents: tuple[float, float, float] = (0.025, 0.025, 0.025)
+    toy_half_extents: tuple[float, float, float] = (0.1, 0.1, 0.1)
     toy_mass: float = 0.3
     toy_friction: float = 0.9
+
+    # Objaverse configuration
+    objaverse_config: ObjaverseConfig = field(default_factory=ObjaverseConfig)
+    use_objaverse: bool = True
 
     # Table position
     table_pose: Pose = Pose((0.5, 0.0, -0.175))
@@ -179,6 +216,116 @@ class CleanupTablePyBulletBlocksState(PyBulletBlocksState):
         return cls(toy_states, bin_state, robot_state)
 
 
+class ObjaverseLoader:
+    """Helper class for loading Objaverse objects."""
+
+    def __init__(self, config: ObjaverseConfig) -> None:
+        self.config = config
+        os.makedirs(config.cache_dir, exist_ok=True)
+        self._downloaded_objects: dict[str, str] = {}
+        self._setup_ssl_context()
+        self._download_all_objects()
+
+    def get_object_half_extents(
+        self, physics_client_id: int, body_id: int
+    ) -> tuple[float, float, float]:
+        """Get actual half-extents of a loaded object."""
+        aabb_min, aabb_max = p.getAABB(body_id, physicsClientId=physics_client_id)
+        half_extents = tuple((aabb_max[i] - aabb_min[i]) / 2 for i in range(3))
+        return half_extents
+
+    def _setup_ssl_context(self) -> None:
+        """Set up SSL context to handle certificate verification."""
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+        ssl._create_default_https_context = (  # pylint: disable=protected-access
+            lambda: ssl_context
+        )
+
+    def _download_all_objects(self) -> None:
+        """Download all objects defined in configuration."""
+        uids = [obj_config["uid"] for obj_config in self.config.toy_objects.values()]
+        downloaded_objects = objaverse.load_objects(
+            uids=uids,
+            download_processes=1,
+        )
+        self._downloaded_objects = downloaded_objects
+
+    def _convert_glb_to_obj(self, glb_path: str) -> str:
+        """Convert GLB file to OBJ for PyBullet compatibility."""
+        obj_path = glb_path.replace(".glb", ".obj")
+        if os.path.exists(obj_path):
+            return obj_path
+
+        # Load GLB and export to OBJ
+        mesh = trimesh.load(glb_path)
+        if hasattr(mesh, "geometry"):
+            # if it's a Scene, extract the first geometry
+            if len(mesh.geometry) > 0:
+                mesh = list(mesh.geometry.values())[0]
+            else:
+                raise ValueError("No geometry found in GLB file")
+        mesh.export(obj_path)  # type: ignore[no-untyped-call]
+        print(f"Converted {glb_path} to {obj_path}")
+        return obj_path
+
+    def load_toy_object(
+        self,
+        letter: str,
+        physics_client_id: int,
+        mass: float = 0.3,
+        scale: float | None = None,
+    ) -> int:
+        """Load a toy object from Objaverse."""
+        obj_config = self.config.toy_objects.get(letter)
+        assert obj_config is not None, f"Object config for letter {letter} not found."
+
+        uid = obj_config["uid"]
+        if scale is None:
+            scale = obj_config.get("scale", self.config.default_scale)
+
+        mesh_path = self._downloaded_objects.get(uid)
+        assert mesh_path is not None, f"Mesh for UID {uid} not downloaded."
+
+        obj_path = self._convert_glb_to_obj(mesh_path)
+        if self.config.use_simplified_collision:
+            # Use a simple bounding box for collision
+            collision_shape = p.createCollisionShape(
+                shapeType=p.GEOM_BOX,
+                halfExtents=[0.025, 0.025, 0.025],
+                physicsClientId=physics_client_id,
+            )
+        else:
+            collision_shape = p.createCollisionShape(
+                shapeType=p.GEOM_MESH,
+                fileName=obj_path,
+                meshScale=[scale, scale, scale],
+                physicsClientId=physics_client_id,
+            )
+        visual_shape = p.createVisualShape(
+            shapeType=p.GEOM_MESH,
+            fileName=obj_path,
+            meshScale=[scale, scale, scale],
+            physicsClientId=physics_client_id,
+        )
+        body_id = p.createMultiBody(
+            baseMass=mass,
+            baseCollisionShapeIndex=collision_shape,
+            baseVisualShapeIndex=visual_shape,
+            physicsClientId=physics_client_id,
+        )
+        p.changeDynamics(
+            bodyUniqueId=body_id,
+            linkIndex=-1,  # Base link
+            mass=mass,
+            lateralFriction=0.9,
+            physicsClientId=physics_client_id,
+        )
+        print(f"Loaded Objaverse object {letter} (UID: {uid}) with scale {scale}")
+        return body_id
+
+
 class CleanupTablePyBulletBlocksEnv(
     PyBulletBlocksEnv[spaces.GraphInstance, NDArray[np.float32]]
 ):
@@ -211,19 +358,36 @@ class CleanupTablePyBulletBlocksEnv(
         # Create bin container
         self._setup_bin()
 
-        # Create toys (using letters A, B, C, D, etc.)
-        # NOTE: Replace this with Objaverse objects
+        # Initialize Objaverse loader
+        self.objaverse_loader = ObjaverseLoader(scene_description.objaverse_config)
+
+        # Create toys using Objaverse objects or lettered blocks
         self.toy_ids = []
+        self.toy_half_extents_map = {}
         for i in range(scene_description.num_toys):
-            toy_id = create_lettered_block(
-                chr(65 + i),
-                scene_description.toy_half_extents,
-                scene_description.toy_rgba,
-                (1.0, 1.0, 1.0, 1.0),
-                self.physics_client_id,
-                mass=scene_description.toy_mass,
-                friction=scene_description.toy_friction,
-            )
+            letter = chr(65 + i)
+            if scene_description.use_objaverse:
+                toy_id = self.objaverse_loader.load_toy_object(
+                    letter,
+                    self.physics_client_id,
+                    mass=scene_description.toy_mass,
+                )
+                self.toy_half_extents_map[toy_id] = (
+                    self.objaverse_loader.get_object_half_extents(
+                        self.physics_client_id, toy_id
+                    )
+                )
+            else:
+                toy_id = create_lettered_block(
+                    chr(65 + i),
+                    scene_description.toy_half_extents,
+                    scene_description.toy_rgba,
+                    (1.0, 1.0, 1.0, 1.0),
+                    self.physics_client_id,
+                    mass=scene_description.toy_mass,
+                    friction=scene_description.toy_friction,
+                )
+                self.toy_half_extents_map[toy_id] = scene_description.toy_half_extents
             self.toy_ids.append(toy_id)
 
         # Set up toy ID to letter mapping
@@ -407,7 +571,9 @@ class CleanupTablePyBulletBlocksEnv(
     def get_object_half_extents(self, object_id: int) -> tuple[float, float, float]:
         """Get the half-extent of a given object from its pybullet ID."""
         if object_id in self.toy_ids:
-            return self.scene_description.toy_half_extents
+            return self.toy_half_extents_map.get(
+                object_id, self.scene_description.toy_half_extents
+            )
         if object_id == self.bin_bottom_id:
             # Return bin bottom dimensions
             bin_dim = self.scene_description.bin_dimensions
@@ -518,7 +684,6 @@ class CleanupTablePyBulletBlocksEnv(
             self._np_random, _ = seeding.np_random(0)
 
         for toy_id in self.toy_ids:
-            # Try to place toy without collisions
             placed = False
             for _ in range(100):
                 position = self._np_random.uniform(
