@@ -36,14 +36,25 @@ class ObjaverseConfig:
     # Predefined objects with their Objaverse UIDs and scales
     toy_objects: dict[str, dict[str, Any]] = field(
         default_factory=lambda: {
-            "A": {"uid": "a84cecb600c04eeba60d02f99b8b154b", "scale": 0.05},  # Duck toy
+            "A": {
+                "uid": "a84cecb600c04eeba60d02f99b8b154b",  # Duck toy
+                "scale": 0.08,
+            },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
                 "scale": 3e-6,
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
-                "scale": 5e-4,
+                "scale": 6e-4,
+            },
+            "D": {
+                "uid": "13c1fb8edb994f69a84a94c3d31e63a7",  # Sheep toy
+                "scale": 0.08,
+            },
+            "E": {
+                "uid": "a953358282604011b8567b7574b0b563",  # Gun toy
+                "scale": 0.04,
             },
         }
     )

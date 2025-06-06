@@ -14,11 +14,8 @@ from pybullet_blocks.envs.cleanup_table_env import (
 def test_cleanup_table_env_init():
     """Test initialization of CleanupTablePyBulletObjectsEnv."""
     objaverse_config = ObjaverseConfig()
-    objaverse_config.toy_objects["A"]["scale"] = 0.05
-    objaverse_config.toy_objects["B"]["scale"] = 3e-6
-    objaverse_config.toy_objects["C"]["scale"] = 5e-4
     scene_description = CleanupTableSceneDescription(
-        num_toys=3,
+        num_toys=5,
         use_objaverse=True,
         objaverse_config=objaverse_config,
     )
