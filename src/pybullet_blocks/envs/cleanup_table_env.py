@@ -272,7 +272,7 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
                 vec = node[: RobotState.get_dimension()]
                 robot_state = RobotState.from_vec(vec)
             elif np.isclose(node[0], 2):  # Bin
-                bin_vec = node[1 : ObjectState.get_dimension()]
+                bin_vec = node[1 : 1 + ObjectState.get_dimension()]
                 bin_state = ObjectState.from_vec(bin_vec)
             elif np.isclose(node[0], 1):  # Toy (LabeledObjectState)
                 vec = node[: LabeledObjectState.get_dimension()]
