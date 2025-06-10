@@ -13,10 +13,10 @@ from pybullet_helpers.motion_planning import (
 )
 
 from pybullet_blocks.envs.obstacle_tower_env import (
-    GraphObstacleTowerPyBulletBlocksEnv,
-    GraphObstacleTowerPyBulletBlocksState,
-    ObstacleTowerPyBulletBlocksEnv,
-    ObstacleTowerPyBulletBlocksState,
+    GraphObstacleTowerPyBulletObjectsEnv,
+    GraphObstacleTowerPyBulletObjectsState,
+    ObstacleTowerPyBulletObjectsEnv,
+    ObstacleTowerPyBulletObjectsState,
     ObstacleTowerSceneDescription,
 )
 
@@ -24,11 +24,11 @@ from pybullet_blocks.envs.obstacle_tower_env import (
 @pytest.mark.parametrize(
     "env_cls,state_cls",
     [
-        (GraphObstacleTowerPyBulletBlocksEnv, GraphObstacleTowerPyBulletBlocksState),
-        (ObstacleTowerPyBulletBlocksEnv, ObstacleTowerPyBulletBlocksState),
+        (GraphObstacleTowerPyBulletObjectsEnv, GraphObstacleTowerPyBulletObjectsState),
+        (ObstacleTowerPyBulletObjectsEnv, ObstacleTowerPyBulletObjectsState),
     ],
 )
-def test_clear_and_place_env(env_cls, state_cls):
+def test_obstacle_tower_env(env_cls, state_cls):
     """Tests for ObstacleTower environment."""
 
     # For the sake of this test with hardcoded motion, force the block to start
@@ -43,7 +43,7 @@ def test_clear_and_place_env(env_cls, state_cls):
                 self.target_area_position[1],
                 self.table_pose.position[2]
                 + self.table_half_extents[2]
-                + self.block_half_extents[2],
+                + self.object_half_extents[2],
             )
 
     scene_description = _CustomObstacleTowerSceneDescription(
@@ -225,7 +225,7 @@ def test_clear_and_place_env(env_cls, state_cls):
     sim.set_state(state)
     dz = (
         sim.scene_description.target_half_extents[2]
-        + sim.scene_description.block_half_extents[2]
+        + sim.scene_description.object_half_extents[2]
     )
     place_position = np.add(state.target_state.pose.position, (0.0, 0.0, dz))
     place_path = list(

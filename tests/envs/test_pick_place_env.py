@@ -10,23 +10,23 @@ from pybullet_helpers.motion_planning import (
 )
 
 from pybullet_blocks.envs.pick_place_env import (
-    PickPlacePyBulletBlocksEnv,
-    PickPlacePyBulletBlocksState,
+    PickPlacePyBulletObjectsEnv,
+    PickPlacePyBulletObjectsState,
 )
 
 
 def test_pick_place_env():
-    """Tests for PickPlacePyBulletBlocksEnv()."""
+    """Tests for PickPlacePyBulletObjectsEnv()."""
 
     # Create the real environment.
-    env = PickPlacePyBulletBlocksEnv(use_gui=False)
+    env = PickPlacePyBulletObjectsEnv(use_gui=False)
 
     # from gymnasium.wrappers import RecordVideo
     # env = RecordVideo(base_env, "videos/pick-place-env-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
     # Create a 'simulation' environment for kinematics, planning, etc.
-    sim = PickPlacePyBulletBlocksEnv(env.scene_description, use_gui=False)
+    sim = PickPlacePyBulletObjectsEnv(env.scene_description, use_gui=False)
     joint_distance_fn = create_joint_distance_fn(sim.robot)
 
     obs, _ = env.reset(seed=123)
@@ -39,7 +39,7 @@ def test_pick_place_env():
             action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert env.action_space.contains(action)
             obs, _, _, _, _ = env.step(action)
-            state = PickPlacePyBulletBlocksState.from_observation(obs)
+            state = PickPlacePyBulletObjectsState.from_observation(obs)
         return state
 
     # Assume that the initial orientation of the robot end effector works for
@@ -47,7 +47,7 @@ def test_pick_place_env():
     robot_grasp_orientation = sim.robot.get_end_effector_pose().orientation
 
     # Move to above the block.
-    state = PickPlacePyBulletBlocksState.from_observation(obs)
+    state = PickPlacePyBulletObjectsState.from_observation(obs)
     sim.set_state(state)
     above_block_position = np.add(state.block_state.pose.position, (0.0, 0.0, 0.075))
     above_block_pose = Pose(tuple(above_block_position), robot_grasp_orientation)
@@ -111,7 +111,7 @@ def test_pick_place_env():
     sim.set_state(state)
     dz = (
         sim.scene_description.target_half_extents[2]
-        + sim.scene_description.block_half_extents[2]
+        + sim.scene_description.object_half_extents[2]
     )
     target_drop_position = np.add(state.target_state.pose.position, (0.0, 0.0, dz))
     end_effector_path = list(

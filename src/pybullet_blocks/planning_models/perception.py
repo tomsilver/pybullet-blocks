@@ -13,24 +13,24 @@ from pybullet_helpers.inverse_kinematics import check_body_collisions
 from relational_structs import GroundAtom, Object, Predicate, Type
 from task_then_motion_planning.structs import Perceiver
 
-from pybullet_blocks.envs.base_env import PyBulletBlocksEnv
+from pybullet_blocks.envs.base_env import PyBulletObjectsEnv
 from pybullet_blocks.envs.block_stacking_env import (
-    BlockStackingPyBulletBlocksEnv,
-    BlockStackingPyBulletBlocksState,
+    BlockStackingPyBulletObjectsEnv,
+    BlockStackingPyBulletObjectsState,
 )
 from pybullet_blocks.envs.cluttered_drawer_env import (
-    ClutteredDrawerPyBulletBlocksEnv,
-    ClutteredDrawerPyBulletBlocksState,
+    ClutteredDrawerPyBulletObjectsEnv,
+    ClutteredDrawerPyBulletObjectsState,
 )
 from pybullet_blocks.envs.obstacle_tower_env import (
-    GraphObstacleTowerPyBulletBlocksEnv,
-    GraphObstacleTowerPyBulletBlocksState,
-    ObstacleTowerPyBulletBlocksEnv,
-    ObstacleTowerPyBulletBlocksState,
+    GraphObstacleTowerPyBulletObjectsEnv,
+    GraphObstacleTowerPyBulletObjectsState,
+    ObstacleTowerPyBulletObjectsEnv,
+    ObstacleTowerPyBulletObjectsState,
 )
 from pybullet_blocks.envs.pick_place_env import (
-    PickPlacePyBulletBlocksEnv,
-    PickPlacePyBulletBlocksState,
+    PickPlacePyBulletObjectsEnv,
+    PickPlacePyBulletObjectsState,
 )
 
 # Create generic types.
@@ -51,8 +51,8 @@ GripperEmpty = Predicate("GripperEmpty", [robot_type])
 IsTarget = Predicate("IsTarget", [object_type])
 NotIsTarget = Predicate("NotIsTarget", [object_type])
 # for drawer
-IsTargetBlock = Predicate("IsTargetBlock", [object_type])
-NotIsTargetBlock = Predicate("NotIsTargetBlock", [object_type])
+IsTargetObject = Predicate("IsTargetObject", [object_type])
+NotIsTargetObject = Predicate("NotIsTargetObject", [object_type])
 IsTable = Predicate("IsTable", [object_type])
 IsDrawer = Predicate("IsDrawer", [object_type])
 BlockingLeft = Predicate("BlockingLeft", [object_type, object_type])
@@ -89,8 +89,8 @@ DRAWER_PREDICATES = {
     GripperEmpty,
     IsTable,
     IsDrawer,
-    IsTargetBlock,
-    NotIsTargetBlock,
+    IsTargetObject,
+    NotIsTargetObject,
     BlockingLeft,
     BlockingRight,
     BlockingFront,
@@ -103,10 +103,10 @@ DRAWER_PREDICATES = {
 }
 
 
-class PyBulletBlocksPerceiver(Perceiver[ObsType]):
-    """A perceiver for the pybullet blocks envs."""
+class PyBulletObjectsPerceiver(Perceiver[ObsType]):
+    """A perceiver for the pybullet objects envs."""
 
-    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+    def __init__(self, sim: PyBulletObjectsEnv) -> None:
         # Use the simulator for geometric computations.
         self._sim = sim
 
@@ -222,7 +222,7 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
         """Get the half extents of an object."""
         if object_id == self._pybullet_ids[self._table]:
             return self._sim.scene_description.table_half_extents
-        return self._sim.scene_description.block_half_extents
+        return self._sim.scene_description.object_half_extents
 
     @abc.abstractmethod
     def _interpret_IsMovable(self) -> set[GroundAtom]:
@@ -278,14 +278,14 @@ class PyBulletBlocksPerceiver(Perceiver[ObsType]):
         return {GroundAtom(NotIsTarget, [o]) for o in not_target_objects}
 
 
-class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float32]]):
-    """A perceiver for the PickPlacePyBulletBlocksEnv()."""
+class PickPlacePyBulletObjectsPerceiver(PyBulletObjectsPerceiver[NDArray[np.float32]]):
+    """A perceiver for the PickPlacePyBulletObjectsEnv()."""
 
-    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+    def __init__(self, sim: PyBulletObjectsEnv) -> None:
         super().__init__(sim)
 
-        # Create constant objects.
-        assert isinstance(self._sim, PickPlacePyBulletBlocksEnv)
+        # Create constant blocks.
+        assert isinstance(self._sim, PickPlacePyBulletObjectsEnv)
         self._block = Object("block", object_type)
         self._target = Object("target", object_type)
         self._pybullet_ids = {
@@ -299,7 +299,7 @@ class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float3
         return set(self._pybullet_ids)
 
     def _set_sim_from_obs(self, obs: NDArray[np.float32]) -> None:
-        self._sim.set_state(PickPlacePyBulletBlocksState.from_observation(obs))
+        self._sim.set_state(PickPlacePyBulletObjectsState.from_observation(obs))
 
     def _get_goal(
         self, obs: NDArray[np.float32], info: dict[str, Any]
@@ -312,7 +312,7 @@ class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float3
             return self._sim.scene_description.table_half_extents
         if object_id == self._pybullet_ids[self._target]:
             return self._sim.scene_description.target_half_extents
-        return self._sim.scene_description.block_half_extents
+        return self._sim.scene_description.object_half_extents
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         return {GroundAtom(IsMovable, [self._block])}
@@ -321,22 +321,22 @@ class PickPlacePyBulletBlocksPerceiver(PyBulletBlocksPerceiver[NDArray[np.float3
         return {GroundAtom(IsTarget, [self._target])}
 
 
-class BlockStackingPyBulletBlocksPerceiver(
-    PyBulletBlocksPerceiver[gym.spaces.GraphInstance]
+class BlockStackingPyBulletObjectsPerceiver(
+    PyBulletObjectsPerceiver[gym.spaces.GraphInstance]
 ):
-    """A perceiver for the BlockStackingPyBulletBlocksEnv()."""
+    """A perceiver for the BlockStackingPyBulletObjectsEnv()."""
 
-    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+    def __init__(self, sim: PyBulletObjectsEnv) -> None:
         super().__init__(sim)
 
         # Create constant objects.
-        assert isinstance(self._sim, BlockStackingPyBulletBlocksEnv)
+        assert isinstance(self._sim, BlockStackingPyBulletObjectsEnv)
         self._pybullet_ids = {
             self._robot: self._sim.robot.robot_id,
             self._table: self._sim.table_id,
         }
-        for letter, block_id in self._sim.letter_to_block_id.items():
-            obj = Object(letter, object_type)
+        for label, block_id in self._sim.label_to_block_id.items():
+            obj = Object(label, object_type)
             self._pybullet_ids[obj] = block_id
         self._active_blocks: set[Object] = set()
 
@@ -346,8 +346,8 @@ class BlockStackingPyBulletBlocksPerceiver(
         info: dict[str, Any],
     ) -> tuple[set[Object], set[GroundAtom], set[GroundAtom]]:
         self._active_blocks = set()
-        assert isinstance(self._sim, BlockStackingPyBulletBlocksEnv)
-        self._sim.set_state(BlockStackingPyBulletBlocksState.from_observation(obs))
+        assert isinstance(self._sim, BlockStackingPyBulletObjectsEnv)
+        self._sim.set_state(BlockStackingPyBulletObjectsState.from_observation(obs))
         pybullet_id_to_obj = {v: k for k, v in self._pybullet_ids.items()}
         for active_block_id in self._sim.active_block_ids:
             active_block = pybullet_id_to_obj[active_block_id]
@@ -358,23 +358,21 @@ class BlockStackingPyBulletBlocksPerceiver(
         return {self._robot, self._table} | self._active_blocks
 
     def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
-        self._sim.set_state(BlockStackingPyBulletBlocksState.from_observation(obs))
+        self._sim.set_state(BlockStackingPyBulletObjectsState.from_observation(obs))
 
     def _get_goal(
         self, obs: gym.spaces.GraphInstance, info: dict[str, Any]
     ) -> set[GroundAtom]:
         del obs
         goal: set[GroundAtom] = set()
-        assert isinstance(self._sim, BlockStackingPyBulletBlocksEnv)
-        letter_to_block_id = self._sim.letter_to_block_id
+        assert isinstance(self._sim, BlockStackingPyBulletObjectsEnv)
+        label_to_block_id = self._sim.label_to_block_id
         pybullet_id_to_obj = {v: k for k, v in self._pybullet_ids.items()}
-        letter_to_obj = {
-            l: pybullet_id_to_obj[i] for l, i in letter_to_block_id.items()
-        }
+        label_to_obj = {l: pybullet_id_to_obj[i] for l, i in label_to_block_id.items()}
         for pile in info["goal_piles"]:
-            for bottom_letter, top_letter in zip(pile[:-1], pile[1:], strict=True):
-                top = letter_to_obj[top_letter]
-                bottom = letter_to_obj[bottom_letter]
+            for bottom_label, top_label in zip(pile[:-1], pile[1:], strict=True):
+                top = label_to_obj[top_label]
+                bottom = label_to_obj[bottom_label]
                 atom = GroundAtom(On, [top, bottom])
                 goal.add(atom)
         return goal
@@ -383,16 +381,16 @@ class BlockStackingPyBulletBlocksPerceiver(
         return {GroundAtom(IsMovable, [block]) for block in self._active_blocks}
 
 
-class ObstacleTowerPyBulletBlocksPerceiver(
-    PyBulletBlocksPerceiver[NDArray[np.float32]]
+class ObstacleTowerPyBulletObjectsPerceiver(
+    PyBulletObjectsPerceiver[NDArray[np.float32]]
 ):
-    """A perceiver for the ObstacleTowerPyBulletBlocksEnv()."""
+    """A perceiver for the ObstacleTowerPyBulletObjectsEnv()."""
 
-    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+    def __init__(self, sim: PyBulletObjectsEnv) -> None:
         super().__init__(sim)
 
         # Create constant objects
-        assert isinstance(self._sim, ObstacleTowerPyBulletBlocksEnv)
+        assert isinstance(self._sim, ObstacleTowerPyBulletObjectsEnv)
         self._target_block = Object("T", object_type)
         self._target_area = Object("target", object_type)
         self._obstacle_blocks = sorted(
@@ -419,7 +417,7 @@ class ObstacleTowerPyBulletBlocksPerceiver(
         )
 
     def _set_sim_from_obs(self, obs: NDArray[np.float32]) -> None:
-        self._sim.set_state(ObstacleTowerPyBulletBlocksState.from_observation(obs))
+        self._sim.set_state(ObstacleTowerPyBulletObjectsState.from_observation(obs))
 
     def _get_goal(
         self, obs: NDArray[np.float32], info: dict[str, Any]
@@ -432,7 +430,7 @@ class ObstacleTowerPyBulletBlocksPerceiver(
             return self._sim.scene_description.table_half_extents
         if object_id == self._pybullet_ids[self._target_area]:
             return self._sim.scene_description.target_half_extents
-        return self._sim.scene_description.block_half_extents
+        return self._sim.scene_description.object_half_extents
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = {self._target_block} | set(self._obstacle_blocks)
@@ -442,16 +440,16 @@ class ObstacleTowerPyBulletBlocksPerceiver(
         return {GroundAtom(IsTarget, [self._target_area])}
 
 
-class GraphObstacleTowerPyBulletBlocksPerceiver(
-    PyBulletBlocksPerceiver[gym.spaces.GraphInstance]
+class GraphObstacleTowerPyBulletObjectsPerceiver(
+    PyBulletObjectsPerceiver[gym.spaces.GraphInstance]
 ):
-    """A perceiver for the GraphObstacleTowerPyBulletBlocksEnv."""
+    """A perceiver for the GraphObstacleTowerPyBulletObjectsEnv."""
 
-    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+    def __init__(self, sim: PyBulletObjectsEnv) -> None:
         super().__init__(sim)
 
         # Create constant objects
-        assert isinstance(self._sim, GraphObstacleTowerPyBulletBlocksEnv)
+        assert isinstance(self._sim, GraphObstacleTowerPyBulletObjectsEnv)
         self._target_block = Object("T", object_type)
         self._target_area = Object("target", object_type)
         self._obstacle_blocks = sorted(
@@ -478,7 +476,9 @@ class GraphObstacleTowerPyBulletBlocksPerceiver(
         )
 
     def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
-        self._sim.set_state(GraphObstacleTowerPyBulletBlocksState.from_observation(obs))
+        self._sim.set_state(
+            GraphObstacleTowerPyBulletObjectsState.from_observation(obs)
+        )
 
     def _get_goal(
         self, obs: gym.spaces.GraphInstance, info: dict[str, Any]
@@ -491,7 +491,7 @@ class GraphObstacleTowerPyBulletBlocksPerceiver(
             return self._sim.scene_description.table_half_extents
         if object_id == self._pybullet_ids[self._target_area]:
             return self._sim.scene_description.target_half_extents
-        return self._sim.scene_description.block_half_extents
+        return self._sim.scene_description.object_half_extents
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = {self._target_block} | set(self._obstacle_blocks)
@@ -501,21 +501,23 @@ class GraphObstacleTowerPyBulletBlocksPerceiver(
         return {GroundAtom(IsTarget, [self._target_area])}
 
 
-class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphInstance]):
+class ClutteredDrawerObjectsPerceiver(
+    PyBulletObjectsPerceiver[gym.spaces.GraphInstance]
+):
     """A perceiver for the ClutteredDrawerBlocksEnv."""
 
-    def __init__(self, sim: PyBulletBlocksEnv) -> None:
+    def __init__(self, sim: PyBulletObjectsEnv) -> None:
         super().__init__(sim)
 
-        assert isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv)
+        assert isinstance(self._sim, ClutteredDrawerPyBulletObjectsEnv)
         self._drawer = Object("drawer", object_type)
-        self._target_block = Object(
-            self._sim.scene_description.target_block_letter, object_type
+        self._target_object = Object(
+            self._sim.scene_description.target_object_label, object_type
         )
-        self._drawer_blocks = sorted(
+        self._drawer_objects = sorted(
             [
                 Object(chr(65 + 1 + i), object_type)
-                for i in range(self._sim.scene_description.num_drawer_blocks)
+                for i in range(self._sim.scene_description.num_drawer_objects)
             ],
             key=lambda x: x.name,
         )
@@ -524,10 +526,10 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
             self._robot: self._sim.robot.robot_id,
             self._table: self._sim.drawer_with_table_id,
             self._drawer: self._sim.drawer_with_table_id,
-            self._target_block: self._sim.target_block_id,
+            self._target_object: self._sim.target_object_id,
         }
-        for i, block in enumerate(self._drawer_blocks):
-            self._pybullet_ids[block] = self._sim.drawer_block_ids[i]
+        for i, obj in enumerate(self._drawer_objects):
+            self._pybullet_ids[obj] = self._sim.drawer_object_ids[i]
 
         # Create predicate interpreters.
         # No NothingOn predicate in this env.
@@ -540,7 +542,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
             self._interpret_GripperEmpty,
             self._interpret_ReadyPick,
             self._interpret_NotReadyPick,
-            self._interpret_IsTargetBlock,
+            self._interpret_IsTargetObject,
             self._interpret_IsTable,
             self._interpret_IsDrawer,
             self._interpret_BlockingLeft,
@@ -555,21 +557,21 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
         ]
 
     def _get_objects(self) -> set[Object]:
-        return {self._robot, self._table, self._drawer, self._target_block} | set(
-            self._drawer_blocks
+        return {self._robot, self._table, self._drawer, self._target_object} | set(
+            self._drawer_objects
         )
 
     def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
-        self._sim.set_state(ClutteredDrawerPyBulletBlocksState.from_observation(obs))
+        self._sim.set_state(ClutteredDrawerPyBulletObjectsState.from_observation(obs))
 
     def _get_goal(
         self, obs: gym.spaces.GraphInstance, info: dict[str, Any]
     ) -> set[GroundAtom]:
         del obs, info
-        return {GroundAtom(On, [self._target_block, self._table])}
+        return {GroundAtom(On, [self._target_object, self._table])}
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
-        movable_objects = {self._target_block} | set(self._drawer_blocks)
+        movable_objects = {self._target_object} | set(self._drawer_objects)
         return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
 
     def _interpret_ReadyPick(self) -> set[GroundAtom]:
@@ -582,7 +584,7 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
             obj_pybullet_id = self._pybullet_ids[obj]
 
             # Check if the object is within the gripper's reach.
-            if self._sim.is_block_ready_pick(obj_pybullet_id):
+            if self._sim.is_object_ready_pick(obj_pybullet_id):
                 ready_pick_atoms.add(GroundAtom(ReadyPick, [self._robot, obj]))
         return ready_pick_atoms
 
@@ -598,15 +600,15 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
                 not_ready_pick_atoms.add(GroundAtom(NotReadyPick, [self._robot, obj]))
         return not_ready_pick_atoms
 
-    def _interpret_IsTargetBlock(self) -> set[GroundAtom]:
-        """Determine if the object is the target block."""
-        target_block_atoms = set()
-        for obj in self._drawer_blocks + [self._target_block]:
-            if obj == self._target_block:
-                target_block_atoms.add(GroundAtom(IsTargetBlock, [obj]))
+    def _interpret_IsTargetObject(self) -> set[GroundAtom]:
+        """Determine if the object is the target object."""
+        target_object_atoms = set()
+        for obj in self._drawer_objects + [self._target_object]:
+            if obj == self._target_object:
+                target_object_atoms.add(GroundAtom(IsTargetObject, [obj]))
             else:
-                target_block_atoms.add(GroundAtom(NotIsTargetBlock, [obj]))
-        return target_block_atoms
+                target_object_atoms.add(GroundAtom(NotIsTargetObject, [obj]))
+        return target_object_atoms
 
     def _interpret_IsTable(self) -> set[GroundAtom]:
         """Determine if the object is the table."""
@@ -619,98 +621,98 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
     def _interpret_BlockingLeft(self) -> set[GroundAtom]:
         """Determine if the object is blocking to the left."""
         blocking_left_atoms = set()
-        # Assume only the non-target blocks can block the target block.
-        # All the non-target blocks are Always direct graspable.
-        for obj1 in self._drawer_blocks:
+        # Assume only the non-target objects can block the target object.
+        # All the non-target objects are Always direct graspable.
+        for obj1 in self._drawer_objects:
             obj1_id = self._pybullet_ids[obj1]
-            for obj2 in [self._target_block]:
+            for obj2 in [self._target_object]:
                 if obj1 == obj2:
                     continue
                 obj2_id = self._pybullet_ids[obj2]
-                if self._sim.is_block_blocking(obj1_id, obj2_id, "left"):
+                if self._sim.is_object_blocking(obj1_id, obj2_id, "left"):
                     blocking_left_atoms.add(GroundAtom(BlockingLeft, [obj1, obj2]))
         return blocking_left_atoms
 
     def _interpret_BlockingRight(self) -> set[GroundAtom]:
         """Determine if the object is blocking to the right."""
         blocking_right_atoms = set()
-        # Assume only the non-target blocks can block the target block.
-        # All the non-target blocks are Always direct graspable.
-        for obj1 in self._drawer_blocks:
+        # Assume only the non-target objects can block the target object.
+        # All the non-target objects are Always direct graspable.
+        for obj1 in self._drawer_objects:
             obj1_id = self._pybullet_ids[obj1]
-            for obj2 in [self._target_block]:
+            for obj2 in [self._target_object]:
                 if obj1 == obj2:
                     continue
                 obj2_id = self._pybullet_ids[obj2]
-                if self._sim.is_block_blocking(obj1_id, obj2_id, "right"):
+                if self._sim.is_object_blocking(obj1_id, obj2_id, "right"):
                     blocking_right_atoms.add(GroundAtom(BlockingRight, [obj1, obj2]))
         return blocking_right_atoms
 
     def _interpret_BlockingFront(self) -> set[GroundAtom]:
         """Determine if the object is blocking to the front."""
         blocking_front_atoms = set()
-        # Assume only the non-target blocks can block the target block.
-        # All the non-target blocks are Always direct graspable.
-        for obj1 in self._drawer_blocks:
+        # Assume only the non-target objects can block the target object.
+        # All the non-target objects are Always direct graspable.
+        for obj1 in self._drawer_objects:
             obj1_id = self._pybullet_ids[obj1]
-            for obj2 in [self._target_block]:
+            for obj2 in [self._target_object]:
                 if obj1 == obj2:
                     continue
                 obj2_id = self._pybullet_ids[obj2]
-                if self._sim.is_block_blocking(obj1_id, obj2_id, "front"):
+                if self._sim.is_object_blocking(obj1_id, obj2_id, "front"):
                     blocking_front_atoms.add(GroundAtom(BlockingFront, [obj1, obj2]))
         return blocking_front_atoms
 
     def _interpret_BlockingBack(self) -> set[GroundAtom]:
         """Determine if the object is blocking to the back."""
         blocking_back_atoms = set()
-        # Assume only the non-target blocks can block the target block.
-        # All the non-target blocks are Always direct graspable.
-        for obj1 in self._drawer_blocks:
+        # Assume only the non-target objects can block the target object.
+        # All the non-target objects are Always direct graspable.
+        for obj1 in self._drawer_objects:
             obj1_id = self._pybullet_ids[obj1]
-            for obj2 in [self._target_block]:
+            for obj2 in [self._target_object]:
                 if obj1 == obj2:
                     continue
                 obj2_id = self._pybullet_ids[obj2]
-                if self._sim.is_block_blocking(obj1_id, obj2_id, "back"):
+                if self._sim.is_object_blocking(obj1_id, obj2_id, "back"):
                     blocking_back_atoms.add(GroundAtom(BlockingBack, [obj1, obj2]))
         return blocking_back_atoms
 
     def _interpret_LeftClear(self) -> set[GroundAtom]:
         """Determine if the left side is clear."""
-        # This only evaluates the target block, as all other blocks are
+        # This only evaluates the target object, as all other objects are
         # always graspable, and they are grasped by other operators.
         blocking_left_atoms = self._interpret_BlockingLeft()
         if len(blocking_left_atoms) > 0:
             return set()
-        return {GroundAtom(LeftClear, [self._target_block])}
+        return {GroundAtom(LeftClear, [self._target_object])}
 
     def _interpret_RightClear(self) -> set[GroundAtom]:
         """Determine if the right side is clear."""
-        # This only evaluates the target block, as all other blocks are
+        # This only evaluates the target object, as all other objects are
         # always graspable, and they are grasped by other operators.
         blocking_right_atoms = self._interpret_BlockingRight()
         if len(blocking_right_atoms) > 0:
             return set()
-        return {GroundAtom(RightClear, [self._target_block])}
+        return {GroundAtom(RightClear, [self._target_object])}
 
     def _interpret_FrontClear(self) -> set[GroundAtom]:
         """Determine if the front side is clear."""
-        # This only evaluates the target block, as all other blocks are
+        # This only evaluates the target object, as all other objects are
         # always graspable, and they are grasped by other operators.
         blocking_front_atoms = self._interpret_BlockingFront()
         if len(blocking_front_atoms) > 0:
             return set()
-        return {GroundAtom(FrontClear, [self._target_block])}
+        return {GroundAtom(FrontClear, [self._target_object])}
 
     def _interpret_BackClear(self) -> set[GroundAtom]:
         """Determine if the back side is clear."""
-        # This only evaluates the target block, as all other blocks are
+        # This only evaluates the target object, as all other objects are
         # always graspable, and they are grasped by other operators.
         blocking_back_atoms = self._interpret_BlockingBack()
         if len(blocking_back_atoms) > 0:
             return set()
-        return {GroundAtom(BackClear, [self._target_block])}
+        return {GroundAtom(BackClear, [self._target_object])}
 
     def _interpret_HandReadyPick(self) -> set[GroundAtom]:
         """Determine if the robot is ready to reach an object."""
@@ -734,20 +736,20 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
                 continue
             obj1_pybullet_id = self._pybullet_ids[obj1]
 
-            # assume only block on table/drawer is allowed.
+            # assume only object on table/drawer is allowed.
             for obj2 in candidates:
                 if obj2 == self._table:
-                    if self._sim.is_block_on_table(obj1_pybullet_id):
+                    if self._sim.is_object_on_table(obj1_pybullet_id):
                         on_relations.add((obj1, obj2))
                 elif obj2 == self._drawer:
-                    if self._sim.is_block_on_drawer(obj1_pybullet_id):
+                    if self._sim.is_object_on_drawer(obj1_pybullet_id):
                         on_relations.add((obj1, obj2))
                 else:
                     continue
         return on_relations
 
-    def _get_blocks_in_drawer(self) -> set[Object]:
-        """Determine which blocks are in the drawer based on position."""
+    def _get_objects_in_drawer(self) -> set[Object]:
+        """Determine which objects are in the drawer based on position."""
         in_drawer = set()
         drawer_state = p.getLinkState(
             self._sim.drawer_with_table_id,
@@ -789,13 +791,13 @@ class ClutteredDrawerBlocksPerceiver(PyBulletBlocksPerceiver[gym.spaces.GraphIns
             / 2
         )
 
-        # Check if blocks are within drawer boundaries
-        for obj in self._drawer_blocks + [self._target_block]:
+        # Check if objects are within drawer boundaries
+        for obj in self._drawer_objects + [self._target_object]:
             obj_id = self._pybullet_ids[obj]
             pose = get_pose(obj_id, self._sim.physics_client_id)
             pos = pose.position
 
-            # Check if block is in drawer boundaries
+            # Check if object is in drawer boundaries
             if (
                 min_x <= pos[0] <= max_x
                 and min_y <= pos[1] <= max_y
