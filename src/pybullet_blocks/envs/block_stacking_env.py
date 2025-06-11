@@ -162,19 +162,19 @@ class BlockStackingPyBulletObjectsEnv(
 
     def get_state(self) -> BlockStackingPyBulletObjectsState:
         block_states = []
-        for block_id_one in self.active_block_ids:
-            block_pose_one = get_pose(block_id_one, self.physics_client_id)
-            label = self._block_id_to_label[block_id_one]
-            held = bool(self.current_held_object_id == block_id_one)
+        for top_block_id in self.active_block_ids:
+            top_block_pose = get_pose(top_block_id, self.physics_client_id)
+            label = self._block_id_to_label[top_block_id]
+            held = bool(self.current_held_object_id == top_block_id)
             stacked_on = None
 
-            # Check if block_one is stacked on top of any other block
-            for block_id_two in self.active_block_ids:
-                if self._is_stacked(block_id_one, block_pose_one, block_id_two):
-                    stacked_on = self._block_id_to_label[block_id_two]
+            # Check if the current block is stacked on top of any other block
+            for bottom_block_id in self.active_block_ids:
+                if self._is_stacked(top_block_id, top_block_pose, bottom_block_id):
+                    stacked_on = self._block_id_to_label[bottom_block_id]
                     break
 
-            block_state = LabeledObjectState(block_pose_one, label, held, stacked_on)
+            block_state = LabeledObjectState(top_block_pose, label, held, stacked_on)
             block_states.append(block_state)
         robot_joints = self.robot.get_joint_positions()
         grasp_transform = self.current_grasp_transform
@@ -223,20 +223,22 @@ class BlockStackingPyBulletObjectsEnv(
     def _get_reward(self) -> float:
         return bool(self._get_terminated())
 
-    def _is_stacked(self, block_id_one, block_pose_one, block_id_two) -> bool:
-        """Check if block one is on top of block two."""
+    def _is_stacked(self, top_block_id, top_block_pose, bottom_block_id) -> bool:
+        """Check if the top block is stacked on the bottom block."""
 
-        if block_id_one == block_id_two:
+        if top_block_id == bottom_block_id:
             return False
-        block_pose_two = get_pose(block_id_two, self.physics_client_id)
+        bottom_block_pose = get_pose(bottom_block_id, self.physics_client_id)
         top_on_bottom = check_body_collisions(
-            block_id_two,
-            block_id_one,
+            bottom_block_id,
+            top_block_id,
             self.physics_client_id,
             distance_threshold=1e-2,
         )
 
-        return top_on_bottom and block_pose_one.position[2] > block_pose_two.position[2]
+        return (
+            top_on_bottom and top_block_pose.position[2] > bottom_block_pose.position[2]
+        )
 
     def reset(
         self,

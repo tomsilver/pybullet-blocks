@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass, field
-from typing import Any, Generic, Optional, SupportsFloat
+from typing import Any, Generic, SupportsFloat
 
 import gymnasium as gym
 import numpy as np
@@ -72,7 +72,7 @@ class LabeledObjectState(ObjectState):
 
     label: str
     held: bool
-    stacked_on: Optional[str] = None
+    stacked_on: str | None = None
 
     @classmethod
     def get_dimension(cls) -> int:
