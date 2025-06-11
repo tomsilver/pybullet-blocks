@@ -103,7 +103,7 @@ def get_kinematic_plan_to_reach_object(
         plan_to_reach = run_smooth_motion_planning_to_pose(
             reach,
             robot,
-            collision_ids=collision_ids,
+            collision_ids=collision_ids - {object_id},
             end_effector_frame_to_plan_frame=Pose.identity(),
             seed=seed,
             max_time=max_motion_planning_time,
@@ -113,6 +113,7 @@ def get_kinematic_plan_to_reach_object(
         # If motion planning failed, try a different reach.
         if plan_to_reach is None:
             if num_attempts >= reach_generator_iters:
+                import ipdb; ipdb.set_trace()
                 return None
             continue
         # Motion planning succeeded, so update the plan.
@@ -155,6 +156,7 @@ def get_kinematic_plan_to_grasp_object(
     NOTE: this function updates pybullet directly and arbitrarily. Users should
     reset the pybullet state as appropriate after calling this function.
     """
+    import ipdb; ipdb.set_trace()
     # Reset the simulator to the initial state to restart the planning.
     initial_state.set_pybullet(robot)
     state = initial_state
@@ -231,6 +233,50 @@ def get_kinematic_plan_to_grasp_object(
             robot, all_object_ids, attached_object_ids={object_id}
         )
         plan.append(state)
+
+        current_joints = robot.get_joint_positions()
+        finger_close_steps = 10  # Number of incremental steps to close
+        initial_finger_pos = [current_joints[-2], current_joints[-1]]  # Current finger positions
+        target_finger_pos = [0.0, 0.0]  # Fully closed position
+
+        for step in range(finger_close_steps):
+            # Interpolate finger positions
+            alpha = (step + 1) / finger_close_steps
+            intermediate_finger_pos = [
+                initial_finger_pos[0] * (1 - alpha) + target_finger_pos[0] * alpha,
+                initial_finger_pos[1] * (1 - alpha) + target_finger_pos[1] * alpha,
+            ]
+            
+            # Create new joint configuration with updated fingers
+            new_joints = current_joints.copy()
+            new_joints[-2:] = intermediate_finger_pos
+            
+            # Set joints and check for collision with object
+            robot.set_joints(new_joints)
+            
+            # # Check if fingers are colliding with the grasped object
+            # finger_collision = (
+            #     check_body_collisions(
+            #         robot.robot_id, object_id, robot.physics_client_id,
+            #         link1=robot.finger_joint_ids[0], distance_threshold=0.001
+            #     ) or
+            #     check_body_collisions(
+            #         robot.robot_id, object_id, robot.physics_client_id, 
+            #         link1=robot.finger_joint_ids[1], distance_threshold=0.001
+            #     )
+            # )
+            
+            # Add this finger state to the plan
+            state = state.copy_with(robot_joints=new_joints)
+            plan.append(state)
+            import ipdb; ipdb.set_trace()
+            # Sync the simulator.
+            state.set_pybullet(robot)
+            import ipdb; ipdb.set_trace()
+            
+            # Stop closing if collision detected
+            if intermediate_finger_pos[0] < 0.01 and intermediate_finger_pos[1] < 0.01:
+                break
 
         # Move off the surface.
         end_effector_pose = robot.get_end_effector_pose()

@@ -110,7 +110,7 @@ class BinDimensions:
 class CleanupTableSceneDescription(BaseSceneDescription):
     """Container for toy cleanup task hyperparameters."""
 
-    num_toys: int = 3
+    num_toys: int = 5
 
     # Bin parameters
     bin_position: tuple[float, float, float] = (0.5, 0.45, -0.275)
@@ -149,6 +149,13 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     robot_base_pose: Pose = Pose((0.0, 0.0, -0.1))
     robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
     robot_stand_half_extents: tuple[float, float, float] = (0.2, 0.2, 0.125)
+
+    # Pick related settings
+    # TODO: tune (0.0, 0.02)
+    z_dist_threshold: tuple[float, float] = (0.0, 0.075) # Z distance threshold for grasp
+    hand_ready_pick_z: float = 0.1 #0.042    # Z distance threshold for reach
+    xy_dist_threshold: float = 0.025
+
 
     @property
     def wall_position(self) -> tuple[float, float, float]:
@@ -779,6 +786,51 @@ class CleanupTablePyBulletObjectsEnv(
         )
 
         return in_x_bounds and in_y_bounds and above_bottom and on_bottom
+    
+    def is_object_ready_pick(self, object_id: int) -> bool:
+        """Check if an object is ready to be picked up."""
+        # A toy is ready to pick if:
+        # 1. It's on the table
+        # 2. Hand is right above it with desired z offset and x-y distance
+        # TODO: wiper (reach, grasp, conditions are different)
+        is_on_table = check_body_collisions(
+            object_id,
+            self.table_id,
+            self.physics_client_id,
+            distance_threshold=1e-3,
+        )
+
+        hand_pose = self.robot.get_end_effector_pose()
+        object_pose = get_pose(object_id, self.physics_client_id)
+        z_dist = abs(hand_pose.position[2] - object_pose.position[2])
+        xy_dist = np.sqrt(
+            (hand_pose.position[0] - object_pose.position[0]) ** 2
+            + (hand_pose.position[1] - object_pose.position[1]) ** 2
+        )
+        z_ok = (
+            self.scene_description.z_dist_threshold[0]
+            < z_dist
+            < self.scene_description.z_dist_threshold[1]
+        )
+        xy_ok = xy_dist < self.scene_description.xy_dist_threshold
+
+        if object_id in self.toy_ids:
+            return is_on_table and z_ok and xy_ok
+        elif object_id == self.wiper_id:
+            return True
+        return False
+    
+    def is_robot_closely_above(self, object_id: int) -> bool:
+        """Check if the robot is closely above a object."""
+        object_pose = get_pose(object_id, self.physics_client_id)
+        hand_pose = self.robot.get_end_effector_pose()
+        z_dist = abs(hand_pose.position[2] - object_pose.position[2])
+        xy_dist = np.sqrt(
+            (hand_pose.position[0] - object_pose.position[0]) ** 2
+            + (hand_pose.position[1] - object_pose.position[1]) ** 2
+        )
+        xy_ok = xy_dist < self.scene_description.xy_dist_threshold
+        return z_dist < self.scene_description.hand_ready_pick_z and xy_ok
 
     def reset(  # type: ignore[override]
         self,

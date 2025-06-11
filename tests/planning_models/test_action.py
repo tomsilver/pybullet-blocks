@@ -4,6 +4,10 @@ import pytest
 from task_then_motion_planning.planning import TaskThenMotionPlanner
 
 from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletObjectsEnv
+from pybullet_blocks.envs.cleanup_table_env import (
+    CleanupTablePyBulletObjectsEnv,
+    CleanupTableSceneDescription,
+)
 from pybullet_blocks.envs.cluttered_drawer_env import (
     ClutteredDrawerPyBulletObjectsEnv,
     ClutteredDrawerSceneDescription,
@@ -17,14 +21,18 @@ from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletObjectsEnv
 from pybullet_blocks.planning_models.action import (
     OPERATORS,
     OPERATORS_DRAWER,
+    OPERATORS_CLEANUP,
     SKILLS,
     SKILLS_DRAWER,
+    SKILLS_CLEANUP,
 )
 from pybullet_blocks.planning_models.perception import (
+    CLEANUP_PREDICATES,
     DRAWER_PREDICATES,
     PREDICATES,
     TYPES,
     BlockStackingPyBulletObjectsPerceiver,
+    CleanupTablePyBulletObjectsPerceiver,
     ClutteredDrawerObjectsPerceiver,
     GraphObstacleTowerPyBulletObjectsPerceiver,
     ObstacleTowerPyBulletObjectsPerceiver,
@@ -32,7 +40,7 @@ from pybullet_blocks.planning_models.perception import (
 )
 
 
-def test_pick_place_pybullet_blocks_action():
+def test_pick_place_pybullet_objects_action():
     """Tests task then motion planning in PickPlacePyBulletObjectsEnv()."""
 
     env = PickPlacePyBulletObjectsEnv(use_gui=False)
@@ -65,7 +73,7 @@ def test_pick_place_pybullet_blocks_action():
     env.close()
 
 
-def test_block_stacking_pybullet_blocks_action():
+def test_block_stacking_pybullet_objects_action():
     """Tests task then motion planning in BlockStackingPyBulletObjectsEnv()."""
 
     env = BlockStackingPyBulletObjectsEnv(use_gui=False)
@@ -110,7 +118,7 @@ def test_block_stacking_pybullet_blocks_action():
         (ObstacleTowerPyBulletObjectsEnv, ObstacleTowerPyBulletObjectsPerceiver),
     ],
 )
-def test_obstacle_tower_pybullet_blocks_action(env_cls, perceiver_cls):
+def test_obstacle_tower_pybullet_objects_action(env_cls, perceiver_cls):
     """Tests task then motion planning in ObstacleTowerPyBulletObjectsEnv()."""
     seed = 123
 
@@ -157,7 +165,7 @@ def test_obstacle_tower_pybullet_blocks_action(env_cls, perceiver_cls):
     env.close()
 
 
-def test_cluttered_drawer_objects_action():
+def test_cluttered_drawer_pybullet_objects_action():
     """Tests task then motion planning in
     ClutteredDrawerPyBulletObjectsEnv()."""
     seed = 123
@@ -203,6 +211,54 @@ def test_cluttered_drawer_objects_action():
         action = planner.step(obs)
         obs, reward, done, _, _ = env.step(action)
         if done:  # goal reached!
+            assert reward > 0
+            break
+    else:
+        assert False, "Goal not reached"
+
+    env.close()
+
+
+def test_cleanup_table_pybullet_objects_action():
+    """Tests task then motion planning in CleanupTablePyBulletObjectsEnv()."""
+    seed = 123
+    scene_description = CleanupTableSceneDescription(num_toys=1)
+
+    env = CleanupTablePyBulletObjectsEnv(
+        scene_description=scene_description,
+        use_gui=True,
+        seed=seed,
+    )
+    sim = CleanupTablePyBulletObjectsEnv(
+        scene_description=scene_description,
+        use_gui=False,
+        seed=seed,
+    )
+
+    max_motion_planning_time = 0.1
+
+    perceiver = CleanupTablePyBulletObjectsPerceiver(sim)
+    skills = {
+        s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS_CLEANUP
+    }
+
+    # Create the planner
+    planner = TaskThenMotionPlanner(
+        TYPES,
+        CLEANUP_PREDICATES,
+        perceiver,
+        OPERATORS_CLEANUP,
+        skills,
+        planner_id="pyperplan",
+    )
+
+    # Run an episode
+    obs, info = env.reset(seed=seed)
+    planner.reset(obs, info)
+    for _ in range(10000):
+        action = planner.step(obs)
+        obs, reward, done, _, _ = env.step(action)
+        if done:
             assert reward > 0
             break
     else:
