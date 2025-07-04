@@ -43,7 +43,7 @@ class ObjaverseConfig:
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
-                "scale": 3e-6,
+                "scale": 2.5e-6,
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
@@ -157,9 +157,10 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     robot_stand_half_extents: tuple[float, float, float] = (0.2, 0.2, 0.125)
 
     # Pick related settings
-    z_dist_threshold: float = 0.02
-    hand_ready_pick_z: float = 0.1  # 0.042    # Z distance threshold for reach
-    xy_dist_threshold: float = 0.025
+    z_dist_threshold_for_reach: float = 0.02
+    z_dist_threshold_for_grasp: float = -0.03
+    hand_ready_pick_z: float = 0.1
+    xy_dist_threshold: float = 0.075
 
     @property
     def wall_position(self) -> tuple[float, float, float]:
@@ -222,7 +223,6 @@ class CleanupTableSceneDescription(BaseSceneDescription):
         wiper_y = wall_pos[1] - self.robot_stand_half_extents[1] - wiper_half_extents[1]
         floor_top_z = self.floor_position[2] + self.floor_half_extents[2]
         wiper_z = floor_top_z + wiper_half_extents[2]
-        print(f"Wiper position: {wiper_x}, {wiper_y}, {wiper_z}")
         return (wiper_x, wiper_y, wiper_z)
 
 
@@ -304,7 +304,7 @@ class ObjaverseLoader:
     def __init__(self, config: ObjaverseConfig) -> None:
         self.config = config
         os.makedirs(config.cache_dir, exist_ok=True)
-        self._downloaded_objects: dict[str, str] = {}
+        self.downloaded_objects: dict[str, str] = {}
         self._setup_ssl_context()
         self._download_all_objects()
 
@@ -325,9 +325,9 @@ class ObjaverseLoader:
             uids=uids,
             download_processes=1,
         )
-        self._downloaded_objects = downloaded_objects
+        self.downloaded_objects = downloaded_objects
 
-    def _convert_glb_to_obj(self, glb_path: str) -> str:
+    def convert_glb_to_obj(self, glb_path: str) -> str:
         """Convert GLB file to OBJ for PyBullet compatibility."""
         obj_path = glb_path.replace(".glb", ".obj")
         if os.path.exists(obj_path):
@@ -371,10 +371,10 @@ class ObjaverseLoader:
         if mass is None:
             mass = self.config.default_mass
 
-        mesh_path = self._downloaded_objects.get(uid)
+        mesh_path = self.downloaded_objects.get(uid)
         assert mesh_path is not None, f"Mesh for UID {uid} not downloaded."
 
-        obj_path = self._convert_glb_to_obj(mesh_path)
+        obj_path = self.convert_glb_to_obj(mesh_path)
         collision_shape = p.createCollisionShape(
             shapeType=p.GEOM_MESH,
             fileName=obj_path,
@@ -859,20 +859,15 @@ class CleanupTablePyBulletObjectsEnv(
 
         hand_pose = self.robot.get_end_effector_pose()
         object_pose = get_pose(object_id, self.physics_client_id)
-        z_dist = abs(hand_pose.position[2] - object_pose.position[2])
+        label = self._toy_id_to_label[object_id]
+        object_top_z = self.get_top_z_at_object_center(object_id, label)
+        z_dist = hand_pose.position[2] - object_top_z
         xy_dist = np.sqrt(
             (hand_pose.position[0] - object_pose.position[0]) ** 2
             + (hand_pose.position[1] - object_pose.position[1]) ** 2
         )
-        # Get the relative distance above the top of the object.
-        _, aabb_max = p.getAABB(object_id, physicsClientId=self.physics_client_id)
-        threshold = (
-            aabb_max[2]
-            - object_pose.position[2]
-            - self.scene_description.z_dist_threshold
-        )
-        z_ok = 0.0 < z_dist < threshold
-        xy_ok = xy_dist < self.scene_description.xy_dist_threshold
+        z_ok = z_dist <= self.scene_description.z_dist_threshold_for_reach
+        xy_ok = xy_dist <= self.scene_description.xy_dist_threshold
 
         if object_id in self.toy_ids:
             return is_on_table and z_ok and xy_ok
@@ -981,28 +976,22 @@ class CleanupTablePyBulletObjectsEnv(
 
     def _is_graspable(self, object_id: int) -> bool:
         """Check if object is graspable based on proximity to end effectors."""
-        aabb_min, aabb_max = p.getAABB(
-            object_id, physicsClientId=self.physics_client_id
+        object_top_z = self.get_top_z_at_object_center(
+            object_id, self._toy_id_to_label[object_id]
         )
+        object_position = get_pose(object_id, self.physics_client_id).position
         end_effector_position = self.robot.get_end_effector_pose().position
 
-        min_dist_to_bbox = 0.0
-        for i in range(3):
-            dist_to_min = aabb_min[i] - end_effector_position[i]
-            dist_to_max = end_effector_position[i] - aabb_max[i]
-            if dist_to_min > 0 and dist_to_max > 0:
-                # Both distances are positive, object is outside the end effector's reach
-                return False
-            min_dist_to_bbox += max(dist_to_min, dist_to_max)
+        xy_dist = np.sqrt(
+            (end_effector_position[0] - object_position[0]) ** 2
+            + (end_effector_position[1] - object_position[1]) ** 2
+        )
+        z_dist = end_effector_position[2] - object_top_z
 
-        # Ensure that the end effector is close enough to the object's center
-        if min_dist_to_bbox < -0.05:
-            # Additional check: ensure we're approaching from above
-            object_center = [(aabb_min[i] + aabb_max[i]) / 2 for i in range(3)]
-            if end_effector_position[2] > object_center[2]:
-                return True
-
-        return False
+        return (
+            xy_dist <= self.scene_description.xy_dist_threshold
+            and z_dist <= self.scene_description.z_dist_threshold_for_grasp
+        )
 
     def reset(  # type: ignore[override]
         self,
@@ -1029,6 +1018,42 @@ class CleanupTablePyBulletObjectsEnv(
             state = CleanupTablePyBulletObjectsState.from_observation(state)
         self.set_state(state)
         return self.get_state().to_observation(), self._get_info()
+
+    def get_top_z_at_object_center(self, object_id: int, label: str) -> float:
+        """Get the Z height of the top surface at the object's XY center."""
+        # Load the mesh
+        uid = self.scene_description.objaverse_config.toy_objects[label]["uid"]
+        glb_path = self.objaverse_loader.downloaded_objects[uid]
+        obj_path = self.objaverse_loader.convert_glb_to_obj(glb_path)
+        mesh = trimesh.load(obj_path)
+        if hasattr(mesh, "geometry"):
+            mesh = list(mesh.geometry.values())[0]
+        assert isinstance(mesh, trimesh.Trimesh)
+
+        # Transform vertices to world coordinates
+        scale = self.scene_description.objaverse_config.toy_objects[label]["scale"]
+        world_pose = get_pose(object_id, self.physics_client_id)
+        transform = trimesh.transformations.compose_matrix(  # type: ignore[no-untyped-call]    # pylint: disable=line-too-long
+            translate=world_pose.position,
+            angles=trimesh.transformations.euler_from_quaternion(  # type: ignore[no-untyped-call] # pylint: disable=line-too-long
+                world_pose.orientation
+            ),
+        )
+        vertices = mesh.vertices * scale
+        vertices_h = np.hstack((vertices, np.ones((vertices.shape[0], 1))))
+        vertices_world = (transform @ vertices_h.T).T[:, :3]
+
+        # Find Z values at XY near the center
+        center_xy = world_pose.position[:2]
+        radius = 0.01  # 1cm radius around center
+        distances = np.linalg.norm(vertices_world[:, :2] - center_xy, axis=1)
+        close_indices = np.where(distances < radius)[0]
+
+        if len(close_indices) == 0:
+            print(f"Falling back to max Z for object {object_id} with label {label}.")
+            return max(vertices_world[:, 2])
+
+        return np.max(vertices_world[close_indices, 2])
 
     def _place_toys_on_table(self) -> None:
         """Place toys randomly on the table."""

@@ -141,6 +141,8 @@ def get_kinematic_plan_to_grasp_object(
     postgrasp_translation_magnitude: float = 0.05,
     max_motion_planning_time: float = 1.0,
     max_smoothing_iters_per_step: int = 1,
+    grasp_along_object_axis: bool = True,
+    grasp_relative_to_object: bool = True,
 ) -> list[KinematicState] | None:
     """Make a plan to pick up the object from a surface.
 
@@ -188,8 +190,20 @@ def get_kinematic_plan_to_grasp_object(
         plan = [state]
 
         # Calculate the grasp in the world frame.
-        object_pose = state.object_poses[object_id]
-        grasp = multiply_poses(object_pose, object_to_link, relative_grasp)
+        if not grasp_relative_to_object:
+            grasp = relative_grasp
+        else:
+            if grasp_along_object_axis:
+                object_pose = state.object_poses[object_id]
+                grasp = multiply_poses(object_pose, object_to_link, relative_grasp)
+            else:
+                object_position = state.object_poses[object_id].position
+                object_pose_position_only = Pose(
+                    object_position, (0, 0, 0, 1)
+                )  # Identity quaternion
+                grasp = multiply_poses(
+                    object_pose_position_only, object_to_link, relative_grasp
+                )
 
         # Move to grasp.
         end_effector_pose = robot.get_end_effector_pose()
@@ -244,6 +258,11 @@ def get_kinematic_plan_to_grasp_object(
         )
 
         try:
+            if grasp_relative_to_object:
+                base_link_to_held_obj = relative_grasp.invert()
+            else:
+                object_pose = state.object_poses[object_id]
+                base_link_to_held_obj = grasp.invert().multiply(object_pose)
             grasp_to_postgrasp_plan = smoothly_follow_end_effector_path(
                 robot,
                 end_effector_path,
@@ -254,7 +273,7 @@ def get_kinematic_plan_to_grasp_object(
                 max_smoothing_iters_per_step=max_smoothing_iters_per_step,
                 include_start=False,
                 held_object=object_id,
-                base_link_to_held_obj=relative_grasp.invert(),
+                base_link_to_held_obj=base_link_to_held_obj,
             )
         except InverseKinematicsError:
             grasp_to_postgrasp_plan = None

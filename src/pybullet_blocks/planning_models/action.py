@@ -921,25 +921,18 @@ class ReachObjaverseSkill(PyBulletObjectsSkill):
         _, obj = objects
         object_id = self._object_to_pybullet_id(obj)
         collision_ids = set(state.object_poses)
-
-        # Get a relative reach above the top of the object.
-        _, aabb_max = p.getAABB(object_id, physicsClientId=self._sim.physics_client_id)
+        label = obj.name
+        object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
         object_center = state.object_poses[object_id].position
 
         def reach_generator() -> Iterator[Pose]:
             while True:
                 relative_x = 0.0
                 relative_y = 0.0
-                relative_z_1 = aabb_max[2] - object_center[2] - 0.02
-                relative_z_2 = aabb_max[2] - object_center[2] - 0.015
+                relative_z_1 = object_top_z - object_center[2]
+                relative_z_2 = object_top_z - object_center[2] + 0.02
                 relative_z = self._sim.np_random.uniform(relative_z_1, relative_z_2)
-                grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
-                relative_pose = Pose(
-                    (0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])
-                )
-                grasp_2 = multiply_poses(grasp_1, relative_pose)
-                grasps = [grasp_1, grasp_2]
-                grasp = grasps[self._sim.np_random.choice([0, 1])]
+                grasp = Pose((0, 0, 0), self._robot_grasp_orientation)
                 orientation = grasp.orientation
                 relative_reach = Pose((relative_x, relative_y, relative_z), orientation)
                 yield relative_reach
@@ -951,6 +944,7 @@ class ReachObjaverseSkill(PyBulletObjectsSkill):
             collision_ids,
             reach_generator=reach_generator(),
             reach_generator_iters=20,
+            lifting_height=0.25,
         )
         return kinematic_plan
 
@@ -1005,12 +999,27 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
         object_id = self._object_to_pybullet_id(obj)
         surface_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses)
+        label = obj.name
+        object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
+        object_pose = state.object_poses[object_id]
+
+        grasp_pos = (
+            object_pose.position[0],
+            object_pose.position[1],
+            object_top_z
+            + self._sim.scene_description.z_dist_threshold_for_grasp
+            - 0.005,
+        )
+        grasp_orientation = self._robot_grasp_orientation
+        grasp_pose = Pose(grasp_pos, grasp_orientation)
+
         # add one more possible relative grasp (orientation)
-        relative_grasp_1 = Pose((0, 0, 0.075), self._robot_grasp_orientation)
-        relative_pose = Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2]))
-        relative_grasp_2 = multiply_poses(relative_grasp_1, relative_pose)
-        relative_grasp = [relative_grasp_1, relative_grasp_2]
-        grasp_generator = iter(relative_grasp)
+        grasp_rotated = multiply_poses(
+            grasp_pose,
+            Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
+        )
+        grasp_generator = iter([grasp_pose, grasp_rotated])
+
         kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
             self._sim.robot,
@@ -1019,7 +1028,10 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
             collision_ids,
             grasp_generator=grasp_generator,
             grasp_generator_iters=5,
+            grasp_along_object_axis=False,
+            grasp_relative_to_object=False,
         )
+
         return kinematic_plan
 
 
@@ -1317,13 +1329,41 @@ class DropSkill(PyBulletObjectsSkill):
         object_id = self._object_to_pybullet_id(obj)
         bin_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses) - {object_id}
+        lifting_height = 0.3
 
         state.set_pybullet(self._sim.robot)
         plan = [state]
 
+        # First lift the hand to above everything
+        curr_ee_pose = self._sim.robot.get_end_effector_pose()
+        lift_pose = Pose(
+            (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
+            curr_ee_pose.orientation,
+        )
+        plan_to_lift = run_smooth_motion_planning_to_pose(
+            lift_pose,
+            self._sim.robot,
+            collision_ids=collision_ids,
+            end_effector_frame_to_plan_frame=Pose.identity(),
+            seed=self._seed,
+            max_time=self._max_motion_planning_time,
+            held_object=object_id,
+            base_link_to_held_obj=state.attachments[object_id],
+        )
+        if plan_to_lift is None:
+            return None
+
+        for robot_joints in plan_to_lift:
+            state = state.copy_with(robot_joints=robot_joints)
+            plan.append(state)
+
+        # Set the state back to continue planning
+        state.set_pybullet(self._sim.robot)
+
+        # Now plan to drop the object into the bin
         object_pose = state.object_poses[object_id]
         bin_pose = state.object_poses[bin_id]
-        drop_height = object_pose.position[2]
+        drop_height = object_pose.position[2] + lifting_height / 2
         drop_position = (bin_pose.position[0], bin_pose.position[1], drop_height)
 
         current_ee_pose = self._sim.robot.get_end_effector_pose()

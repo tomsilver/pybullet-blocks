@@ -32,7 +32,7 @@ def test_cleanup_table_env_noactions():
     """Test initialization of CleanupTablePyBulletObjectsEnv with no actions
     (let physics settle)."""
     seed = 123
-    scene_description = CleanupTableSceneDescription(num_toys=1)
+    scene_description = CleanupTableSceneDescription(num_toys=5)
     env = CleanupTablePyBulletObjectsEnv(
         scene_description=scene_description,
         use_gui=True,
