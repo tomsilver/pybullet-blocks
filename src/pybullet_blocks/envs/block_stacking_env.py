@@ -40,15 +40,28 @@ class BlockStackingPyBulletObjectsState(PyBulletObjectsState):
         inner_vecs: list[NDArray] = [
             self.robot_state.to_vec(),
         ]
+        edges = np.array([])
+        edge_links = []
+
         for block_state in self.block_states:
-            inner_vecs.append(block_state.to_vec())
+            block_vec = block_state.to_vec()
+            inner_vecs.append(block_vec)
+
+            # Create edge link for each block's label to the label it is placed on
+            is_stacked_on = block_vec[10] != -1
+            if is_stacked_on:
+                edges = np.append(edges, 1)
+                edge_links.append([block_vec[8], block_vec[10]])
+        edge_links_array = (
+            np.array(edge_links) if edge_links else np.empty((0, 2), dtype=np.int32)
+        )
         padded_vecs: list[NDArray] = []
         for vec in inner_vecs:
             padded_vec = np.zeros(self.get_node_dimension(), dtype=np.float32)
             padded_vec[: len(vec)] = vec
             padded_vecs.append(padded_vec)
         arr = np.array(padded_vecs, dtype=np.float32)
-        return spaces.GraphInstance(nodes=arr, edges=None, edge_links=None)
+        return spaces.GraphInstance(nodes=arr, edges=edges, edge_links=edge_links_array)
 
     @classmethod
     def from_observation(
@@ -149,11 +162,19 @@ class BlockStackingPyBulletObjectsEnv(
 
     def get_state(self) -> BlockStackingPyBulletObjectsState:
         block_states = []
-        for block_id in self.active_block_ids:
-            block_pose = get_pose(block_id, self.physics_client_id)
-            label = self._block_id_to_label[block_id]
-            held = bool(self.current_held_object_id == block_id)
-            block_state = LabeledObjectState(block_pose, label, held)
+        for top_block_id in self.active_block_ids:
+            top_block_pose = get_pose(top_block_id, self.physics_client_id)
+            label = self._block_id_to_label[top_block_id]
+            held = bool(self.current_held_object_id == top_block_id)
+            stacked_on = None
+
+            # Check if the current block is stacked on top of any other block
+            for bottom_block_id in self.active_block_ids:
+                if self._is_stacked(top_block_id, top_block_pose, bottom_block_id):
+                    stacked_on = self._block_id_to_label[bottom_block_id]
+                    break
+
+            block_state = LabeledObjectState(top_block_pose, label, held, stacked_on)
             block_states.append(block_state)
         robot_joints = self.robot.get_joint_positions()
         grasp_transform = self.current_grasp_transform
@@ -201,6 +222,23 @@ class BlockStackingPyBulletObjectsEnv(
 
     def _get_reward(self) -> float:
         return bool(self._get_terminated())
+
+    def _is_stacked(self, top_block_id, top_block_pose, bottom_block_id) -> bool:
+        """Check if the top block is stacked on the bottom block."""
+
+        if top_block_id == bottom_block_id:
+            return False
+        bottom_block_pose = get_pose(bottom_block_id, self.physics_client_id)
+        top_on_bottom = check_body_collisions(
+            bottom_block_id,
+            top_block_id,
+            self.physics_client_id,
+            distance_threshold=1e-2,
+        )
+
+        return (
+            top_on_bottom and top_block_pose.position[2] > bottom_block_pose.position[2]
+        )
 
     def reset(
         self,
