@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import ssl
 from dataclasses import dataclass, field
-from typing import Any, Collection
+from typing import Any, Collection, SupportsFloat
 
 import numpy as np
 import objaverse
@@ -14,7 +14,7 @@ import trimesh
 from gymnasium import spaces
 from gymnasium.utils import seeding
 from numpy.typing import NDArray
-from pybullet_helpers.geometry import Pose, get_pose, set_pose
+from pybullet_helpers.geometry import Pose, get_pose, multiply_poses, set_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.utils import create_pybullet_block
 
@@ -22,6 +22,7 @@ from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
     LabeledObjectState,
     ObjectState,
+    PyBulletObjectsAction,
     PyBulletObjectsEnv,
     PyBulletObjectsState,
     RobotState,
@@ -137,6 +138,11 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     wiper_mass: float = 0.5
     wiper_offset_from_wall: float = -0.075
 
+    # Shelf parameters (add these to the dataclass)
+    shelf_rgba: tuple[float, float, float, float] = (0.7, 0.7, 0.7, 1.0)
+    shelf_half_extents: tuple[float, float, float] = (0.03, 0.02, 0.05)
+    shelf_offset_from_wiper: float = 0.1  # How far below wiper top
+
     # Objaverse configuration
     objaverse_config: ObjaverseConfig = field(default_factory=ObjaverseConfig)
     use_objaverse: bool = True
@@ -151,11 +157,9 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     robot_stand_half_extents: tuple[float, float, float] = (0.2, 0.2, 0.125)
 
     # Pick related settings
-    # TODO: tune (0.0, 0.02)
-    z_dist_threshold: tuple[float, float] = (0.0, 0.075) # Z distance threshold for grasp
-    hand_ready_pick_z: float = 0.1 #0.042    # Z distance threshold for reach
+    z_dist_threshold: float = 0.02
+    hand_ready_pick_z: float = 0.1  # 0.042    # Z distance threshold for reach
     xy_dist_threshold: float = 0.025
-
 
     @property
     def wall_position(self) -> tuple[float, float, float]:
@@ -437,6 +441,8 @@ class CleanupTablePyBulletObjectsEnv(
         self.objaverse_loader = ObjaverseLoader(scene_description.objaverse_config)
         self._setup_wiper()
 
+        self._setup_shelf()
+
         # Create toys using Objaverse objects or labeled objects
         self.toy_ids = []
         for i in range(scene_description.num_toys):
@@ -618,7 +624,7 @@ class CleanupTablePyBulletObjectsEnv(
             mass=scene_description.wiper_mass,
             is_wiper=True,
         )
-        rotation_quat = p.getQuaternionFromEuler([np.pi / 2 + 0.2, 0.5, np.pi])
+        rotation_quat = p.getQuaternionFromEuler([np.pi / 2 - 0.1, 0.5, np.pi + 0.2])
         temp_pose = Pose((0, 0, 0), rotation_quat)
         set_pose(self.wiper_id, temp_pose, self.physics_client_id)
 
@@ -630,6 +636,54 @@ class CleanupTablePyBulletObjectsEnv(
         wiper_position = scene_description.get_wiper_position(wiper_half_extents)
         final_wiper_pose = Pose(wiper_position, rotation_quat)
         set_pose(self.wiper_id, final_wiper_pose, self.physics_client_id)
+
+    def _setup_shelf(self) -> None:
+        """Create shelf blocks on the wall for wiper support."""
+        scene_description = self.scene_description
+        assert isinstance(scene_description, CleanupTableSceneDescription)
+
+        wiper_aabb_min, wiper_aabb_max = p.getAABB(
+            self.wiper_id, physicsClientId=self.physics_client_id
+        )
+        shelf_z = wiper_aabb_max[2] - scene_description.shelf_offset_from_wiper
+
+        wall_pos = scene_description.wall_position
+        left_shelf_x = (
+            wall_pos[0]
+            + scene_description.wall_half_extents[0]
+            + scene_description.shelf_half_extents[0]
+        )
+        left_shelf_y = (
+            wiper_aabb_min[1] - scene_description.shelf_half_extents[1] + 0.05
+        )
+        right_shelf_x = left_shelf_x
+        right_shelf_y = (
+            wiper_aabb_max[1] + scene_description.shelf_half_extents[1] - 0.15
+        )
+
+        self.left_shelf_id = create_pybullet_block(
+            scene_description.shelf_rgba,
+            half_extents=scene_description.shelf_half_extents,
+            physics_client_id=self.physics_client_id,
+            mass=0.0,
+        )
+        set_pose(
+            self.left_shelf_id,
+            Pose((left_shelf_x, left_shelf_y, shelf_z)),
+            self.physics_client_id,
+        )
+
+        self.right_shelf_id = create_pybullet_block(
+            scene_description.shelf_rgba,
+            half_extents=scene_description.shelf_half_extents,
+            physics_client_id=self.physics_client_id,
+            mass=0.0,
+        )
+        set_pose(
+            self.right_shelf_id,
+            Pose((right_shelf_x, right_shelf_y, shelf_z)),
+            self.physics_client_id,
+        )
 
     def set_state(self, state: PyBulletObjectsState) -> None:
         """Reset the internal state to the given state."""
@@ -686,6 +740,8 @@ class CleanupTablePyBulletObjectsEnv(
             self.wall_id,
             self.floor_id,
             self.wiper_id,
+            self.left_shelf_id,
+            self.right_shelf_id,
         } | self.bin_part_ids
 
         # Add toys that aren't currently held
@@ -735,6 +791,8 @@ class CleanupTablePyBulletObjectsEnv(
                     bin_dim.bin_wall_thickness / 2,
                     bin_dim.bin_size[2] / 2,
                 )
+            if object_id in [self.left_shelf_id, self.right_shelf_id]:
+                return self.scene_description.shelf_half_extents
         return self.scene_description.table_half_extents
 
     def _get_movable_object_ids(self) -> set[int]:
@@ -786,13 +844,12 @@ class CleanupTablePyBulletObjectsEnv(
         )
 
         return in_x_bounds and in_y_bounds and above_bottom and on_bottom
-    
+
     def is_object_ready_pick(self, object_id: int) -> bool:
         """Check if an object is ready to be picked up."""
         # A toy is ready to pick if:
         # 1. It's on the table
         # 2. Hand is right above it with desired z offset and x-y distance
-        # TODO: wiper (reach, grasp, conditions are different)
         is_on_table = check_body_collisions(
             object_id,
             self.table_id,
@@ -807,19 +864,22 @@ class CleanupTablePyBulletObjectsEnv(
             (hand_pose.position[0] - object_pose.position[0]) ** 2
             + (hand_pose.position[1] - object_pose.position[1]) ** 2
         )
-        z_ok = (
-            self.scene_description.z_dist_threshold[0]
-            < z_dist
-            < self.scene_description.z_dist_threshold[1]
+        # Get the relative distance above the top of the object.
+        _, aabb_max = p.getAABB(object_id, physicsClientId=self.physics_client_id)
+        threshold = (
+            aabb_max[2]
+            - object_pose.position[2]
+            - self.scene_description.z_dist_threshold
         )
+        z_ok = 0.0 < z_dist < threshold
         xy_ok = xy_dist < self.scene_description.xy_dist_threshold
 
         if object_id in self.toy_ids:
             return is_on_table and z_ok and xy_ok
-        elif object_id == self.wiper_id:
+        if object_id == self.wiper_id:
             return True
         return False
-    
+
     def is_robot_closely_above(self, object_id: int) -> bool:
         """Check if the robot is closely above a object."""
         object_pose = get_pose(object_id, self.physics_client_id)
@@ -831,6 +891,118 @@ class CleanupTablePyBulletObjectsEnv(
         )
         xy_ok = xy_dist < self.scene_description.xy_dist_threshold
         return z_dist < self.scene_description.hand_ready_pick_z and xy_ok
+
+    def step(  # type: ignore[override]
+        self,
+        action: NDArray[np.float32],
+    ) -> tuple[spaces.GraphInstance, SupportsFloat, bool, bool, dict[str, Any]]:
+        assert self.action_space.contains(action)
+        action_obj = PyBulletObjectsAction.from_vec(action)
+
+        # Update robot arm joints.
+        joint_arr = np.array(self.robot.get_joint_positions())
+        # Assume that first 7 entries are arm.
+        joint_arr[:7] += action_obj.robot_arm_joint_delta
+
+        # Update gripper if required.
+        if action_obj.gripper_action == 1:
+            self.current_grasp_transform = None
+            self.current_held_object_id = None
+        elif action_obj.gripper_action == -1:
+            # Check if any object is close enough to the end effector position
+            # and grasp if so.
+            for object_id in self._get_movable_object_ids():
+                if self._is_graspable(object_id):
+                    world_to_robot = self.robot.get_end_effector_pose()
+                    world_to_object = get_pose(object_id, self.physics_client_id)
+                    self.current_grasp_transform = multiply_poses(
+                        world_to_robot.invert(), world_to_object
+                    )
+                    self.current_held_object_id = object_id
+                    break
+
+        # Store original state.
+        original_joints = self.robot.get_joint_positions()
+
+        # Update the robot position and held objects.
+        clipped_joints = np.clip(
+            joint_arr, self.robot.joint_lower_limits, self.robot.joint_upper_limits
+        )
+        self._set_robot_and_held_object_state(clipped_joints.tolist())
+
+        has_collision = False
+
+        # Check robot-table penetration.
+        thresh = self.scene_description.robot_table_penetration_dist
+        if check_body_collisions(
+            self.robot.robot_id,
+            self.table_id,
+            self.physics_client_id,
+            distance_threshold=-thresh,
+        ):
+            has_collision = True
+
+        # Check held object-table penetration.
+        if self.current_held_object_id is not None:
+            thresh = self.scene_description.grasped_object_table_penetration_dist
+            if check_body_collisions(
+                self.current_held_object_id,
+                self.table_id,
+                self.physics_client_id,
+                distance_threshold=-thresh,
+            ):
+                has_collision = True
+
+        # If collision detected, revert to original state and return.
+        if has_collision:
+            self._set_robot_and_held_object_state(original_joints)
+            observation = self.get_state().to_observation()
+            penetration_penalty = self.scene_description.penetration_penalty
+            reward = -1 * penetration_penalty
+            return observation, reward, False, False, self._get_info()
+
+        # Run physics simulation.
+        for _ in range(self._num_sim_steps_per_step):
+            p.stepSimulation(physicsClientId=self.physics_client_id)
+
+        # Reset the robot and held object again after physics to ensure that position
+        # control is exact.
+        self._set_robot_and_held_object_state(clipped_joints.tolist())
+
+        # Check goal.
+        terminated = self._get_terminated()
+        reward = self._get_reward()
+        truncated = False
+        observation = self.get_state().to_observation()
+        info = self._get_info()
+        self._timestep += 1
+
+        return observation, reward, terminated, truncated, info
+
+    def _is_graspable(self, object_id: int) -> bool:
+        """Check if object is graspable based on proximity to end effectors."""
+        aabb_min, aabb_max = p.getAABB(
+            object_id, physicsClientId=self.physics_client_id
+        )
+        end_effector_position = self.robot.get_end_effector_pose().position
+
+        min_dist_to_bbox = 0.0
+        for i in range(3):
+            dist_to_min = aabb_min[i] - end_effector_position[i]
+            dist_to_max = end_effector_position[i] - aabb_max[i]
+            if dist_to_min > 0 and dist_to_max > 0:
+                # Both distances are positive, object is outside the end effector's reach
+                return False
+            min_dist_to_bbox += max(dist_to_min, dist_to_max)
+
+        # Ensure that the end effector is close enough to the object's center
+        if min_dist_to_bbox < -0.05:
+            # Additional check: ensure we're approaching from above
+            object_center = [(aabb_min[i] + aabb_max[i]) / 2 for i in range(3)]
+            if end_effector_position[2] > object_center[2]:
+                return True
+
+        return False
 
     def reset(  # type: ignore[override]
         self,
@@ -905,7 +1077,13 @@ class CleanupTablePyBulletObjectsEnv(
 
     def get_collision_check_ids(self, toy_id: int) -> set[int]:
         """Get IDs to check for collisions during free pose sampling."""
-        collision_ids = {self.table_id, self.wall_id, self.wiper_id} | self.bin_part_ids
+        collision_ids = {
+            self.table_id,
+            self.wall_id,
+            self.wiper_id,
+            self.left_shelf_id,
+            self.right_shelf_id,
+        } | self.bin_part_ids
         collision_ids.update(t_id for t_id in self.toy_ids if t_id != toy_id)
         return collision_ids
 

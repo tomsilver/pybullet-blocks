@@ -20,11 +20,11 @@ from pybullet_blocks.envs.obstacle_tower_env import (
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletObjectsEnv
 from pybullet_blocks.planning_models.action import (
     OPERATORS,
-    OPERATORS_DRAWER,
     OPERATORS_CLEANUP,
+    OPERATORS_DRAWER,
     SKILLS,
-    SKILLS_DRAWER,
     SKILLS_CLEANUP,
+    SKILLS_DRAWER,
 )
 from pybullet_blocks.planning_models.perception import (
     CLEANUP_PREDICATES,
@@ -226,7 +226,7 @@ def test_cleanup_table_pybullet_objects_action():
 
     env = CleanupTablePyBulletObjectsEnv(
         scene_description=scene_description,
-        use_gui=True,
+        use_gui=False,
         seed=seed,
     )
     sim = CleanupTablePyBulletObjectsEnv(
@@ -235,11 +235,15 @@ def test_cleanup_table_pybullet_objects_action():
         seed=seed,
     )
 
+    # from gymnasium.wrappers import RecordVideo
+    # env = RecordVideo(env, "videos/cleanup-table-ttmp-test")
+
     max_motion_planning_time = 0.1
 
     perceiver = CleanupTablePyBulletObjectsPerceiver(sim)
     skills = {
-        s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS_CLEANUP
+        s(sim, max_motion_planning_time=max_motion_planning_time)
+        for s in SKILLS_CLEANUP
     }
 
     # Create the planner

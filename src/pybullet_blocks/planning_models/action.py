@@ -12,10 +12,10 @@ from pybullet_helpers.manipulation import (
     get_kinematic_plan_to_pick_object,
     get_kinematic_plan_to_place_object,
 )
-from pybullet_helpers.states import KinematicState
 from pybullet_helpers.motion_planning import (
     run_smooth_motion_planning_to_pose,
 )
+from pybullet_helpers.states import KinematicState
 from relational_structs import (
     GroundOperator,
     LiftedAtom,
@@ -148,8 +148,26 @@ ReachOperator = LiftedOperator(
     },
 )
 
-GraspOperator = LiftedOperator(
-    "Grasp",
+ReachObjaverseOperator = LiftedOperator(
+    "ReachObjaverse",
+    [Robot, Obj],
+    preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(HandReadyPick, [Robot]),
+    },
+    add_effects={
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(HandReadyPick, [Robot]),
+    },
+)
+
+GraspObjaverseOperator = LiftedOperator(
+    "GraspObjaverse",
     [Robot, Obj, Surface],
     preconditions={
         LiftedAtom(IsMovable, [Obj]),
@@ -168,7 +186,7 @@ GraspOperator = LiftedOperator(
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(ReadyPick, [Robot, Obj]),
         LiftedAtom(On, [Obj, Surface]),
-    }
+    },
 )
 
 Obj_blo = Variable("?objblo", object_type)
@@ -539,8 +557,8 @@ OPERATORS_DRAWER = {
 }
 
 OPERATORS_CLEANUP = {
-    ReachOperator,
-    GraspOperator,
+    ReachObjaverseOperator,
+    GraspObjaverseOperator,
     DropOperator,
 }
 
@@ -678,7 +696,7 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
         if isinstance(self._sim, ClutteredDrawerPyBulletObjectsEnv):
             return ClutteredDrawerPyBulletObjectsState.from_observation(obs)  # type: ignore # pylint:disable=line-too-long
         if isinstance(self._sim, CleanupTablePyBulletObjectsEnv):
-            return CleanupTablePyBulletObjectsState.from_observation(obs)
+            return CleanupTablePyBulletObjectsState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
         raise NotImplementedError
 
     def _sim_state_to_kinematic_state(
@@ -866,7 +884,55 @@ class ReachSkill(PyBulletObjectsSkill):
                 relative_x = 0.0
                 relative_y = 0.0
                 relative_z = self._sim.np_random.uniform(0.005, 0.015)
-                relative_z = 0.075
+                grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
+                relative_pose = Pose(
+                    (0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])
+                )
+                grasp_2 = multiply_poses(grasp_1, relative_pose)
+                grasps = [grasp_1, grasp_2]
+                grasp = grasps[self._sim.np_random.choice([0, 1])]
+                orientation = grasp.orientation
+                relative_reach = Pose((relative_x, relative_y, relative_z), orientation)
+                yield relative_reach
+
+        kinematic_plan = get_kinematic_plan_to_reach_object(
+            state,
+            self._sim.robot,
+            object_id,
+            collision_ids,
+            reach_generator=reach_generator(),
+            reach_generator_iters=20,
+        )
+        return kinematic_plan
+
+
+class ReachObjaverseSkill(PyBulletObjectsSkill):
+    """Skill for reaching."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return ReachObjaverseOperator
+
+    def _get_kinematic_plan_given_objects(
+        self,
+        objects: Sequence[Object],
+        state: KinematicState,
+    ) -> list[KinematicState] | None:
+        # same as pick
+        _, obj = objects
+        object_id = self._object_to_pybullet_id(obj)
+        collision_ids = set(state.object_poses)
+
+        # Get a relative reach above the top of the object.
+        _, aabb_max = p.getAABB(object_id, physicsClientId=self._sim.physics_client_id)
+        object_center = state.object_poses[object_id].position
+
+        def reach_generator() -> Iterator[Pose]:
+            while True:
+                relative_x = 0.0
+                relative_y = 0.0
+                relative_z_1 = aabb_max[2] - object_center[2] - 0.02
+                relative_z_2 = aabb_max[2] - object_center[2] - 0.015
+                relative_z = self._sim.np_random.uniform(relative_z_1, relative_z_2)
                 grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
                 relative_pose = Pose(
                     (0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])
@@ -923,19 +989,18 @@ class GraspFrontBackSkill(PickSkill):
         return kinematic_plan
 
 
-class GraspSkill(GraspFrontBackSkill):
+class GraspObjaverseSkill(GraspFrontBackSkill):
     """Skill for grasping toys in the table cleanup domain."""
-    
+
     def _get_lifted_operator(self):
-        return GraspOperator
-    
+        return GraspObjaverseOperator
+
     def _get_kinematic_plan_given_objects(
         self,
         objects: Sequence[Object],
         state: KinematicState,
     ) -> list[KinematicState] | None:
         # same as pick
-        print(f"objects: {objects}")
         _, obj, surface = objects
         object_id = self._object_to_pybullet_id(obj)
         surface_id = self._object_to_pybullet_id(surface)
@@ -1241,10 +1306,10 @@ class StackSkill(PlaceSkill):
 
 class DropSkill(PyBulletObjectsSkill):
     """Skill for dropping objects into bin."""
-    
+
     def _get_lifted_operator(self) -> LiftedOperator:
         return DropOperator
-    
+
     def _get_kinematic_plan_given_objects(
         self, objects: Sequence[Object], state: KinematicState
     ) -> list[KinematicState] | None:
@@ -1252,7 +1317,7 @@ class DropSkill(PyBulletObjectsSkill):
         object_id = self._object_to_pybullet_id(obj)
         bin_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses) - {object_id}
-        
+
         state.set_pybullet(self._sim.robot)
         plan = [state]
 
@@ -1270,25 +1335,27 @@ class DropSkill(PyBulletObjectsSkill):
             end_effector_frame_to_plan_frame=Pose.identity(),
             seed=self._seed,
             max_time=self._max_motion_planning_time,
-            held_object_id=object_id,
+            held_object=object_id,
             base_link_to_held_obj=state.attachments[object_id],
         )
         if plan_to_drop is None:
             return None
-        
+
         for robot_joints in plan_to_drop:
             state = state.copy_with(robot_joints=robot_joints)
-        plan.append(state)
+            plan.append(state)
 
         state.set_pybullet(self._sim.robot)
-        all_object_ids = set(state.object_poses)
-        new_attached_object_ids = set(state.attachments) - {object.id}
         state = KinematicState.from_pybullet(
             self._sim.robot,
-            all_object_ids,
-            attached_object_ids=new_attached_object_ids,
+            set(state.object_poses),
+            attached_object_ids=set(state.attachments) - {object_id},
         )
         plan.append(state)
+
+        # Add several "wait" states with the same robot joints to let physics settle
+        for _ in range(10):
+            plan.append(state)
 
         return plan
 
@@ -1316,7 +1383,7 @@ SKILLS_DRAWER = {
 }
 
 SKILLS_CLEANUP = {
-    ReachSkill,
-    GraspSkill,
+    ReachObjaverseSkill,
+    GraspObjaverseSkill,
     DropSkill,
 }

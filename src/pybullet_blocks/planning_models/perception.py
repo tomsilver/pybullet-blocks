@@ -835,7 +835,7 @@ class CleanupTablePyBulletObjectsPerceiver(
         assert isinstance(self._sim, CleanupTablePyBulletObjectsEnv)
         self._bin = Object("bin", object_type)
         self._toys = [
-            Object(chr(65 + i), object_type) 
+            Object(chr(65 + i), object_type)
             for i in range(self._sim.scene_description.num_toys)
         ]
 
@@ -880,7 +880,6 @@ class CleanupTablePyBulletObjectsPerceiver(
             toy_id = self._pybullet_ids[toy]
             if self._sim.is_object_ready_pick(toy_id):
                 ready_pick_atoms.add(GroundAtom(ReadyPick, [self._robot, toy]))
-        # print(f"ReadyPick atoms: {ready_pick_atoms}")
         return ready_pick_atoms
 
     def _interpret_NotReadyPick(self) -> set[GroundAtom]:
@@ -895,8 +894,6 @@ class CleanupTablePyBulletObjectsPerceiver(
             toy_id = self._pybullet_ids[toy]
             if self._sim.is_robot_closely_above(toy_id):
                 return set()
-        atoms = {GroundAtom(HandReadyPick, [self._robot])}
-        # print(f"HandReadyPick atoms: {atoms}")
         return {GroundAtom(HandReadyPick, [self._robot])}
 
     def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
@@ -907,10 +904,10 @@ class CleanupTablePyBulletObjectsPerceiver(
             if self._sim.is_toy_in_bin(toy_id):
                 on_relations.add((toy, self._bin))
             elif check_body_collisions(
-                    toy_id,
-                    table_id,
-                    self._sim.physics_client_id,
-                    distance_threshold=1e-3,
-                ):
+                toy_id,
+                table_id,
+                self._sim.physics_client_id,
+                distance_threshold=1e-3,
+            ):
                 on_relations.add((toy, self._table))
         return on_relations
