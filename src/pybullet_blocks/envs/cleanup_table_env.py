@@ -49,11 +49,11 @@ class ObjaverseConfig:
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
                 "scale": 6e-4,
             },
+            # "D": {
+            #     "uid": "13c1fb8edb994f69a84a94c3d31e63a7",  # Sheep toy
+            #     "scale": 0.08,
+            # },
             "D": {
-                "uid": "13c1fb8edb994f69a84a94c3d31e63a7",  # Sheep toy
-                "scale": 0.08,
-            },
-            "E": {
                 "uid": "a953358282604011b8567b7574b0b563",  # Gun toy
                 "scale": 0.04,
             },
@@ -138,7 +138,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     wiper_mass: float = 0.5
     wiper_offset_from_wall: float = -0.075
 
-    # Shelf parameters (add these to the dataclass)
+    # Shelf parameters
     shelf_rgba: tuple[float, float, float, float] = (0.7, 0.7, 0.7, 1.0)
     shelf_half_extents: tuple[float, float, float] = (0.03, 0.02, 0.05)
     shelf_offset_from_wiper: float = 0.1  # How far below wiper top
@@ -838,12 +838,7 @@ class CleanupTablePyBulletObjectsEnv(
         in_y_bounds = min_y <= toy_pos[1] <= max_y
         above_bottom = toy_pos[2] >= min_z
 
-        # Also check collision with bin bottom to ensure it's resting
-        on_bottom = check_body_collisions(
-            toy_id, self.bin_bottom_id, self.physics_client_id, distance_threshold=1e-3
-        )
-
-        return in_x_bounds and in_y_bounds and above_bottom and on_bottom
+        return in_x_bounds and in_y_bounds and above_bottom
 
     def is_object_ready_pick(self, object_id: int) -> bool:
         """Check if an object is ready to be picked up."""
@@ -876,7 +871,7 @@ class CleanupTablePyBulletObjectsEnv(
         return False
 
     def is_robot_closely_above(self, object_id: int) -> bool:
-        """Check if the robot is closely above a object."""
+        """Check if the robot is closely above an object."""
         object_pose = get_pose(object_id, self.physics_client_id)
         hand_pose = self.robot.get_end_effector_pose()
         z_dist = abs(hand_pose.position[2] - object_pose.position[2])

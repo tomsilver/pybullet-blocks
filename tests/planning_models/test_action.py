@@ -222,7 +222,7 @@ def test_cluttered_drawer_pybullet_objects_action():
 def test_cleanup_table_pybullet_objects_action():
     """Tests task then motion planning in CleanupTablePyBulletObjectsEnv()."""
     seed = 123
-    scene_description = CleanupTableSceneDescription(num_toys=3)
+    scene_description = CleanupTableSceneDescription(num_toys=4)
 
     env = CleanupTablePyBulletObjectsEnv(
         scene_description=scene_description,

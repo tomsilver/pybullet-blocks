@@ -103,7 +103,7 @@ def get_kinematic_plan_to_reach_object(
         plan_to_reach = run_smooth_motion_planning_to_pose(
             reach,
             robot,
-            collision_ids=collision_ids - {object_id},
+            collision_ids=collision_ids,
             end_effector_frame_to_plan_frame=Pose.identity(),
             seed=seed,
             max_time=max_motion_planning_time,
