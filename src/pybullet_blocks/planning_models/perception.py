@@ -517,7 +517,7 @@ class GraphObstacleTowerPyBulletObjectsPerceiver(
         return {GroundAtom(IsTarget, [self._target_area])}
 
 
-class ClutteredDrawerObjectsPerceiver(
+class ClutteredDrawerPyBulletObjectsPerceiver(
     PyBulletObjectsPerceiver[gym.spaces.GraphInstance]
 ):
     """A perceiver for the ClutteredDrawerBlocksEnv."""

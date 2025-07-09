@@ -33,7 +33,7 @@ from pybullet_blocks.planning_models.perception import (
     TYPES,
     BlockStackingPyBulletObjectsPerceiver,
     CleanupTablePyBulletObjectsPerceiver,
-    ClutteredDrawerObjectsPerceiver,
+    ClutteredDrawerPyBulletObjectsPerceiver,
     GraphObstacleTowerPyBulletObjectsPerceiver,
     ObstacleTowerPyBulletObjectsPerceiver,
     PickPlacePyBulletObjectsPerceiver,
@@ -189,7 +189,7 @@ def test_cluttered_drawer_pybullet_objects_action():
     # env = RecordVideo(env, "videos/cluttered-drawer-ttmp-test")
     max_motion_planning_time = 0.1  # increase for prettier videos
 
-    perceiver = ClutteredDrawerObjectsPerceiver(sim)
+    perceiver = ClutteredDrawerPyBulletObjectsPerceiver(sim)
     skills = {
         s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS_DRAWER
     }
@@ -222,7 +222,7 @@ def test_cluttered_drawer_pybullet_objects_action():
 def test_cleanup_table_pybullet_objects_action():
     """Tests task then motion planning in CleanupTablePyBulletObjectsEnv()."""
     seed = 123
-    scene_description = CleanupTableSceneDescription(num_toys=4)
+    scene_description = CleanupTableSceneDescription(num_toys=3)
 
     env = CleanupTablePyBulletObjectsEnv(
         scene_description=scene_description,
