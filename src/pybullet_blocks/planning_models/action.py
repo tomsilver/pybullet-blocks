@@ -12,6 +12,9 @@ from pybullet_helpers.manipulation import (
     get_kinematic_plan_to_pick_object,
     get_kinematic_plan_to_place_object,
 )
+from pybullet_helpers.motion_planning import (
+    run_smooth_motion_planning_to_pose,
+)
 from pybullet_helpers.states import KinematicState
 from relational_structs import (
     GroundOperator,
@@ -26,6 +29,10 @@ from pybullet_blocks.envs.base_env import PyBulletObjectsEnv, PyBulletObjectsSta
 from pybullet_blocks.envs.block_stacking_env import (
     BlockStackingPyBulletObjectsEnv,
     BlockStackingPyBulletObjectsState,
+)
+from pybullet_blocks.envs.cleanup_table_env import (
+    CleanupTablePyBulletObjectsEnv,
+    CleanupTablePyBulletObjectsState,
 )
 from pybullet_blocks.envs.cluttered_drawer_env import (
     ClutteredDrawerPyBulletObjectsEnv,
@@ -122,7 +129,7 @@ PickFromTargetOperator = LiftedOperator(
     },
 )
 
-# For drawer
+# For cluttered drawer and table cleanup
 ReachOperator = LiftedOperator(
     "Reach",
     [Robot, Obj],
@@ -138,6 +145,47 @@ ReachOperator = LiftedOperator(
     delete_effects={
         LiftedAtom(NotReadyPick, [Robot, Obj]),
         LiftedAtom(HandReadyPick, [Robot]),
+    },
+)
+
+ReachObjaverseOperator = LiftedOperator(
+    "ReachObjaverse",
+    [Robot, Obj],
+    preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(HandReadyPick, [Robot]),
+    },
+    add_effects={
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+        LiftedAtom(HandReadyPick, [Robot]),
+    },
+)
+
+GraspObjaverseOperator = LiftedOperator(
+    "GraspObjaverse",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+    },
+    add_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotReadyPick, [Robot, Obj]),
+    },
+    delete_effects={
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(ReadyPick, [Robot, Obj]),
+        LiftedAtom(On, [Obj, Surface]),
     },
 )
 
@@ -468,6 +516,24 @@ StackOperator = LiftedOperator(
     },
 )
 
+DropOperator = LiftedOperator(
+    "Drop",
+    [Robot, Obj, Surface],
+    preconditions={
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotIsMovable, [Surface]),
+    },
+    add_effects={
+        LiftedAtom(On, [Obj, Surface]),
+        LiftedAtom(GripperEmpty, [Robot]),
+        LiftedAtom(NotHolding, [Robot, Obj]),
+        LiftedAtom(HandReadyPick, [Robot]),
+    },
+    delete_effects={
+        LiftedAtom(Holding, [Robot, Obj]),
+    },
+)
+
 OPERATORS = {
     PickOperator,
     PickFromTargetOperator,
@@ -488,6 +554,12 @@ OPERATORS_DRAWER = {
     PlaceBackObjectOperator,
     PlaceLeftObjectOperator,
     PlaceRightObjectOperator,
+}
+
+OPERATORS_CLEANUP = {
+    ReachObjaverseOperator,
+    GraspObjaverseOperator,
+    DropOperator,
 }
 
 
@@ -593,6 +665,15 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             assert len(obj.name) == 1
             label = obj.name
             return self._sim.drawer_object_ids[ord(label) - 65 - 1]
+        if isinstance(self._sim, CleanupTablePyBulletObjectsEnv):
+            if obj.name == "table":
+                return self._sim.table_id
+            if obj.name == "bin":
+                return self._sim.bin_id
+            assert len(obj.name) == 1
+            toy_index = ord(obj.name) - 65
+            assert toy_index < len(self._sim.toy_ids)
+            return self._sim.toy_ids[toy_index]
         raise NotImplementedError
 
     def _obs_to_kinematic_state(self, obs: ObsType) -> KinematicState:
@@ -614,6 +695,8 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             return GraphObstacleTowerPyBulletObjectsState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
         if isinstance(self._sim, ClutteredDrawerPyBulletObjectsEnv):
             return ClutteredDrawerPyBulletObjectsState.from_observation(obs)  # type: ignore # pylint:disable=line-too-long
+        if isinstance(self._sim, CleanupTablePyBulletObjectsEnv):
+            return CleanupTablePyBulletObjectsState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
         raise NotImplementedError
 
     def _sim_state_to_kinematic_state(
@@ -719,6 +802,27 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                             )
                             break
             return KinematicState(robot_joints, object_poses, attachments)
+        if isinstance(sim_state, CleanupTablePyBulletObjectsState):
+            assert isinstance(self._sim, CleanupTablePyBulletObjectsEnv)
+            robot_joints = sim_state.robot_state.joint_positions
+            object_poses = {
+                self._sim.table_id: self._sim.scene_description.table_pose,
+                self._sim.bin_id: sim_state.bin_state.pose,
+            }
+            held_toy_id = -1
+            for toy_state in sim_state.toy_states:
+                toy_index = ord(toy_state.label) - 65
+                if toy_index < len(self._sim.toy_ids):
+                    toy_id = self._sim.toy_ids[toy_index]
+                    object_poses[toy_id] = toy_state.pose
+                    if toy_state.held:
+                        assert held_toy_id == -1  # Only one toy can be held
+                        held_toy_id = toy_id
+            attachments = {}
+            if sim_state.robot_state.grasp_transform is not None:
+                assert held_toy_id > -1
+                attachments[held_toy_id] = sim_state.robot_state.grasp_transform
+            return KinematicState(robot_joints, object_poses, attachments)
 
         raise NotImplementedError
 
@@ -802,6 +906,49 @@ class ReachSkill(PyBulletObjectsSkill):
         return kinematic_plan
 
 
+class ReachObjaverseSkill(PyBulletObjectsSkill):
+    """Skill for reaching."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return ReachObjaverseOperator
+
+    def _get_kinematic_plan_given_objects(
+        self,
+        objects: Sequence[Object],
+        state: KinematicState,
+    ) -> list[KinematicState] | None:
+        # same as pick
+        _, obj = objects
+        object_id = self._object_to_pybullet_id(obj)
+        collision_ids = set(state.object_poses)
+        label = obj.name
+        object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
+        object_center = state.object_poses[object_id].position
+
+        def reach_generator() -> Iterator[Pose]:
+            while True:
+                relative_x = 0.0
+                relative_y = 0.0
+                relative_z_1 = object_top_z - object_center[2]
+                relative_z_2 = object_top_z - object_center[2] + 0.02
+                relative_z = self._sim.np_random.uniform(relative_z_1, relative_z_2)
+                grasp = Pose((0, 0, 0), self._robot_grasp_orientation)
+                orientation = grasp.orientation
+                relative_reach = Pose((relative_x, relative_y, relative_z), orientation)
+                yield relative_reach
+
+        kinematic_plan = get_kinematic_plan_to_reach_object(
+            state,
+            self._sim.robot,
+            object_id,
+            collision_ids,
+            reach_generator=reach_generator(),
+            reach_generator_iters=20,
+            lifting_height=0.25,
+        )
+        return kinematic_plan
+
+
 class GraspFrontBackSkill(PickSkill):
     """Skill for grasping in the drawer domain."""
 
@@ -833,6 +980,58 @@ class GraspFrontBackSkill(PickSkill):
             grasp_generator=grasp_generator,
             grasp_generator_iters=5,
         )
+        return kinematic_plan
+
+
+class GraspObjaverseSkill(GraspFrontBackSkill):
+    """Skill for grasping toys in the table cleanup domain."""
+
+    def _get_lifted_operator(self):
+        return GraspObjaverseOperator
+
+    def _get_kinematic_plan_given_objects(
+        self,
+        objects: Sequence[Object],
+        state: KinematicState,
+    ) -> list[KinematicState] | None:
+        # same as pick
+        _, obj, surface = objects
+        object_id = self._object_to_pybullet_id(obj)
+        surface_id = self._object_to_pybullet_id(surface)
+        collision_ids = set(state.object_poses)
+        label = obj.name
+        object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
+        object_pose = state.object_poses[object_id]
+
+        grasp_pos = (
+            object_pose.position[0],
+            object_pose.position[1],
+            object_top_z
+            + self._sim.scene_description.z_dist_threshold_for_grasp
+            - 0.005,
+        )
+        grasp_orientation = self._robot_grasp_orientation
+        grasp_pose = Pose(grasp_pos, grasp_orientation)
+
+        # add one more possible relative grasp (orientation)
+        grasp_rotated = multiply_poses(
+            grasp_pose,
+            Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
+        )
+        grasp_generator = iter([grasp_pose, grasp_rotated])
+
+        kinematic_plan = get_kinematic_plan_to_grasp_object(
+            state,
+            self._sim.robot,
+            object_id,
+            surface_id,
+            collision_ids,
+            grasp_generator=grasp_generator,
+            grasp_generator_iters=5,
+            grasp_along_object_axis=False,
+            grasp_relative_to_object=False,
+        )
+
         return kinematic_plan
 
 
@@ -1117,6 +1316,90 @@ class StackSkill(PlaceSkill):
         return StackOperator
 
 
+class DropSkill(PyBulletObjectsSkill):
+    """Skill for dropping objects into bin."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return DropOperator
+
+    def _get_kinematic_plan_given_objects(
+        self, objects: Sequence[Object], state: KinematicState
+    ) -> list[KinematicState] | None:
+        _, obj, surface = objects
+        object_id = self._object_to_pybullet_id(obj)
+        bin_id = self._object_to_pybullet_id(surface)
+        collision_ids = set(state.object_poses) - {object_id}
+        lifting_height = 0.3
+
+        state.set_pybullet(self._sim.robot)
+        plan = [state]
+
+        # First lift the hand to above everything
+        curr_ee_pose = self._sim.robot.get_end_effector_pose()
+        lift_pose = Pose(
+            (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
+            curr_ee_pose.orientation,
+        )
+        plan_to_lift = run_smooth_motion_planning_to_pose(
+            lift_pose,
+            self._sim.robot,
+            collision_ids=collision_ids,
+            end_effector_frame_to_plan_frame=Pose.identity(),
+            seed=self._seed,
+            max_time=self._max_motion_planning_time,
+            held_object=object_id,
+            base_link_to_held_obj=state.attachments[object_id],
+        )
+        if plan_to_lift is None:
+            return None
+
+        for robot_joints in plan_to_lift:
+            state = state.copy_with(robot_joints=robot_joints)
+            plan.append(state)
+
+        # Set the state back to continue planning
+        state.set_pybullet(self._sim.robot)
+
+        # Now plan to drop the object into the bin
+        object_pose = state.object_poses[object_id]
+        bin_pose = state.object_poses[bin_id]
+        drop_height = object_pose.position[2] + lifting_height / 2
+        drop_position = (bin_pose.position[0], bin_pose.position[1], drop_height)
+
+        current_ee_pose = self._sim.robot.get_end_effector_pose()
+        drop_pose = Pose(drop_position, current_ee_pose.orientation)
+        plan_to_drop = run_smooth_motion_planning_to_pose(
+            drop_pose,
+            self._sim.robot,
+            collision_ids=collision_ids,
+            end_effector_frame_to_plan_frame=Pose.identity(),
+            seed=self._seed,
+            max_time=self._max_motion_planning_time,
+            held_object=object_id,
+            base_link_to_held_obj=state.attachments[object_id],
+        )
+        if plan_to_drop is None:
+            return None
+
+        for robot_joints in plan_to_drop:
+            state = state.copy_with(robot_joints=robot_joints)
+            plan.append(state)
+
+        state.set_pybullet(self._sim.robot)
+        state = KinematicState.from_pybullet(
+            self._sim.robot,
+            set(state.object_poses),
+            attached_object_ids=set(state.attachments) - {object_id},
+        )
+        plan.append(state)
+
+        # Add several "wait" states with the same robot joints to let physics settle
+        for _ in range(10):
+            plan.append(state)
+
+        return plan
+
+
 SKILLS = {
     PickSkill,
     PickFromTargetSkill,
@@ -1137,4 +1420,10 @@ SKILLS_DRAWER = {
     PlaceBackObjectSkill,
     PlaceLeftObjectSkill,
     PlaceRightObjectSkill,
+}
+
+SKILLS_CLEANUP = {
+    ReachObjaverseSkill,
+    GraspObjaverseSkill,
+    DropSkill,
 }

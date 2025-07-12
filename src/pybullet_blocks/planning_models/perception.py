@@ -18,6 +18,10 @@ from pybullet_blocks.envs.block_stacking_env import (
     BlockStackingPyBulletObjectsEnv,
     BlockStackingPyBulletObjectsState,
 )
+from pybullet_blocks.envs.cleanup_table_env import (
+    CleanupTablePyBulletObjectsEnv,
+    CleanupTablePyBulletObjectsState,
+)
 from pybullet_blocks.envs.cluttered_drawer_env import (
     ClutteredDrawerPyBulletObjectsEnv,
     ClutteredDrawerPyBulletObjectsState,
@@ -99,6 +103,18 @@ DRAWER_PREDICATES = {
     RightClear,
     FrontClear,
     BackClear,
+    HandReadyPick,
+}
+
+CLEANUP_PREDICATES = {
+    IsMovable,
+    NotIsMovable,
+    ReadyPick,
+    NotReadyPick,
+    On,
+    Holding,
+    NotHolding,
+    GripperEmpty,
     HandReadyPick,
 }
 
@@ -501,7 +517,7 @@ class GraphObstacleTowerPyBulletObjectsPerceiver(
         return {GroundAtom(IsTarget, [self._target_area])}
 
 
-class ClutteredDrawerObjectsPerceiver(
+class ClutteredDrawerPyBulletObjectsPerceiver(
     PyBulletObjectsPerceiver[gym.spaces.GraphInstance]
 ):
     """A perceiver for the ClutteredDrawerBlocksEnv."""
@@ -806,3 +822,92 @@ class ClutteredDrawerObjectsPerceiver(
                 in_drawer.add(obj)
 
         return in_drawer
+
+
+class CleanupTablePyBulletObjectsPerceiver(
+    PyBulletObjectsPerceiver[gym.spaces.GraphInstance]
+):
+    """A perceiver for the CleanupTablePyBulletObjectsEnv."""
+
+    def __init__(self, sim: PyBulletObjectsEnv) -> None:
+        super().__init__(sim)
+
+        assert isinstance(self._sim, CleanupTablePyBulletObjectsEnv)
+        self._bin = Object("bin", object_type)
+        self._toys = [
+            Object(chr(65 + i), object_type)
+            for i in range(self._sim.scene_description.num_toys)
+        ]
+
+        self._pybullet_ids = {
+            self._robot: self._sim.robot.robot_id,
+            self._table: self._sim.table_id,
+            self._bin: self._sim.bin_id,
+        }
+        for i, toy in enumerate(self._toys):
+            self._pybullet_ids[toy] = self._sim.toy_ids[i]
+
+        self._predicate_interpreters = [
+            self._interpret_IsMovable,
+            self._interpret_NotIsMovable,
+            self._interpret_On,
+            self._interpret_Holding,
+            self._interpret_NotHolding,
+            self._interpret_GripperEmpty,
+            self._interpret_ReadyPick,
+            self._interpret_NotReadyPick,
+            self._interpret_HandReadyPick,
+        ]
+
+    def _get_objects(self) -> set[Object]:
+        return {self._robot, self._table, self._bin} | set(self._toys)
+
+    def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
+        self._sim.set_state(CleanupTablePyBulletObjectsState.from_observation(obs))
+
+    def _get_goal(
+        self, obs: gym.spaces.GraphInstance, info: dict[str, Any]
+    ) -> set[GroundAtom]:
+        return {GroundAtom(On, [toy, self._bin]) for toy in self._toys}
+
+    def _interpret_IsMovable(self) -> set[GroundAtom]:
+        return {GroundAtom(IsMovable, [toy]) for toy in self._toys}
+
+    def _interpret_ReadyPick(self) -> set[GroundAtom]:
+        """Determine if the robot is ready to pick an object."""
+        ready_pick_atoms = set()
+        for toy in self._toys:
+            toy_id = self._pybullet_ids[toy]
+            if self._sim.is_object_ready_pick(toy_id):
+                ready_pick_atoms.add(GroundAtom(ReadyPick, [self._robot, toy]))
+        return ready_pick_atoms
+
+    def _interpret_NotReadyPick(self) -> set[GroundAtom]:
+        ready_pick_atoms = self._interpret_ReadyPick()
+        ready_toys = {a.objects[1] for a in ready_pick_atoms}
+        not_ready_toys = set(self._toys) - ready_toys
+        return {GroundAtom(NotReadyPick, [self._robot, toy]) for toy in not_ready_toys}
+
+    def _interpret_HandReadyPick(self) -> set[GroundAtom]:
+        """Determine if the robot is ready to reach an object."""
+        for toy in self._toys:
+            toy_id = self._pybullet_ids[toy]
+            if self._sim.is_robot_closely_above(toy_id):
+                return set()
+        return {GroundAtom(HandReadyPick, [self._robot])}
+
+    def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
+        on_relations = set()
+        for toy in self._toys:
+            toy_id = self._pybullet_ids[toy]
+            table_id = self._pybullet_ids[self._table]
+            if self._sim.is_toy_in_bin(toy_id):
+                on_relations.add((toy, self._bin))
+            elif check_body_collisions(
+                toy_id,
+                table_id,
+                self._sim.physics_client_id,
+                distance_threshold=1e-3,
+            ):
+                on_relations.add((toy, self._table))
+        return on_relations

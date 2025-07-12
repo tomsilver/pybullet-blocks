@@ -25,3 +25,22 @@ def test_cleanup_table_env_init():
     _ = env.reset(seed=123)
     while True:
         p.getMouseEvents(physicsClientId=env.physics_client_id)
+
+
+@pytest.mark.skip(reason="For manual testing only")
+def test_cleanup_table_env_noactions():
+    """Test initialization of CleanupTablePyBulletObjectsEnv with no actions
+    (let physics settle)."""
+    seed = 123
+    scene_description = CleanupTableSceneDescription(num_toys=5)
+    env = CleanupTablePyBulletObjectsEnv(
+        scene_description=scene_description,
+        use_gui=True,
+        seed=seed,
+    )
+
+    _ = env.reset(seed=seed)
+    for _ in range(10000):
+        _ = env.step(env.action_space.sample() * 0)
+
+    env.close()
