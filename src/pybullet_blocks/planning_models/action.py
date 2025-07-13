@@ -53,10 +53,6 @@ from pybullet_blocks.planning_models.manipulation import (
     get_kinematic_plan_to_lift_place_object,
     get_kinematic_plan_to_reach_object,
 )
-from pybullet_blocks.planning_models.manipulation import (
-    get_kinematic_plan_to_lift_place_object,
-    get_kinematic_plan_to_reach_object,
-)
 from pybullet_blocks.planning_models.perception import (
     BackClear,
     BlockingBack,
@@ -1079,148 +1075,6 @@ class GraspFullClearSkill(PickSkill):
         )
         return kinematic_plan
 
-class GraspNonTargetSkill(GraspFullClearSkill):
-    """Skill for grasping in the drawer domain."""
-
-    def _get_lifted_operator(self) -> LiftedOperator:
-        return GraspNonTargetOperator
-    
-class PlaceTargetSkill(PyBulletBlocksSkill):
-    """Skill for placing in the drawer domain.
-
-    The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the target block on the Table.
-    """
-
-    def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceTargetOperator
-
-    def _get_kinematic_plan_given_objects(
-        self, objects: Sequence[Object], state: KinematicState
-    ) -> list[KinematicState] | None:
-        _, block, surface = objects
-
-        block_id = self._object_to_pybullet_id(block)
-        surface_id = self._object_to_pybullet_id(surface)
-        collision_ids = set(state.object_poses) - {block_id}
-        placement_generator = self._generate_surface_placements(
-            block_id, surface_id, state
-        )
-        # use customized motion planner
-        kinematic_plan = get_kinematic_plan_to_lift_place_object(
-            state,
-            self._sim.robot,
-            block_id,
-            surface_id,
-            collision_ids,
-            placement_generator=placement_generator,
-            placement_generator_iters=30,
-            max_motion_planning_time=3.0,
-            birrt_num_attempts=30,
-            birrt_num_iters=500,
-        )
-        return kinematic_plan
-
-    def _generate_surface_placements(
-        self, held_obj_id: int, table_id: int, state: KinematicState
-    ) -> Iterator[Pose]:
-        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
-            # For cluttered drawer, sample placements on the table top region.
-            while True:
-                world_to_placement = self._sim.sample_free_table_place_pose(held_obj_id)
-                world_to_table = state.object_poses[table_id]
-                table_to_placement = multiply_poses(
-                    world_to_table.invert(), world_to_placement
-                )
-                yield table_to_placement
-        else:
-            raise NotImplementedError
-
-class PlaceFrontBlockSkill(PyBulletBlocksSkill):
-    """Skill for placing in the drawer domain.
-
-    The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the non target block on the drawer.
-    """
-
-    def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceFrontBlockOperator
-
-    def _get_kinematic_plan_given_objects(
-        self, objects: Sequence[Object], state: KinematicState
-    ) -> list[KinematicState] | None:
-        _, block, _, surface = objects
-
-        block_id = self._object_to_pybullet_id(block)
-        surface_id = self._object_to_pybullet_id(surface)
-        collision_ids = set(state.object_poses) - {block_id}
-        placement_generator = self._generate_surface_placements(
-            block_id, surface_id, state
-        )
-        # use customized motion planner
-        kinematic_plan = get_kinematic_plan_to_lift_place_object(
-            state,
-            self._sim.robot,
-            block_id,
-            surface_id,
-            collision_ids,
-            placement_generator=placement_generator,
-            placement_generator_iters=30,
-            max_motion_planning_time=3.0,
-            birrt_num_attempts=30,
-            birrt_num_iters=500,
-        )
-        return kinematic_plan
-    
-    def _generate_surface_placements(
-        self, held_obj_id: int, table_id: int, state: KinematicState
-    ) -> Iterator[Pose]:
-        if isinstance(self._sim, ClutteredDrawerPyBulletBlocksEnv):
-            # For cluttered drawer, sample placements on the table top region.
-            while True:
-                world_to_placement = self._sim.sample_free_drawer_place_pose(held_obj_id)
-                world_to_table = state.object_poses[table_id]
-                table_to_placement = multiply_poses(
-                    world_to_table.invert(), world_to_placement
-                )
-                yield table_to_placement
-        else:
-            raise NotImplementedError
-        
-class PlaceBackBlockSkill(PlaceFrontBlockSkill):
-    """Skill for placing in the drawer domain.
-
-    The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the non target block on the drawer.
-    """
-
-    def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceBackBlockOperator
-
-class PlaceLeftBlockSkill(PlaceFrontBlockSkill):
-    """Skill for placing in the drawer domain.
-
-    The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the non target block on the drawer.
-    """
-
-    def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceLeftBlockOperator
-    
-class PlaceRightBlockSkill(PlaceFrontBlockSkill):
-    """Skill for placing in the drawer domain.
-
-    The drawer is cluttered, so we uniquely design motion planning for
-    it.
-    This is for placing the non target block on the drawer.
-    """
-
-    def _get_lifted_operator(self) -> LiftedOperator:
-        return PlaceRightBlockOperator
 
 class GraspNonTargetSkill(GraspFullClearSkill):
     """Skill for grasping in the drawer domain."""
@@ -1441,7 +1295,6 @@ class PlaceSkill(PyBulletObjectsSkill):
             yield Pose((0, 0, dz), rot)
 
 
-
 class PlaceInTargetSkill(PlaceSkill):
     """Skill for placing in target area."""
 
@@ -1476,7 +1329,7 @@ class DropSkill(PyBulletObjectsSkill):
         object_id = self._object_to_pybullet_id(obj)
         bin_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses) - {object_id}
-        lifting_height = 0.3
+        lifting_height = 0.4
 
         state.set_pybullet(self._sim.robot)
         plan = [state]
@@ -1501,6 +1354,32 @@ class DropSkill(PyBulletObjectsSkill):
             return None
 
         for robot_joints in plan_to_lift:
+            state = state.copy_with(robot_joints=robot_joints)
+            plan.append(state)
+
+        # Then translate the hand to high-above the bin
+        current_ee_pose = self._sim.robot.get_end_effector_pose()
+        bin_pose = state.object_poses[bin_id]
+        drop_height = lifting_height
+        drop_position = (bin_pose.position[0], bin_pose.position[1], drop_height)
+
+        pre_drop_pose = Pose(drop_position, current_ee_pose.orientation)
+        distance_threshold = 0.1
+        plan_to_pre_drop = run_smooth_motion_planning_to_pose(
+            pre_drop_pose,
+            self._sim.robot,
+            collision_ids=collision_ids,
+            end_effector_frame_to_plan_frame=Pose.identity(),
+            seed=self._seed,
+            max_time=self._max_motion_planning_time,
+            held_object=object_id,
+            base_link_to_held_obj=state.attachments[object_id],
+            distance_threshold=distance_threshold,
+        )
+        if plan_to_pre_drop is None:
+            return None
+
+        for robot_joints in plan_to_pre_drop:
             state = state.copy_with(robot_joints=robot_joints)
             plan.append(state)
 

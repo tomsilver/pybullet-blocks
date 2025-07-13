@@ -43,7 +43,7 @@ class ObjaverseConfig:
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
-                "scale": 2.5e-6,
+                "scale": 2e-6,
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
@@ -55,7 +55,7 @@ class ObjaverseConfig:
             # },
             "D": {
                 "uid": "a953358282604011b8567b7574b0b563",  # Gun toy
-                "scale": 0.04,
+                "scale": 0.02,
             },
         }
     )
