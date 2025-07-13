@@ -1,6 +1,7 @@
 """Tests for action.py."""
 
 import pytest
+
 # import imageio.v2 as iio
 from task_then_motion_planning.planning import TaskThenMotionPlanner
 

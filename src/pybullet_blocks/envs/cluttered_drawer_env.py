@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import Any, Collection, List
+from typing import Any, Collection
 
 import numpy as np
 import pybullet as p
@@ -149,7 +149,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
             + self.object_half_extents[2]
             + self.placement_z_offset,
         )
-    
+
 
 @dataclass(frozen=True)
 class ClutteredDrawerPyBulletObjectsState(PyBulletObjectsState):
