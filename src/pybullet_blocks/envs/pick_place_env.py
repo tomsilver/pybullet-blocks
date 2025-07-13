@@ -15,29 +15,29 @@ from pybullet_helpers.utils import create_pybullet_block
 
 from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
-    BlockState,
-    LetteredBlockState,
-    PyBulletBlocksEnv,
-    PyBulletBlocksState,
+    LabeledObjectState,
+    ObjectState,
+    PyBulletObjectsEnv,
+    PyBulletObjectsState,
     RobotState,
 )
-from pybullet_blocks.utils import create_lettered_block
+from pybullet_blocks.utils import create_labeled_object
 
 
 @dataclass(frozen=True)
-class PickPlacePyBulletBlocksState(PyBulletBlocksState):
-    """A state in the PickPlacePyBulletBlocksEnv."""
+class PickPlacePyBulletObjectsState(PyBulletObjectsState):
+    """A state in the PickPlacePyBulletObjectsEnv."""
 
-    block_state: LetteredBlockState
-    target_state: BlockState
+    block_state: LabeledObjectState
+    target_state: ObjectState
     robot_state: RobotState
 
     @classmethod
     def get_dimension(cls) -> int:
         """Get the dimension of this state."""
         return (
-            LetteredBlockState.get_dimension()
-            + BlockState.get_dimension()
+            LabeledObjectState.get_dimension()
+            + ObjectState.get_dimension()
             + RobotState.get_dimension()
         )
 
@@ -51,25 +51,27 @@ class PickPlacePyBulletBlocksState(PyBulletBlocksState):
         return np.hstack(inner_vecs)
 
     @classmethod
-    def from_observation(cls, obs: NDArray[np.float32]) -> PickPlacePyBulletBlocksState:
+    def from_observation(
+        cls, obs: NDArray[np.float32]
+    ) -> PickPlacePyBulletObjectsState:
         """Build a state from a vector."""
-        block_dim = LetteredBlockState.get_dimension()
-        target_dim = BlockState.get_dimension()
+        block_dim = LabeledObjectState.get_dimension()
+        target_dim = ObjectState.get_dimension()
         block_vec, target_vec, robot_vec = np.split(
             obs, [block_dim, block_dim + target_dim]
         )
-        block_state = LetteredBlockState.from_vec(block_vec)
-        target_state = BlockState.from_vec(target_vec)
+        block_state = LabeledObjectState.from_vec(block_vec)
+        target_state = ObjectState.from_vec(target_vec)
         robot_state = RobotState.from_vec(robot_vec)
         return cls(block_state, target_state, robot_state)
 
 
-class PickPlacePyBulletBlocksEnv(
-    PyBulletBlocksEnv[NDArray[np.float32], NDArray[np.float32]]
+class PickPlacePyBulletObjectsEnv(
+    PyBulletObjectsEnv[NDArray[np.float32], NDArray[np.float32]]
 ):
     """A PyBullet environment with a single block and target area.
 
-    Observations are flattened PickPlacePyBulletBlocksState and actions
+    Observations are flattened PickPlacePyBulletObjectsState and actions
     are changes in robot joint states.
     """
 
@@ -85,20 +87,20 @@ class PickPlacePyBulletBlocksEnv(
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
         # Set up observation space.
-        obs_dim = PickPlacePyBulletBlocksState.get_dimension()
+        obs_dim = PickPlacePyBulletObjectsState.get_dimension()
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(obs_dim,), dtype=np.float32
         )
 
         # Create block.
-        self.block_id = create_lettered_block(
+        self.block_id = create_labeled_object(
             "A",
-            self.scene_description.block_half_extents,
-            self.scene_description.block_rgba,
-            self.scene_description.block_text_rgba,
+            self.scene_description.object_half_extents,
+            self.scene_description.object_rgba,
+            self.scene_description.object_text_rgba,
             self.physics_client_id,
-            mass=self.scene_description.block_mass,
-            friction=self.scene_description.block_friction,
+            mass=self.scene_description.object_mass,
+            friction=self.scene_description.object_friction,
         )
 
         # Create target.
@@ -108,8 +110,8 @@ class PickPlacePyBulletBlocksEnv(
             physics_client_id=self.physics_client_id,
         )
 
-    def set_state(self, state: PyBulletBlocksState) -> None:
-        assert isinstance(state, PickPlacePyBulletBlocksState)
+    def set_state(self, state: PyBulletObjectsState) -> None:
+        assert isinstance(state, PickPlacePyBulletObjectsState)
         set_pose(self.block_id, state.block_state.pose, self.physics_client_id)
         set_pose(self.target_id, state.target_state.pose, self.physics_client_id)
         self.robot.set_joints(state.robot_state.joint_positions)
@@ -119,16 +121,16 @@ class PickPlacePyBulletBlocksEnv(
         else:
             self.current_held_object_id = None
 
-    def get_state(self) -> PickPlacePyBulletBlocksState:
+    def get_state(self) -> PickPlacePyBulletObjectsState:
         block_pose = get_pose(self.block_id, self.physics_client_id)
         target_pose = get_pose(self.target_id, self.physics_client_id)
         robot_joints = self.robot.get_joint_positions()
         grasp_transform = self.current_grasp_transform
         held = bool(grasp_transform is not None)
-        block_state = LetteredBlockState(block_pose, "A", held)
-        target_state = BlockState(target_pose)
+        block_state = LabeledObjectState(block_pose, "A", held)
+        target_state = ObjectState(target_pose)
         robot_state = RobotState(robot_joints, grasp_transform)
-        return PickPlacePyBulletBlocksState(
+        return PickPlacePyBulletObjectsState(
             block_state,
             target_state,
             robot_state,
@@ -140,7 +142,7 @@ class PickPlacePyBulletBlocksEnv(
             ids.add(self.block_id)
         return ids
 
-    def _get_movable_block_ids(self) -> set[int]:
+    def _get_movable_object_ids(self) -> set[int]:
         return {self.block_id}
 
     def _get_terminated(self) -> bool:
@@ -166,8 +168,8 @@ class PickPlacePyBulletBlocksEnv(
 
         # Reset the position of the block.
         block_position = self.np_random.uniform(
-            self.scene_description.block_init_position_lower,
-            self.scene_description.block_init_position_upper,
+            self.scene_description.object_init_position_lower,
+            self.scene_description.object_init_position_upper,
         )
         set_pose(self.block_id, Pose(tuple(block_position)), self.physics_client_id)
 
@@ -191,4 +193,4 @@ class PickPlacePyBulletBlocksEnv(
         if object_id == self.target_id:
             return self.scene_description.target_half_extents
         assert object_id == self.block_id
-        return self.scene_description.block_half_extents
+        return self.scene_description.object_half_extents

@@ -1,4 +1,4 @@
-"""Common implementation for blocks based environments."""
+"""Common implementation for objects based environments."""
 
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ from pybullet_helpers.robots.single_arm import FingeredSingleArmPyBulletRobot
 from pybullet_helpers.utils import create_pybullet_block
 
 
-class PyBulletBlocksState(abc.ABC):
-    """A state in a block stacking environment."""
+class PyBulletObjectsState(abc.ABC):
+    """A base class for the state of objects in a PyBullet environment."""
 
     @abc.abstractmethod
     def to_observation(self) -> Any:
@@ -32,13 +32,13 @@ class PyBulletBlocksState(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def from_observation(cls, obs: Any) -> PyBulletBlocksState:
+    def from_observation(cls, obs: Any) -> PyBulletObjectsState:
         """Create from gym space observation."""
 
 
 @dataclass(frozen=True)
-class BlockState:
-    """The state of a single block."""
+class ObjectState:
+    """The state of a single object."""
 
     pose: Pose
 
@@ -51,14 +51,14 @@ class BlockState:
         """Create vector representation of the state."""
         return np.hstack(
             [
-                [1],  # indicates that this is a block
+                [1],  # indicates that this is an object
                 self.pose.position,
                 self.pose.orientation,
             ]
         )
 
     @classmethod
-    def from_vec(cls, vec: NDArray[np.float32]) -> BlockState:
+    def from_vec(cls, vec: NDArray[np.float32]) -> ObjectState:
         """Build a state from a vector."""
         assert len(vec) == cls.get_dimension()
         _, pos_vec, orn_vec = np.split(vec, [1, 4])
@@ -67,46 +67,53 @@ class BlockState:
 
 
 @dataclass(frozen=True)
-class LetteredBlockState(BlockState):
-    """The state of a single block with a letter on it."""
+class LabeledObjectState(ObjectState):
+    """The state of a single labeled object."""
 
-    letter: str
+    label: str
     held: bool
+    stacked_on: str | None = None
 
     @classmethod
     def get_dimension(cls) -> int:
         """Get the dimension of this state."""
-        return super().get_dimension() + 2
+        return super().get_dimension() + 3
 
     def to_vec(self) -> NDArray[np.float32]:
         """Create vector representation of the state."""
         return np.hstack(
             [
-                [1],  # indicates that this is a block
+                [1],  # indicates that this is an object
                 self.pose.position,
                 self.pose.orientation,
-                [ord(self.letter.lower()) - 97],
+                [ord(self.label.lower()) - 97],
                 [self.held],
+                [
+                    (
+                        ord(self.stacked_on.lower()) - 97
+                        if self.stacked_on is not None
+                        else -1
+                    )
+                ],
             ]
         )
 
     @classmethod
-    def from_vec(cls, vec: NDArray[np.float32]) -> LetteredBlockState:
+    def from_vec(cls, vec: NDArray[np.float32]) -> LabeledObjectState:
         """Build a state from a vector."""
-        (
-            _,
-            pos_vec,
-            orn_vec,
-            letter_vec,
-            held_vec,
-        ) = np.split(
+        (_, pos_vec, orn_vec, label_vec, held_vec, stacked_on_vec) = np.split(
             vec,
-            [1, 4, 8, 9],
+            [1, 4, 8, 9, 10],
         )
-        letter = chr(int(letter_vec[0] + 97)).upper()
+        label = chr(int(label_vec[0] + 97)).upper()
         held = bool(held_vec[0])
         pose = Pose(tuple(pos_vec), tuple(orn_vec))
-        return cls(pose, letter, held)
+        stacked_on = (
+            chr(int(stacked_on_vec[0] + 97)).upper()
+            if stacked_on_vec[0] != -1
+            else None
+        )  # None if it is not on any block
+        return cls(pose, label, held, stacked_on)
 
 
 @dataclass(frozen=True)
@@ -153,8 +160,8 @@ class RobotState:
 
 
 @dataclass(frozen=True)
-class PyBulletBlocksAction:
-    """An action in a blocks environment."""
+class PyBulletObjectsAction:
+    """An action in an objects environment."""
 
     robot_arm_joint_delta: JointPositions
     gripper_action: int  # -1 for close, 0 for no change, 1 for open
@@ -164,7 +171,7 @@ class PyBulletBlocksAction:
         return np.hstack([self.robot_arm_joint_delta, [self.gripper_action]])
 
     @classmethod
-    def from_vec(cls, vec: NDArray[np.float32]) -> PyBulletBlocksAction:
+    def from_vec(cls, vec: NDArray[np.float32]) -> PyBulletObjectsAction:
         """Build an action from a vector."""
         assert len(vec) == 7 + 1
         robot_arm_joint_delta_vec, gripper_action_vec = np.split(vec, [7])
@@ -204,11 +211,11 @@ class BaseSceneDescription:
     table_rgba: tuple[float, float, float, float] = (0.5, 0.5, 0.5, 1.0)
     table_half_extents: tuple[float, float, float] = (0.25, 0.4, 0.25)
 
-    block_rgba: tuple[float, float, float, float] = (0.5, 0.0, 0.5, 1.0)
-    block_text_rgba: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
-    block_half_extents: tuple[float, float, float] = (0.025, 0.025, 0.025)
-    block_mass: float = 0.5
-    block_friction: float = 0.9
+    object_rgba: tuple[float, float, float, float] = (0.5, 0.0, 0.5, 1.0)
+    object_text_rgba: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    object_half_extents: tuple[float, float, float] = (0.025, 0.025, 0.025)
+    object_mass: float = 0.5
+    object_friction: float = 0.9
 
     target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
     target_half_extents: tuple[float, float, float] = (0.03, 0.03, 0.001)
@@ -218,33 +225,33 @@ class BaseSceneDescription:
     penetration_penalty: float = 0.1
 
     @property
-    def block_init_position_lower(self) -> tuple[float, float, float]:
-        """Lower bounds for block position."""
+    def object_init_position_lower(self) -> tuple[float, float, float]:
+        """Lower bounds for object position."""
         return (
             self.table_pose.position[0]
             - self.table_half_extents[0]
-            + self.block_half_extents[0],
+            + self.object_half_extents[0],
             self.table_pose.position[1]
             - self.table_half_extents[1]
-            + self.block_half_extents[1],
+            + self.object_half_extents[1],
             self.table_pose.position[2]
             + self.table_half_extents[2]
-            + self.block_half_extents[2],
+            + self.object_half_extents[2],
         )
 
     @property
-    def block_init_position_upper(self) -> tuple[float, float, float]:
-        """Upper bounds for block position."""
+    def object_init_position_upper(self) -> tuple[float, float, float]:
+        """Upper bounds for object position."""
         return (
             self.table_pose.position[0]
             + self.table_half_extents[0]
-            - self.block_half_extents[0],
+            - self.object_half_extents[0],
             self.table_pose.position[1]
             + self.table_half_extents[1]
-            - self.block_half_extents[1],
+            - self.object_half_extents[1],
             self.table_pose.position[2]
             + self.table_half_extents[2]
-            + self.block_half_extents[2],
+            + self.object_half_extents[2],
         )
 
     @property
@@ -287,20 +294,20 @@ class BaseSceneDescription:
         t = timestep % period
         quarter_period = period // 4
         if 0 <= t < quarter_period:
-            yaw = (yaw_max - yaw_min) / 2 + (
+            _yaw = (yaw_max - yaw_min) / 2 + (
                 (yaw_max - (yaw_max - yaw_min) / 2) / quarter_period
             ) * t
         elif quarter_period <= t < 3 * quarter_period:
-            yaw = yaw_max - ((yaw_max - yaw_min) / (2 * quarter_period)) * (
+            _yaw = yaw_max - ((yaw_max - yaw_min) / (2 * quarter_period)) * (
                 t - quarter_period
             )
         else:
-            yaw = yaw_min + (((yaw_max - yaw_min) / 2 - yaw_min) / quarter_period) * (
+            _yaw = yaw_min + (((yaw_max - yaw_min) / 2 - yaw_min) / quarter_period) * (
                 t - 3 * quarter_period
             )
         return {
             "camera_target": self.robot_base_pose.position,
-            "camera_yaw": yaw,
+            "camera_yaw": 90,  # yaw,
             "camera_distance": 1.5,
             "camera_pitch": -20,
             # Use for fast testing.
@@ -309,8 +316,8 @@ class BaseSceneDescription:
         }
 
 
-class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
-    """A base class for PyBullet environments with blocks."""
+class PyBulletObjectsEnv(gym.Env, Generic[ObsType, ActType]):
+    """A base class for PyBullet environments with objects."""
 
     metadata = {"render_modes": ["rgb_array"], "render_fps": 20}
 
@@ -399,11 +406,11 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         self._np_random, seed = seeding.np_random(seed)
 
     @abc.abstractmethod
-    def set_state(self, state: PyBulletBlocksState) -> None:
+    def set_state(self, state: PyBulletObjectsState) -> None:
         """Reset the internal state to the given state."""
 
     @abc.abstractmethod
-    def get_state(self) -> PyBulletBlocksState:
+    def get_state(self) -> PyBulletObjectsState:
         """Expose the internal state for simulation."""
 
     @abc.abstractmethod
@@ -415,7 +422,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         """Get the half-extent of a given object from its pybullet ID."""
 
     @abc.abstractmethod
-    def _get_movable_block_ids(self) -> set[int]:
+    def _get_movable_object_ids(self) -> set[int]:
         """Get all PyBullet IDs for movable objects."""
 
     @abc.abstractmethod
@@ -434,7 +441,7 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         action: NDArray[np.float32],
     ) -> tuple[NDArray[np.float32], SupportsFloat, bool, bool, dict[str, Any]]:
         assert self.action_space.contains(action)
-        action_obj = PyBulletBlocksAction.from_vec(action)
+        action_obj = PyBulletObjectsAction.from_vec(action)
 
         # Update robot arm joints.
         joint_arr = np.array(self.robot.get_joint_positions())
@@ -446,22 +453,22 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
             self.current_grasp_transform = None
             self.current_held_object_id = None
         elif action_obj.gripper_action == -1:
-            # Check if any block is close enough to the end effector position
+            # Check if any object is close enough to the end effector position
             # and grasp if so.
-            for block_id in self._get_movable_block_ids():
+            for object_id in self._get_movable_object_ids():
                 world_to_robot = self.robot.get_end_effector_pose()
                 end_effector_position = world_to_robot.position
-                world_to_block = get_pose(block_id, self.physics_client_id)
-                block_position = world_to_block.position
+                world_to_object = get_pose(object_id, self.physics_client_id)
+                object_position = world_to_object.position
                 dist = np.sum(
-                    np.square(np.subtract(end_effector_position, block_position))
+                    np.square(np.subtract(end_effector_position, object_position))
                 )
                 # Grasp successful.
                 if dist < 1e-4:
                     self.current_grasp_transform = multiply_poses(
-                        world_to_robot.invert(), world_to_block
+                        world_to_robot.invert(), world_to_object
                     )
-                    self.current_held_object_id = block_id
+                    self.current_held_object_id = object_id
 
         # Store original state.
         original_joints = self.robot.get_joint_positions()
@@ -551,24 +558,24 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         """Expose the grasp transform for the held object, if it exists."""
         return self.current_grasp_transform
 
-    def get_collision_check_ids(self, _block_id: int) -> set[int]:
+    def get_collision_check_ids(self, _object_id: int) -> set[int]:
         """Get all PyBullet IDs that should be checked for collisions during
         free pose sampling."""
         return set()
 
-    def sample_free_block_pose(self, block_id: int) -> Pose:
+    def sample_free_object_pose(self, object_id: int) -> Pose:
         """Sample a free pose on the table."""
         for _ in range(10000):
-            block_position = self.np_random.uniform(
-                self.scene_description.block_init_position_lower,
-                self.scene_description.block_init_position_upper,
+            object_position = self.np_random.uniform(
+                self.scene_description.object_init_position_lower,
+                self.scene_description.object_init_position_upper,
             )
-            set_pose(block_id, Pose(tuple(block_position)), self.physics_client_id)
+            set_pose(object_id, Pose(tuple(object_position)), self.physics_client_id)
             collision_free = True
             p.performCollisionDetection(physicsClientId=self.physics_client_id)
-            for collision_id in self.get_collision_check_ids(block_id):
+            for collision_id in self.get_collision_check_ids(object_id):
                 collision = check_body_collisions(
-                    block_id,
+                    object_id,
                     collision_id,
                     self.physics_client_id,
                     perform_collision_detection=False,
@@ -577,8 +584,8 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
                     collision_free = False
                     break
             if collision_free:
-                return Pose(tuple(block_position))
-        raise RuntimeError("Could not sample free block position.")
+                return Pose(tuple(object_position))
+        raise RuntimeError("Could not sample free object position.")
 
     def render(self) -> NDArray[np.uint8]:  # type: ignore
         return capture_image(
@@ -591,12 +598,12 @@ class PyBulletBlocksEnv(gym.Env, Generic[ObsType, ActType]):
         # Apply the grasp transform if it exists.
         if self.current_grasp_transform is not None:
             world_to_robot = self.robot.get_end_effector_pose()
-            world_to_block = multiply_poses(
+            world_to_object = multiply_poses(
                 world_to_robot, self.current_grasp_transform
             )
             assert self.current_held_object_id is not None
             set_pose(
                 self.current_held_object_id,
-                world_to_block,
+                world_to_object,
                 self.physics_client_id,
             )

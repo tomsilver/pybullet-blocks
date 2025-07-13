@@ -9,15 +9,15 @@ from pybullet_helpers.motion_planning import (
 )
 
 from pybullet_blocks.envs.push_env import (
-    PushPyBulletBlocksEnv,
-    PushPyBulletBlocksState,
+    PushPyBulletObjectsEnv,
+    PushPyBulletObjectsState,
 )
 
 
 def test_push_env():
-    """Tests for PushPyBulletBlocksEnv()."""
+    """Tests for PushPyBulletObjectsEnv()."""
 
-    env = PushPyBulletBlocksEnv(use_gui=False)
+    env = PushPyBulletObjectsEnv(use_gui=False)
 
     # from gymnasium.wrappers import RecordVideo
     # env = RecordVideo(base_env, "videos/push-env-test")
@@ -26,7 +26,7 @@ def test_push_env():
     obs, _ = env.reset(seed=124)
 
     # Create a 'simulation' environment for kinematics, planning, etc.
-    sim = PushPyBulletBlocksEnv(env.scene_description, use_gui=False)
+    sim = PushPyBulletObjectsEnv(env.scene_description, use_gui=False)
     joint_distance_fn = create_joint_distance_fn(sim.robot)
 
     def _execute_pybullet_helpers_plan(plan, state):
@@ -36,7 +36,7 @@ def test_push_env():
             action = np.hstack([joint_delta[:7], [0.0]]).astype(np.float32)
             assert env.action_space.contains(action)
             obs, _, _, _, _ = env.step(action)
-            state = PushPyBulletBlocksState.from_observation(obs)
+            state = PushPyBulletObjectsState.from_observation(obs)
         return state
 
     init_ee_orn = sim.robot.get_end_effector_pose().orientation
@@ -45,7 +45,7 @@ def test_push_env():
     ).orientation
 
     # Move next to the block.
-    state = PushPyBulletBlocksState.from_observation(obs)
+    state = PushPyBulletObjectsState.from_observation(obs)
     sim.set_state(state)
     next_to_block_position = np.add(
         state.block_state.pose.position, (0.0, 0.075, -0.01)

@@ -1,4 +1,4 @@
-"""Tests for clear_and_place_env.py."""
+"""Tests for obstacle_tower_env.py."""
 
 from dataclasses import dataclass
 
@@ -12,30 +12,30 @@ from pybullet_helpers.motion_planning import (
     smoothly_follow_end_effector_path,
 )
 
-from pybullet_blocks.envs.clear_and_place_env import (
-    ClearAndPlacePyBulletBlocksEnv,
-    ClearAndPlacePyBulletBlocksState,
-    ClearAndPlaceSceneDescription,
-    GraphClearAndPlacePyBulletBlocksEnv,
-    GraphClearAndPlacePyBulletBlocksState,
+from pybullet_blocks.envs.obstacle_tower_env import (
+    GraphObstacleTowerPyBulletObjectsEnv,
+    GraphObstacleTowerPyBulletObjectsState,
+    ObstacleTowerPyBulletObjectsEnv,
+    ObstacleTowerPyBulletObjectsState,
+    ObstacleTowerSceneDescription,
 )
 
 
 @pytest.mark.parametrize(
     "env_cls,state_cls",
     [
-        (GraphClearAndPlacePyBulletBlocksEnv, GraphClearAndPlacePyBulletBlocksState),
-        (ClearAndPlacePyBulletBlocksEnv, ClearAndPlacePyBulletBlocksState),
+        (GraphObstacleTowerPyBulletObjectsEnv, GraphObstacleTowerPyBulletObjectsState),
+        (ObstacleTowerPyBulletObjectsEnv, ObstacleTowerPyBulletObjectsState),
     ],
 )
-def test_clear_and_place_env(env_cls, state_cls):
-    """Tests for ClearAndPlace environment."""
+def test_obstacle_tower_env(env_cls, state_cls):
+    """Tests for ObstacleTower environment."""
 
     # For the sake of this test with hardcoded motion, force the block to start
     # out in a "safe" location where the pushing shouldn't impact it at all.
 
     @dataclass(frozen=True)
-    class _CustomClearAndPlaceSceneDescription(ClearAndPlaceSceneDescription):
+    class _CustomObstacleTowerSceneDescription(ObstacleTowerSceneDescription):
         @property
         def target_block_init_position(self) -> tuple[float, float, float]:
             return (
@@ -43,10 +43,10 @@ def test_clear_and_place_env(env_cls, state_cls):
                 self.target_area_position[1],
                 self.table_pose.position[2]
                 + self.table_half_extents[2]
-                + self.block_half_extents[2],
+                + self.object_half_extents[2],
             )
 
-    scene_description = _CustomClearAndPlaceSceneDescription(
+    scene_description = _CustomObstacleTowerSceneDescription(
         num_obstacle_blocks=3,
         stack_blocks=True,
     )
@@ -54,7 +54,7 @@ def test_clear_and_place_env(env_cls, state_cls):
     env = env_cls(scene_description=scene_description, use_gui=False)
 
     # from gymnasium.wrappers import RecordVideo
-    # env = RecordVideo(env, "videos/clear-and-place-env-test")
+    # env = RecordVideo(env, "videos/obstacle-tower-env-test")
     max_motion_planning_time = 1.0  # increase for prettier videos
 
     # Create a 'simulation' environment for kinematics, planning, etc.
@@ -225,7 +225,7 @@ def test_clear_and_place_env(env_cls, state_cls):
     sim.set_state(state)
     dz = (
         sim.scene_description.target_half_extents[2]
-        + sim.scene_description.block_half_extents[2]
+        + sim.scene_description.object_half_extents[2]
     )
     place_position = np.add(state.target_state.pose.position, (0.0, 0.0, dz))
     place_path = list(
