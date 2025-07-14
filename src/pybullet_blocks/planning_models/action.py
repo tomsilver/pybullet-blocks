@@ -1329,7 +1329,7 @@ class DropSkill(PyBulletObjectsSkill):
         object_id = self._object_to_pybullet_id(obj)
         bin_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses) - {object_id}
-        lifting_height = 0.3
+        lifting_height = 0.4
 
         state.set_pybullet(self._sim.robot)
         plan = [state]
@@ -1354,6 +1354,32 @@ class DropSkill(PyBulletObjectsSkill):
             return None
 
         for robot_joints in plan_to_lift:
+            state = state.copy_with(robot_joints=robot_joints)
+            plan.append(state)
+
+        # Then translate the hand to high-above the bin
+        current_ee_pose = self._sim.robot.get_end_effector_pose()
+        bin_pose = state.object_poses[bin_id]
+        drop_height = lifting_height
+        drop_position = (bin_pose.position[0], bin_pose.position[1], drop_height)
+
+        pre_drop_pose = Pose(drop_position, current_ee_pose.orientation)
+        distance_threshold = 0.1
+        plan_to_pre_drop = run_smooth_motion_planning_to_pose(
+            pre_drop_pose,
+            self._sim.robot,
+            collision_ids=collision_ids,
+            end_effector_frame_to_plan_frame=Pose.identity(),
+            seed=self._seed,
+            max_time=self._max_motion_planning_time,
+            held_object=object_id,
+            base_link_to_held_obj=state.attachments[object_id],
+            distance_threshold=distance_threshold,
+        )
+        if plan_to_pre_drop is None:
+            return None
+
+        for robot_joints in plan_to_pre_drop:
             state = state.copy_with(robot_joints=robot_joints)
             plan.append(state)
 
