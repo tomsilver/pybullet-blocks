@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import ssl
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any, Collection, SupportsFloat
 
 import numpy as np
@@ -43,19 +44,15 @@ class ObjaverseConfig:
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
-                "scale": 2e-6,
+                "scale": 2.3e-6,
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
                 "scale": 6e-4,
             },
-            # "D": {
-            #     "uid": "13c1fb8edb994f69a84a94c3d31e63a7",  # Sheep toy
-            #     "scale": 0.08,
-            # },
             "D": {
                 "uid": "a953358282604011b8567b7574b0b563",  # Gun toy
-                "scale": 0.02,
+                "scale": 0.04,
             },
         }
     )
@@ -424,6 +421,8 @@ class CleanupTablePyBulletObjectsEnv(
 
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
 
+        self._top_z_cache: dict[tuple[int, str], tuple[Pose, float]] = {}
+
         # Set up observation space
         obs_dim = CleanupTablePyBulletObjectsState.get_node_dimension()
         self.observation_space = spaces.Graph(
@@ -470,6 +469,18 @@ class CleanupTablePyBulletObjectsEnv(
         self._toy_id_to_label = {
             toy_id: chr(65 + i) for i, toy_id in enumerate(self.toy_ids)
         }
+
+    @lru_cache(maxsize=128)
+    def _load_and_process_mesh(self, uid: str, scale: float) -> tuple[np.ndarray, str]:
+        """Cache expensive mesh loading and processing operations."""
+        glb_path = self.objaverse_loader.downloaded_objects[uid]
+        obj_path = self.objaverse_loader.convert_glb_to_obj(glb_path)
+        mesh = trimesh.load(obj_path)
+        if hasattr(mesh, "geometry"):
+            mesh = list(mesh.geometry.values())[0]
+        assert isinstance(mesh, trimesh.Trimesh)
+        scaled_vertices = mesh.vertices * scale
+        return scaled_vertices, obj_path
 
     def _setup_bin(self) -> None:
         """Create bin container."""
@@ -1016,39 +1027,56 @@ class CleanupTablePyBulletObjectsEnv(
 
     def get_top_z_at_object_center(self, object_id: int, label: str) -> float:
         """Get the Z height of the top surface at the object's XY center."""
-        # Load the mesh
-        uid = self.scene_description.objaverse_config.toy_objects[label]["uid"]
-        glb_path = self.objaverse_loader.downloaded_objects[uid]
-        obj_path = self.objaverse_loader.convert_glb_to_obj(glb_path)
-        mesh = trimesh.load(obj_path)
-        if hasattr(mesh, "geometry"):
-            mesh = list(mesh.geometry.values())[0]
-        assert isinstance(mesh, trimesh.Trimesh)
+        current_pose = get_pose(object_id, self.physics_client_id)
+        cache_key = (object_id, label)
+        if cache_key in self._top_z_cache:
+            cached_pose, cached_value = self._top_z_cache[cache_key]
+            if not self._poses_significantly_different(current_pose, cached_pose):
+                return cached_value
 
-        # Transform vertices to world coordinates
+        # Compute the result
+        uid = self.scene_description.objaverse_config.toy_objects[label]["uid"]
         scale = self.scene_description.objaverse_config.toy_objects[label]["scale"]
-        world_pose = get_pose(object_id, self.physics_client_id)
+        scaled_vertices, _ = self._load_and_process_mesh(uid, scale)
         transform = trimesh.transformations.compose_matrix(  # type: ignore[no-untyped-call]    # pylint: disable=line-too-long
-            translate=world_pose.position,
+            translate=current_pose.position,
             angles=trimesh.transformations.euler_from_quaternion(  # type: ignore[no-untyped-call] # pylint: disable=line-too-long
-                world_pose.orientation
+                current_pose.orientation
             ),
         )
-        vertices = mesh.vertices * scale
-        vertices_h = np.hstack((vertices, np.ones((vertices.shape[0], 1))))
+        vertices_h = np.hstack(
+            (scaled_vertices, np.ones((scaled_vertices.shape[0], 1)))
+        )
         vertices_world = (transform @ vertices_h.T).T[:, :3]
 
         # Find Z values at XY near the center
-        center_xy = world_pose.position[:2]
+        center_xy = current_pose.position[:2]
         radius = 0.01  # 1cm radius around center
         distances = np.linalg.norm(vertices_world[:, :2] - center_xy, axis=1)
         close_indices = np.where(distances < radius)[0]
 
         if len(close_indices) == 0:
             print(f"Falling back to max Z for object {object_id} with label {label}.")
-            return max(vertices_world[:, 2])
+            result = max(vertices_world[:, 2])
+        else:
+            result = np.max(vertices_world[close_indices, 2])
 
-        return np.max(vertices_world[close_indices, 2])
+        self._top_z_cache[cache_key] = (current_pose, result)
+
+        return result
+
+    def _poses_significantly_different(self, pose1, pose2) -> bool:
+        """Check if two poses differ significantly enough to invalidate
+        cache."""
+        pos_diff = np.linalg.norm(np.array(pose1.position) - np.array(pose2.position))
+        if pos_diff > 0.01:
+            return True
+        q1 = np.array(pose1.orientation)
+        q2 = np.array(pose2.orientation)
+        dot_product = abs(np.dot(q1, q2))
+        dot_product = min(1.0, dot_product)
+        angle_diff = 2 * np.arccos(dot_product)
+        return angle_diff > 0.1  # ~5 degrees
 
     def _place_toys_on_table(self) -> None:
         """Place toys randomly on the table."""

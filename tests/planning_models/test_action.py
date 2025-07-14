@@ -1,8 +1,6 @@
 """Tests for action.py."""
 
 import pytest
-
-# import imageio.v2 as iio
 from task_then_motion_planning.planning import TaskThenMotionPlanner
 
 from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletObjectsEnv
@@ -263,6 +261,8 @@ def test_cleanup_table_pybullet_objects_action():
     planner.reset(obs, info)
     for _ in range(10000):
         action = planner.step(obs)
+
+        # import imageio.v2 as iio
         # try:
         obs, reward, done, _, _ = env.step(action)
         # except AssertionError as e:
@@ -270,6 +270,7 @@ def test_cleanup_table_pybullet_objects_action():
         #     break
         # img = env.render()
         # iio.imwrite(f"videos/cleanup-table-ttmp-test/{k:04d}.png", img)
+
         if done:
             assert reward > 0
             break
