@@ -108,7 +108,7 @@ class BinDimensions:
 class CleanupTableSceneDescription(BaseSceneDescription):
     """Container for toy cleanup task hyperparameters."""
 
-    num_toys: int = 5
+    num_toys: int = 4
 
     # Bin parameters
     bin_position: tuple[float, float, float] = (0.5, 0.45, -0.275)
@@ -750,7 +750,6 @@ class CleanupTablePyBulletObjectsEnv(
             self.table_id,
             self.wall_id,
             self.floor_id,
-            self.wiper_id,
             self.left_shelf_id,
             self.right_shelf_id,
         } | self.bin_part_ids
@@ -758,6 +757,7 @@ class CleanupTablePyBulletObjectsEnv(
         # Add toys that aren't currently held
         if self.current_held_object_id is None:
             ids.update(self.toy_ids)
+            ids.add(self.wiper_id)
         else:
             # Don't include held object in collision checking
             ids.update(
@@ -765,6 +765,8 @@ class CleanupTablePyBulletObjectsEnv(
                 for toy_id in self.toy_ids
                 if toy_id != self.current_held_object_id
             )
+            if self.current_held_object_id != self.wiper_id:
+                ids.add(self.wiper_id)
 
         return ids
 
@@ -808,7 +810,9 @@ class CleanupTablePyBulletObjectsEnv(
 
     def _get_movable_object_ids(self) -> set[int]:
         """Get all PyBullet IDs for movable objects."""
-        return set(self.toy_ids)
+        movable_ids = set(self.toy_ids)
+        movable_ids.add(self.wiper_id)
+        return movable_ids
 
     def _get_terminated(self) -> bool:
         """Get whether the episode is terminated."""
@@ -853,6 +857,10 @@ class CleanupTablePyBulletObjectsEnv(
 
     def is_object_ready_pick(self, object_id: int) -> bool:
         """Check if an object is ready to be picked up."""
+        # TODO: conditions when wiper is ready to pick
+        if object_id == self.wiper_id:
+            return False
+
         # A toy is ready to pick if:
         # 1. It's on the table
         # 2. Hand is right above it with desired z offset and x-y distance
@@ -982,6 +990,10 @@ class CleanupTablePyBulletObjectsEnv(
 
     def _is_graspable(self, object_id: int) -> bool:
         """Check if object is graspable based on proximity to end effectors."""
+        # TODO: Implement grasp detection logic for wiper.
+        if object_id == self.wiper_id:
+            return False
+
         object_top_z = self.get_top_z_at_object_center(
             object_id, self._toy_id_to_label[object_id]
         )
@@ -1123,16 +1135,17 @@ class CleanupTablePyBulletObjectsEnv(
         for _ in range(50):
             p.stepSimulation(physicsClientId=self.physics_client_id)
 
-    def get_collision_check_ids(self, toy_id: int) -> set[int]:
+    def get_collision_check_ids(self, object_id: int) -> set[int]:
         """Get IDs to check for collisions during free pose sampling."""
         collision_ids = {
             self.table_id,
             self.wall_id,
-            self.wiper_id,
             self.left_shelf_id,
             self.right_shelf_id,
         } | self.bin_part_ids
-        collision_ids.update(t_id for t_id in self.toy_ids if t_id != toy_id)
+        collision_ids.update(t_id for t_id in self.toy_ids if t_id != object_id)
+        if object_id != self.wiper_id:
+            collision_ids.add(self.wiper_id)
         return collision_ids
 
     def extract_relevant_object_features(self, obs, relevant_object_names):

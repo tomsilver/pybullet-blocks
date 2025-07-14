@@ -834,6 +834,7 @@ class CleanupTablePyBulletObjectsPerceiver(
 
         assert isinstance(self._sim, CleanupTablePyBulletObjectsEnv)
         self._bin = Object("bin", object_type)
+        self._wiper = Object("wiper", object_type)
         self._toys = [
             Object(chr(65 + i), object_type)
             for i in range(self._sim.scene_description.num_toys)
@@ -843,6 +844,7 @@ class CleanupTablePyBulletObjectsPerceiver(
             self._robot: self._sim.robot.robot_id,
             self._table: self._sim.table_id,
             self._bin: self._sim.bin_id,
+            self._wiper: self._sim.wiper_id,
         }
         for i, toy in enumerate(self._toys):
             self._pybullet_ids[toy] = self._sim.toy_ids[i]
@@ -860,7 +862,7 @@ class CleanupTablePyBulletObjectsPerceiver(
         ]
 
     def _get_objects(self) -> set[Object]:
-        return {self._robot, self._table, self._bin} | set(self._toys)
+        return {self._robot, self._table, self._bin, self._wiper} | set(self._toys)
 
     def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
         self._sim.set_state(CleanupTablePyBulletObjectsState.from_observation(obs))
@@ -871,7 +873,8 @@ class CleanupTablePyBulletObjectsPerceiver(
         return {GroundAtom(On, [toy, self._bin]) for toy in self._toys}
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
-        return {GroundAtom(IsMovable, [toy]) for toy in self._toys}
+        movable_objects = set(self._toys) | {self._wiper}
+        return {GroundAtom(IsMovable, [obj]) for obj in movable_objects}
 
     def _interpret_ReadyPick(self) -> set[GroundAtom]:
         """Determine if the robot is ready to pick an object."""
@@ -880,22 +883,31 @@ class CleanupTablePyBulletObjectsPerceiver(
             toy_id = self._pybullet_ids[toy]
             if self._sim.is_object_ready_pick(toy_id):
                 ready_pick_atoms.add(GroundAtom(ReadyPick, [self._robot, toy]))
+        wiper_id = self._pybullet_ids[self._wiper]
+        # TODO: is_object_ready_pick should be modified for wiper.
+        if self._sim.is_object_ready_pick(wiper_id):
+            ready_pick_atoms.add(GroundAtom(ReadyPick, [self._robot, self._wiper]))
         return ready_pick_atoms
 
     def _interpret_NotReadyPick(self) -> set[GroundAtom]:
         ready_pick_atoms = self._interpret_ReadyPick()
-        ready_toys = {a.objects[1] for a in ready_pick_atoms}
-        not_ready_toys = set(self._toys) - ready_toys
-        return {GroundAtom(NotReadyPick, [self._robot, toy]) for toy in not_ready_toys}
+        ready_objects = {a.objects[1] for a in ready_pick_atoms}
+        all_movable = set(self._toys) | {self._wiper}
+        not_ready_objects = all_movable - ready_objects
+        return {
+            GroundAtom(NotReadyPick, [self._robot, obj]) for obj in not_ready_objects
+        }
 
     def _interpret_HandReadyPick(self) -> set[GroundAtom]:
         """Determine if the robot is ready to reach an object."""
-        for toy in self._toys:
-            toy_id = self._pybullet_ids[toy]
-            if self._sim.is_robot_closely_above(toy_id):
+        all_movable_ids = [self._pybullet_ids[toy] for toy in self._toys]
+        all_movable_ids.append(self._pybullet_ids[self._wiper])
+        for obj_id in all_movable_ids:
+            if self._sim.is_robot_closely_above(obj_id):
                 return set()
         return {GroundAtom(HandReadyPick, [self._robot])}
 
+    # TODO: Wiper on table? Wiper on floor?
     def _get_on_relations_from_sim(self) -> set[tuple[Object, Object]]:
         on_relations = set()
         for toy in self._toys:

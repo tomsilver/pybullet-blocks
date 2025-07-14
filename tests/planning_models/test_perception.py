@@ -3,6 +3,10 @@
 import pytest
 
 from pybullet_blocks.envs.block_stacking_env import BlockStackingPyBulletObjectsEnv
+from pybullet_blocks.envs.cleanup_table_env import (
+    CleanupTablePyBulletObjectsEnv,
+    CleanupTableSceneDescription,
+)
 from pybullet_blocks.envs.cluttered_drawer_env import (
     ClutteredDrawerPyBulletObjectsEnv,
     ClutteredDrawerSceneDescription,
@@ -15,6 +19,7 @@ from pybullet_blocks.envs.obstacle_tower_env import (
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletObjectsEnv
 from pybullet_blocks.planning_models.perception import (
     BlockStackingPyBulletObjectsPerceiver,
+    CleanupTablePyBulletObjectsPerceiver,
     ClutteredDrawerPyBulletObjectsPerceiver,
     GraphObstacleTowerPyBulletObjectsPerceiver,
     ObstacleTowerPyBulletObjectsPerceiver,
@@ -109,3 +114,20 @@ def test_cluttered_drawer_pybullet_perceiver():
         == "[(BlockingBack C T), (BlockingFront B T), (BlockingLeft D T), (BlockingRight E T), (GripperEmpty robot), (HandReadyPick robot), (IsDrawer drawer), (IsMovable B), (IsMovable C), (IsMovable D), (IsMovable E), (IsMovable T), (IsTable table), (IsTargetObject T), (NotHolding robot B), (NotHolding robot C), (NotHolding robot D), (NotHolding robot E), (NotHolding robot T), (NotHolding robot drawer), (NotHolding robot table), (NotIsMovable drawer), (NotIsMovable table), (NotIsTargetObject B), (NotIsTargetObject C), (NotIsTargetObject D), (NotIsTargetObject E), (NotReadyPick robot B), (NotReadyPick robot C), (NotReadyPick robot D), (NotReadyPick robot E), (NotReadyPick robot T), (On B drawer), (On C drawer), (On D drawer), (On E drawer), (On T drawer)]"  # pylint: disable=line-too-long
     )
     assert str(sorted(goal)) == "[(On T table)]"
+
+
+def test_cleanup_table_pybullet_perceiver():
+    """Tests for CleanupTablePyBulletObjectsPerceiver()."""
+    scene_description = CleanupTableSceneDescription()
+    env = CleanupTablePyBulletObjectsEnv(
+        scene_description=scene_description, use_gui=False
+    )
+    sim = CleanupTablePyBulletObjectsEnv(
+        scene_description=scene_description, use_gui=False
+    )
+    perceiver = CleanupTablePyBulletObjectsPerceiver(sim)
+    obs, info = env.reset(seed=124)
+    objects, atoms, goal = perceiver.reset(obs, info)
+    print(f"len(objects) = {len(objects)}")
+    print(f"str(sorted(atoms)) = {str(sorted(atoms))}")
+    print(f"str(sorted(goal)) = {str(sorted(goal))}")

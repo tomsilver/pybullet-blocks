@@ -670,6 +670,8 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 return self._sim.table_id
             if obj.name == "bin":
                 return self._sim.bin_id
+            if obj.name == "wiper":
+                return self._sim.wiper_id
             assert len(obj.name) == 1
             toy_index = ord(obj.name) - 65
             assert toy_index < len(self._sim.toy_ids)
@@ -809,19 +811,25 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 self._sim.table_id: self._sim.scene_description.table_pose,
                 self._sim.bin_id: sim_state.bin_state.pose,
             }
-            held_toy_id = -1
+            held_object_id = -1
             for toy_state in sim_state.toy_states:
                 toy_index = ord(toy_state.label) - 65
                 if toy_index < len(self._sim.toy_ids):
                     toy_id = self._sim.toy_ids[toy_index]
                     object_poses[toy_id] = toy_state.pose
                     if toy_state.held:
-                        assert held_toy_id == -1  # Only one toy can be held
-                        held_toy_id = toy_id
+                        assert held_object_id == -1  # Only one toy can be held
+                        held_object_id = toy_id
+            if (
+                sim_state.robot_state.grasp_transform is not None
+                and held_object_id == -1
+            ):
+                if self._sim.current_held_object_id == self._sim.wiper_id:
+                    held_object_id = self._sim.wiper_id
             attachments = {}
             if sim_state.robot_state.grasp_transform is not None:
-                assert held_toy_id > -1
-                attachments[held_toy_id] = sim_state.robot_state.grasp_transform
+                assert held_object_id > -1
+                attachments[held_object_id] = sim_state.robot_state.grasp_transform
             return KinematicState(robot_joints, object_poses, attachments)
 
         raise NotImplementedError
