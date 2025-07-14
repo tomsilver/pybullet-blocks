@@ -1334,83 +1334,47 @@ class DropSkill(PyBulletObjectsSkill):
         state.set_pybullet(self._sim.robot)
         plan = [state]
 
-        # First lift the hand to above everything
-        curr_ee_pose = self._sim.robot.get_end_effector_pose()
-        lift_pose = Pose(
-            (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
-            curr_ee_pose.orientation,
-        )
-        plan_to_lift = run_smooth_motion_planning_to_pose(
-            lift_pose,
-            self._sim.robot,
-            collision_ids=collision_ids,
-            end_effector_frame_to_plan_frame=Pose.identity(),
-            seed=self._seed,
-            max_time=self._max_motion_planning_time,
-            held_object=object_id,
-            base_link_to_held_obj=state.attachments[object_id],
-        )
-        if plan_to_lift is None:
-            return None
-
-        for robot_joints in plan_to_lift:
-            state = state.copy_with(robot_joints=robot_joints)
-            plan.append(state)
-
-        # Then translate the hand to high-above the bin
-        current_ee_pose = self._sim.robot.get_end_effector_pose()
         bin_pose = state.object_poses[bin_id]
-        drop_height = lifting_height
-        drop_position = (bin_pose.position[0], bin_pose.position[1], drop_height)
-
-        pre_drop_pose = Pose(drop_position, current_ee_pose.orientation)
-        distance_threshold = 0.1
-        plan_to_pre_drop = run_smooth_motion_planning_to_pose(
-            pre_drop_pose,
-            self._sim.robot,
-            collision_ids=collision_ids,
-            end_effector_frame_to_plan_frame=Pose.identity(),
-            seed=self._seed,
-            max_time=self._max_motion_planning_time,
-            held_object=object_id,
-            base_link_to_held_obj=state.attachments[object_id],
-            distance_threshold=distance_threshold,
-        )
-        if plan_to_pre_drop is None:
-            return None
-
-        for robot_joints in plan_to_pre_drop:
-            state = state.copy_with(robot_joints=robot_joints)
-            plan.append(state)
-
-        # Set the state back to continue planning
-        state.set_pybullet(self._sim.robot)
-
-        # Now plan to drop the object into the bin
         object_pose = state.object_poses[object_id]
-        bin_pose = state.object_poses[bin_id]
+        curr_ee_pose = self._sim.robot.get_end_effector_pose()
         drop_height = object_pose.position[2] + lifting_height / 2
-        drop_position = (bin_pose.position[0], bin_pose.position[1], drop_height)
 
-        current_ee_pose = self._sim.robot.get_end_effector_pose()
-        drop_pose = Pose(drop_position, current_ee_pose.orientation)
-        plan_to_drop = run_smooth_motion_planning_to_pose(
-            drop_pose,
-            self._sim.robot,
-            collision_ids=collision_ids,
-            end_effector_frame_to_plan_frame=Pose.identity(),
-            seed=self._seed,
-            max_time=self._max_motion_planning_time,
-            held_object=object_id,
-            base_link_to_held_obj=state.attachments[object_id],
-        )
-        if plan_to_drop is None:
-            return None
+        waypoints = [
+            # 1. Lift up to a height above everything
+            Pose(
+                (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
+                curr_ee_pose.orientation,
+            ),
+            # 2. Move to above the bin at safe height
+            Pose(
+                (bin_pose.position[0], bin_pose.position[1], lifting_height),
+                curr_ee_pose.orientation,
+            ),
+            # 3. Lower to drop position
+            Pose(
+                (bin_pose.position[0], bin_pose.position[1], drop_height),
+                curr_ee_pose.orientation,
+            ),
+        ]
+        for target_pos in waypoints:
+            state.set_pybullet(self._sim.robot)
+            motion_plan = run_smooth_motion_planning_to_pose(
+                target_pos,
+                self._sim.robot,
+                collision_ids=collision_ids,
+                end_effector_frame_to_plan_frame=Pose.identity(),
+                seed=self._seed,
+                max_time=self._max_motion_planning_time,
+                held_object=object_id,
+                base_link_to_held_obj=state.attachments[object_id],
+            )
+            if motion_plan is None:
+                return None
+            for robot_joints in motion_plan:
+                state = state.copy_with(robot_joints=robot_joints)
+                plan.append(state)
 
-        for robot_joints in plan_to_drop:
-            state = state.copy_with(robot_joints=robot_joints)
-            plan.append(state)
-
+        # Release object
         state.set_pybullet(self._sim.robot)
         state = KinematicState.from_pybullet(
             self._sim.robot,
