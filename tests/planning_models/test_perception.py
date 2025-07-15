@@ -128,6 +128,9 @@ def test_cleanup_table_pybullet_perceiver():
     perceiver = CleanupTablePyBulletObjectsPerceiver(sim)
     obs, info = env.reset(seed=124)
     objects, atoms, goal = perceiver.reset(obs, info)
-    print(f"len(objects) = {len(objects)}")
-    print(f"str(sorted(atoms)) = {str(sorted(atoms))}")
-    print(f"str(sorted(goal)) = {str(sorted(goal))}")
+    assert len(objects) == 9
+    assert (
+        str(sorted(atoms))
+        == "[(GripperEmpty robot), (HandReadyPick robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable D), (IsMovable wiper), (NotHolding robot A), (NotHolding robot B), (NotHolding robot C), (NotHolding robot D), (NotHolding robot bin), (NotHolding robot floor), (NotHolding robot table), (NotHolding robot wiper), (NotIsMovable bin), (NotIsMovable floor), (NotIsMovable table), (NotReadyPick robot A), (NotReadyPick robot B), (NotReadyPick robot C), (NotReadyPick robot D), (NotReadyPick robot wiper), (On A table), (On B table), (On C table), (On D table), (On wiper floor)]"  # pylint: disable=line-too-long
+    )
+    assert str(sorted(goal)) == "[(On A bin), (On B bin), (On C bin), (On D bin)]"

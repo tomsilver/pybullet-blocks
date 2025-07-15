@@ -672,6 +672,8 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 return self._sim.bin_id
             if obj.name == "wiper":
                 return self._sim.wiper_id
+            if obj.name == "floor":
+                return self._sim.floor_id
             assert len(obj.name) == 1
             toy_index = ord(obj.name) - 65
             assert toy_index < len(self._sim.toy_ids)
@@ -810,6 +812,8 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             object_poses = {
                 self._sim.table_id: self._sim.scene_description.table_pose,
                 self._sim.bin_id: sim_state.bin_state.pose,
+                self._sim.wiper_id: sim_state.wiper_state.pose,
+                self._sim.floor_id: Pose(self._sim.scene_description.floor_position),
             }
             held_object_id = -1
             for toy_state in sim_state.toy_states:

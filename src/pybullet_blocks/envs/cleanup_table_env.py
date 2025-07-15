@@ -229,6 +229,7 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
 
     toy_states: Collection[LabeledObjectState]
     bin_state: ObjectState
+    wiper_state: ObjectState
     robot_state: RobotState
 
     @classmethod
@@ -248,9 +249,16 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
         bin_vec = self.bin_state.to_vec()
         bin_node[1 : 1 + len(bin_vec)] = bin_vec
 
+        # Add wiper node (type 3)
+        wiper_node = np.zeros(self.get_node_dimension(), dtype=np.float32)
+        wiper_node[0] = 3
+        wiper_vec = self.wiper_state.to_vec()
+        wiper_node[1 : 1 + len(wiper_vec)] = wiper_vec
+
         inner_vecs: list[NDArray] = [
             self.robot_state.to_vec(),
             bin_node,
+            wiper_node,
         ]
 
         for toy_state in self.toy_states:
@@ -272,6 +280,7 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
         """Build a state from a graph."""
         robot_state: RobotState | None = None
         bin_state: ObjectState | None = None
+        wiper_state: ObjectState | None = None
         toy_states: list[LabeledObjectState] = []
 
         for node in obs.nodes:
@@ -282,6 +291,9 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
             elif np.isclose(node[0], 2):  # Bin
                 bin_vec = node[1 : 1 + ObjectState.get_dimension()]
                 bin_state = ObjectState.from_vec(bin_vec)
+            elif np.isclose(node[0], 3):  # Wiper
+                wiper_vec = node[1 : 1 + ObjectState.get_dimension()]
+                wiper_state = ObjectState.from_vec(wiper_vec)
             elif np.isclose(node[0], 1):  # Toy (LabeledObjectState)
                 vec = node[: LabeledObjectState.get_dimension()]
                 toy_state = LabeledObjectState.from_vec(vec)
@@ -289,10 +301,11 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
 
         assert robot_state is not None
         assert bin_state is not None
+        assert wiper_state is not None
 
         toy_states.sort(key=lambda x: x.label)
 
-        return cls(toy_states, bin_state, robot_state)
+        return cls(toy_states, bin_state, wiper_state, robot_state)
 
 
 class ObjaverseLoader:
@@ -711,6 +724,8 @@ class CleanupTablePyBulletObjectsEnv(
         # Bin pose is fixed, but we could update it if needed
         # set_pose(self.bin_id, state.bin_state.pose, self.physics_client_id)
 
+        set_pose(self.wiper_id, state.wiper_state.pose, self.physics_client_id)
+
         # Set robot state
         self.robot.set_joints(state.robot_state.joint_positions)
         self.current_grasp_transform = state.robot_state.grasp_transform
@@ -723,6 +738,11 @@ class CleanupTablePyBulletObjectsEnv(
                     if toy_index < len(self.toy_ids):
                         self.current_held_object_id = self.toy_ids[toy_index]
                         break
+            else:
+                if self.current_held_object_id == self.wiper_id:
+                    pass
+                else:
+                    self.current_held_object_id = None
         else:
             self.current_held_object_id = None
 
@@ -739,10 +759,15 @@ class CleanupTablePyBulletObjectsEnv(
         bin_pose = get_pose(self.bin_id, self.physics_client_id)
         bin_state = ObjectState(bin_pose)
 
+        wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
+        wiper_state = ObjectState(wiper_pose)
+
         robot_joints = self.robot.get_joint_positions()
         robot_state = RobotState(robot_joints, self.current_grasp_transform)
 
-        return CleanupTablePyBulletObjectsState(toy_states, bin_state, robot_state)
+        return CleanupTablePyBulletObjectsState(
+            toy_states, bin_state, wiper_state, robot_state
+        )
 
     def get_collision_ids(self) -> set[int]:
         """Expose all pybullet IDs for collision checking."""
@@ -817,14 +842,14 @@ class CleanupTablePyBulletObjectsEnv(
     def _get_terminated(self) -> bool:
         """Get whether the episode is terminated."""
         # Check if all toys are in the bin and gripper is empty
-        all_toys_in_bin = all(self.is_toy_in_bin(toy_id) for toy_id in self.toy_ids)
+        all_toys_in_bin = all(self.is_object_in_bin(toy_id) for toy_id in self.toy_ids)
         gripper_empty = self.current_grasp_transform is None
         return all_toys_in_bin and gripper_empty
 
     def _get_reward(self) -> float:
         """Get the current reward."""
         # NOTE: Simple reward - count how many toys are in the bin
-        toys_in_bin = sum(1 for toy_id in self.toy_ids if self.is_toy_in_bin(toy_id))
+        toys_in_bin = sum(1 for toy_id in self.toy_ids if self.is_object_in_bin(toy_id))
         max_reward = len(self.toy_ids)
 
         # Bonus for completing the task
@@ -833,25 +858,25 @@ class CleanupTablePyBulletObjectsEnv(
 
         return float(toys_in_bin)
 
-    def is_toy_in_bin(self, toy_id: int) -> bool:
-        """Check if a toy is inside the bin container."""
-        toy_pose = get_pose(toy_id, self.physics_client_id)
+    def is_object_in_bin(self, obj_id: int) -> bool:
+        """Check if an object is inside the bin container."""
+        obj_pose = get_pose(obj_id, self.physics_client_id)
         bin_pos = self.scene_description.bin_position
         bin_dim = self.scene_description.bin_dimensions
 
-        # Check if toy is within bin interior bounds
+        # Check if object is within bin interior bounds
         min_x = bin_pos[0] - bin_dim.interior_width / 2
         max_x = bin_pos[0] + bin_dim.interior_width / 2
         min_y = bin_pos[1] - bin_dim.interior_depth / 2
         max_y = bin_pos[1] + bin_dim.interior_depth / 2
         min_z = bin_pos[2] + bin_dim.interior_bottom_z_offset
 
-        toy_pos = toy_pose.position
+        obj_pos = obj_pose.position
 
         # Check bounds
-        in_x_bounds = min_x <= toy_pos[0] <= max_x
-        in_y_bounds = min_y <= toy_pos[1] <= max_y
-        above_bottom = toy_pos[2] >= min_z
+        in_x_bounds = min_x <= obj_pos[0] <= max_x
+        in_y_bounds = min_y <= obj_pos[1] <= max_y
+        above_bottom = obj_pos[2] >= min_z
 
         return in_x_bounds and in_y_bounds and above_bottom
 
@@ -859,6 +884,13 @@ class CleanupTablePyBulletObjectsEnv(
         """Check if an object is ready to be picked up."""
         # TODO: conditions when wiper is ready to pick
         if object_id == self.wiper_id:
+            if check_body_collisions(
+                object_id,
+                self.floor_id,
+                self.physics_client_id,
+                distance_threshold=1e-3,
+            ):
+                return False
             return False
 
         # A toy is ready to pick if:
