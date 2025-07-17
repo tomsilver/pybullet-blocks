@@ -933,21 +933,44 @@ class ReachObjaverseSkill(PyBulletObjectsSkill):
         _, obj = objects
         object_id = self._object_to_pybullet_id(obj)
         collision_ids = set(state.object_poses)
-        label = obj.name
-        object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
-        object_center = state.object_poses[object_id].position
 
-        def reach_generator() -> Iterator[Pose]:
-            while True:
-                relative_x = 0.0
-                relative_y = 0.0
-                relative_z_1 = object_top_z - object_center[2]
-                relative_z_2 = object_top_z - object_center[2] + 0.02
-                relative_z = self._sim.np_random.uniform(relative_z_1, relative_z_2)
-                grasp = Pose((0, 0, 0), self._robot_grasp_orientation)
-                orientation = grasp.orientation
-                relative_reach = Pose((relative_x, relative_y, relative_z), orientation)
-                yield relative_reach
+        is_wiper = obj.name == "wiper"
+        if is_wiper:
+
+            def reach_generator() -> Iterator[Pose]:
+                while True:
+                    relative_x = self._sim.np_random.uniform(-0.05, 0.05)
+                    # Approach from front since wiper is leaning against the wall
+                    relative_y = self._sim.np_random.uniform(0.08, 0.15)
+                    relative_z = self._sim.np_random.uniform(-0.03, 0.03)
+
+                    # Keep the robot's original orientation for reaching
+                    # Will be adjusted later in grasping
+                    reach_orientation = self._robot_grasp_orientation
+
+                    relative_reach = Pose(
+                        (relative_x, relative_y, relative_z), reach_orientation
+                    )
+                    yield relative_reach
+
+        else:
+            label = obj.name
+            object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
+            object_center = state.object_poses[object_id].position
+
+            def reach_generator() -> Iterator[Pose]:
+                while True:
+                    relative_x = 0.0
+                    relative_y = 0.0
+                    relative_z_1 = object_top_z - object_center[2]
+                    relative_z_2 = object_top_z - object_center[2] + 0.02
+                    relative_z = self._sim.np_random.uniform(relative_z_1, relative_z_2)
+                    grasp = Pose((0, 0, 0), self._robot_grasp_orientation)
+                    orientation = grasp.orientation
+                    relative_reach = Pose(
+                        (relative_x, relative_y, relative_z), orientation
+                    )
+                    yield relative_reach
 
         kinematic_plan = get_kinematic_plan_to_reach_object(
             state,
@@ -1011,26 +1034,55 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
         object_id = self._object_to_pybullet_id(obj)
         surface_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses)
-        label = obj.name
-        object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
+
+        is_wiper = obj.name == "wiper"
         object_pose = state.object_poses[object_id]
-
-        grasp_pos = (
-            object_pose.position[0],
-            object_pose.position[1],
-            object_top_z
-            + self._sim.scene_description.z_dist_threshold_for_grasp
-            - 0.005,
-        )
-        grasp_orientation = self._robot_grasp_orientation
-        grasp_pose = Pose(grasp_pos, grasp_orientation)
-
-        # add one more possible relative grasp (orientation)
-        grasp_rotated = multiply_poses(
-            grasp_pose,
-            Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
-        )
-        grasp_generator = iter([grasp_pose, grasp_rotated])
+        if is_wiper:
+            wiper_center = object_pose.position
+            grasp_poses = []
+            for i in range(3):
+                offset_x = self._sim.np_random.uniform(-0.03, 0.03)
+                approach_y = self._sim.np_random.uniform(0.05, 0.1)
+                offset_z = self._sim.np_random.uniform(-0.02, 0.02)
+                grasp_x = wiper_center[0] + offset_x
+                grasp_y = wiper_center[1] + approach_y
+                grasp_z = wiper_center[2] + offset_z
+                grasp_pos = (grasp_x, grasp_y, grasp_z)
+                if i == 0:
+                    grasp_orientation = self._robot_grasp_orientation
+                elif i == 1:
+                    rotated_quat = p.getQuaternionFromEuler([0, 0, np.pi / 4])
+                    grasp_orientation = multiply_poses(
+                        Pose((0, 0, 0), self._robot_grasp_orientation),
+                        Pose((0, 0, 0), rotated_quat),
+                    ).orientation
+                else:
+                    rotated_quat = p.getQuaternionFromEuler([0, 0, -np.pi / 4])
+                    grasp_orientation = multiply_poses(
+                        Pose((0, 0, 0), self._robot_grasp_orientation),
+                        Pose((0, 0, 0), rotated_quat),
+                    ).orientation
+                grasp_pose = Pose(grasp_pos, grasp_orientation)
+                grasp_poses.append(grasp_pose)
+            grasp_generator = iter(grasp_poses)
+        else:
+            label = obj.name
+            object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
+            object_pose = state.object_poses[object_id]
+            grasp_pos = (
+                object_pose.position[0],
+                object_pose.position[1],
+                object_top_z
+                + self._sim.scene_description.z_dist_threshold_for_grasp
+                - 0.005,
+            )
+            grasp_orientation = self._robot_grasp_orientation
+            grasp_pose = Pose(grasp_pos, grasp_orientation)
+            grasp_rotated = multiply_poses(
+                grasp_pose,
+                Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
+            )
+            grasp_generator = iter([grasp_pose, grasp_rotated])
 
         kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,

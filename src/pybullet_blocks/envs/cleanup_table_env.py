@@ -153,11 +153,16 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
     robot_stand_half_extents: tuple[float, float, float] = (0.2, 0.2, 0.125)
 
-    # Pick related settings
+    # Pick related settings -- toys
     z_dist_threshold_for_reach: float = 0.02
     z_dist_threshold_for_grasp: float = -0.03
     hand_ready_pick_z: float = 0.1
     xy_dist_threshold: float = 0.075
+
+    # Pick related settings -- wiper
+    wiper_horizontal_dist_threshold: float = 0.15
+    wiper_vertical_dist_threshold_for_reach: float = 0.1
+    wiper_vertical_dist_threshold_for_grasp: float = 0.05
 
     @property
     def wall_position(self) -> tuple[float, float, float]:
@@ -882,27 +887,27 @@ class CleanupTablePyBulletObjectsEnv(
 
     def is_object_ready_pick(self, object_id: int) -> bool:
         """Check if an object is ready to be picked up."""
-        # TODO: conditions when wiper is ready to pick
         if object_id == self.wiper_id:
-            if check_body_collisions(
-                object_id,
-                self.floor_id,
-                self.physics_client_id,
-                distance_threshold=1e-3,
-            ):
-                return False
-            return False
+            hand_pose = self.robot.get_end_effector_pose()
+            wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
+            horizontal_dist = np.sqrt(
+                (hand_pose.position[0] - wiper_pose.position[0]) ** 2
+                + (hand_pose.position[1] - wiper_pose.position[1]) ** 2
+            )
+            z_dist = abs(hand_pose.position[2] - wiper_pose.position[2])
+            return (
+                horizontal_dist
+                <= self.scene_description.wiper_horizontal_dist_threshold
+                and z_dist
+                <= self.scene_description.wiper_vertical_dist_threshold_for_reach
+            )
 
-        # A toy is ready to pick if:
-        # 1. It's on the table
-        # 2. Hand is right above it with desired z offset and x-y distance
         is_on_table = check_body_collisions(
             object_id,
             self.table_id,
             self.physics_client_id,
             distance_threshold=1e-3,
         )
-
         hand_pose = self.robot.get_end_effector_pose()
         object_pose = get_pose(object_id, self.physics_client_id)
         label = self._toy_id_to_label[object_id]
@@ -914,17 +919,26 @@ class CleanupTablePyBulletObjectsEnv(
         )
         z_ok = z_dist <= self.scene_description.z_dist_threshold_for_reach
         xy_ok = xy_dist <= self.scene_description.xy_dist_threshold
-
         if object_id in self.toy_ids:
             return is_on_table and z_ok and xy_ok
-        if object_id == self.wiper_id:
-            return True
+
         return False
 
-    def is_robot_closely_above(self, object_id: int) -> bool:
-        """Check if the robot is closely above an object."""
+    def is_robot_close(self, object_id: int) -> bool:
+        """Check if the robot is close to an object."""
         object_pose = get_pose(object_id, self.physics_client_id)
         hand_pose = self.robot.get_end_effector_pose()
+        if object_id == self.wiper_id:
+            horizontal_dist = np.sqrt(
+                (hand_pose.position[0] - object_pose.position[0]) ** 2
+                + (hand_pose.position[1] - object_pose.position[1]) ** 2
+            )
+            z_dist = abs(hand_pose.position[2] - object_pose.position[2])
+            return (
+                horizontal_dist < self.scene_description.wiper_horizontal_dist_threshold
+                and z_dist
+                < self.scene_description.wiper_vertical_dist_threshold_for_reach
+            )
         z_dist = abs(hand_pose.position[2] - object_pose.position[2])
         xy_dist = np.sqrt(
             (hand_pose.position[0] - object_pose.position[0]) ** 2
@@ -1022,22 +1036,31 @@ class CleanupTablePyBulletObjectsEnv(
 
     def _is_graspable(self, object_id: int) -> bool:
         """Check if object is graspable based on proximity to end effectors."""
-        # TODO: Implement grasp detection logic for wiper.
         if object_id == self.wiper_id:
-            return False
+            wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
+            ee_position = self.robot.get_end_effector_pose().position
+            horizontal_dist = np.sqrt(
+                (ee_position[0] - wiper_pose.position[0]) ** 2
+                + (ee_position[1] - wiper_pose.position[1]) ** 2
+            )
+            z_dist = abs(ee_position[2] - wiper_pose.position[2])
+            return (
+                horizontal_dist
+                <= self.scene_description.wiper_horizontal_dist_threshold
+                and z_dist
+                <= self.scene_description.wiper_vertical_dist_threshold_for_grasp
+            )
 
         object_top_z = self.get_top_z_at_object_center(
             object_id, self._toy_id_to_label[object_id]
         )
         object_position = get_pose(object_id, self.physics_client_id).position
         end_effector_position = self.robot.get_end_effector_pose().position
-
         xy_dist = np.sqrt(
             (end_effector_position[0] - object_position[0]) ** 2
             + (end_effector_position[1] - object_position[1]) ** 2
         )
         z_dist = end_effector_position[2] - object_top_z
-
         return (
             xy_dist <= self.scene_description.xy_dist_threshold
             and z_dist <= self.scene_description.z_dist_threshold_for_grasp
@@ -1127,13 +1150,10 @@ class CleanupTablePyBulletObjectsEnv(
         scene_description = self.scene_description
         assert isinstance(scene_description, CleanupTableSceneDescription)
 
-        if self._np_random is None:
-            self._np_random, _ = seeding.np_random(0)
-
         for toy_id in self.toy_ids:
             placed = False
             for _ in range(100):
-                position = self._np_random.uniform(
+                position = self.np_random.uniform(
                     scene_description.toy_init_position_lower,
                     scene_description.toy_init_position_upper,
                 )

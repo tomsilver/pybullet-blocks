@@ -874,6 +874,7 @@ class CleanupTablePyBulletObjectsPerceiver(
     def _get_goal(
         self, obs: gym.spaces.GraphInstance, info: dict[str, Any]
     ) -> set[GroundAtom]:
+        # return {GroundAtom(Holding, [self._robot, self._wiper])}
         return {GroundAtom(On, [toy, self._bin]) for toy in self._toys}
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
@@ -888,7 +889,6 @@ class CleanupTablePyBulletObjectsPerceiver(
             if self._sim.is_object_ready_pick(toy_id):
                 ready_pick_atoms.add(GroundAtom(ReadyPick, [self._robot, toy]))
         wiper_id = self._pybullet_ids[self._wiper]
-        # TODO: is_object_ready_pick should be modified for wiper.
         if self._sim.is_object_ready_pick(wiper_id):
             ready_pick_atoms.add(GroundAtom(ReadyPick, [self._robot, self._wiper]))
         return ready_pick_atoms
@@ -907,7 +907,7 @@ class CleanupTablePyBulletObjectsPerceiver(
         all_movable_ids = [self._pybullet_ids[toy] for toy in self._toys]
         all_movable_ids.append(self._pybullet_ids[self._wiper])
         for obj_id in all_movable_ids:
-            if self._sim.is_robot_closely_above(obj_id):
+            if self._sim.is_robot_close(obj_id):
                 return set()
         return {GroundAtom(HandReadyPick, [self._robot])}
 
