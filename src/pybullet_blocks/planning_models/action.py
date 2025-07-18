@@ -939,18 +939,23 @@ class ReachObjaverseSkill(PyBulletObjectsSkill):
 
             def reach_generator() -> Iterator[Pose]:
                 while True:
-                    relative_x = self._sim.np_random.uniform(-0.05, 0.05)
+                    relative_x = self._sim.np_random.uniform(-0.01, -0.01)
                     # Approach from front since wiper is leaning against the wall
-                    relative_y = self._sim.np_random.uniform(0.08, 0.15)
-                    relative_z = self._sim.np_random.uniform(-0.03, 0.03)
+                    relative_y = -0.15
+                    relative_z = self._sim.np_random.uniform(0.05, 0.1)
 
                     # Keep the robot's original orientation for reaching
                     # Will be adjusted later in grasping
-                    reach_orientation = self._robot_grasp_orientation
-
-                    relative_reach = Pose(
-                        (relative_x, relative_y, relative_z), reach_orientation
+                    # we want robot-z = -wiper-y; robot-x = wiper-z; robot-y = -wiper-x
+                    relative_pose = np.array(
+                        [
+                            [0, 1, 0, relative_x],
+                            [1, 0, 0, relative_y],
+                            [0, 0, -1, relative_z],
+                            [0, 0, 0, 1],
+                        ]
                     )
+                    relative_reach = Pose.from_matrix(relative_pose)
                     yield relative_reach
 
         else:
@@ -1036,35 +1041,35 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
         collision_ids = set(state.object_poses)
 
         is_wiper = obj.name == "wiper"
+        wiper_lifting_dx = 0.2
+        wiper_lifting_dy = 0.0
+        wiper_lifting_dz = 0.4
+
         object_pose = state.object_poses[object_id]
         if is_wiper:
-            wiper_center = object_pose.position
-            grasp_poses = []
-            for i in range(3):
-                offset_x = self._sim.np_random.uniform(-0.03, 0.03)
-                approach_y = self._sim.np_random.uniform(0.05, 0.1)
-                offset_z = self._sim.np_random.uniform(-0.02, 0.02)
-                grasp_x = wiper_center[0] + offset_x
-                grasp_y = wiper_center[1] + approach_y
-                grasp_z = wiper_center[2] + offset_z
-                grasp_pos = (grasp_x, grasp_y, grasp_z)
-                if i == 0:
-                    grasp_orientation = self._robot_grasp_orientation
-                elif i == 1:
-                    rotated_quat = p.getQuaternionFromEuler([0, 0, np.pi / 4])
-                    grasp_orientation = multiply_poses(
-                        Pose((0, 0, 0), self._robot_grasp_orientation),
-                        Pose((0, 0, 0), rotated_quat),
-                    ).orientation
-                else:
-                    rotated_quat = p.getQuaternionFromEuler([0, 0, -np.pi / 4])
-                    grasp_orientation = multiply_poses(
-                        Pose((0, 0, 0), self._robot_grasp_orientation),
-                        Pose((0, 0, 0), rotated_quat),
-                    ).orientation
-                grasp_pose = Pose(grasp_pos, grasp_orientation)
-                grasp_poses.append(grasp_pose)
-            grasp_generator = iter(grasp_poses)
+            postgrasp_translation = Pose(
+                (wiper_lifting_dx, \
+                 wiper_lifting_dy, 
+                 wiper_lifting_dz), p.getQuaternionFromEuler([0, 0, 0])
+            )
+            def grasp_generator() -> Iterator[Pose]:
+                while True:
+                    relative_x = self._sim.np_random.uniform(-0.01, -0.01)
+                    # Approach from front since wiper is leaning against the wall
+                    relative_y = -0.15
+                    relative_z = self._sim.np_random.uniform(0.0, 0.02)
+                    relative_pose = np.array(
+                        [
+                            [0, 1, 0, relative_x],
+                            [1, 0, 0, relative_y],
+                            [0, 0, -1, relative_z],
+                            [0, 0, 0, 1],
+                        ]
+                    )
+                    grasping_pose = multiply_poses(
+                        object_pose, Pose.from_matrix(relative_pose)
+                    )
+                    yield grasping_pose
         else:
             label = obj.name
             object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
@@ -1082,7 +1087,15 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
                 grasp_pose,
                 Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
             )
-            grasp_generator = iter([grasp_pose, grasp_rotated])
+            postgrasp_translation = None
+            def grasp_generator() -> Iterator[Pose]:
+                while True:
+                    # Sample two grasp poses, one is the original grasp pose,
+                    # the other is rotated by 90 degrees around the z-axis.
+                    pose = self._sim.np_random.choice(
+                        [grasp_pose, grasp_rotated], p=[0.5, 0.5]
+                    )
+                    yield pose
 
         kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
@@ -1090,7 +1103,8 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
             object_id,
             surface_id,
             collision_ids,
-            grasp_generator=grasp_generator,
+            postgrasp_translation=postgrasp_translation,
+            grasp_generator=grasp_generator(),
             grasp_generator_iters=5,
             grasp_along_object_axis=False,
             grasp_relative_to_object=False,

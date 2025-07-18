@@ -161,8 +161,9 @@ class CleanupTableSceneDescription(BaseSceneDescription):
 
     # Pick related settings -- wiper
     wiper_horizontal_dist_threshold: float = 0.15
+    wiper_horizontal_dist_threshold_for_grasp: float = 0.02
     wiper_vertical_dist_threshold_for_reach: float = 0.1
-    wiper_vertical_dist_threshold_for_grasp: float = 0.05
+    wiper_vertical_dist_threshold_for_grasp: float = 0.02
 
     @property
     def wall_position(self) -> tuple[float, float, float]:
@@ -1038,15 +1039,18 @@ class CleanupTablePyBulletObjectsEnv(
         """Check if object is graspable based on proximity to end effectors."""
         if object_id == self.wiper_id:
             wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
-            ee_position = self.robot.get_end_effector_pose().position
-            horizontal_dist = np.sqrt(
-                (ee_position[0] - wiper_pose.position[0]) ** 2
-                + (ee_position[1] - wiper_pose.position[1]) ** 2
+            ee_pose = self.robot.get_end_effector_pose()
+            # need to use relative pose to check distance, not absolute
+            relative_pose = multiply_poses(
+                wiper_pose.invert(), ee_pose
             )
-            z_dist = abs(ee_position[2] - wiper_pose.position[2])
+            # if the handle is between gripper along gripper x axis
+            x_dist = abs(relative_pose.position[0])
+            # if the handle is closely above gripper along gripper z axis
+            z_dist = abs(relative_pose.position[2])
             return (
-                horizontal_dist
-                <= self.scene_description.wiper_horizontal_dist_threshold
+                x_dist
+                <= self.scene_description.wiper_horizontal_dist_threshold_for_grasp
                 and z_dist
                 <= self.scene_description.wiper_vertical_dist_threshold_for_grasp
             )

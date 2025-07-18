@@ -16,11 +16,19 @@ from pybullet_helpers.manipulation import (
     iter_between_poses,
     smoothly_follow_end_effector_path,
 )
+from pybullet_helpers.ikfast.utils import (
+    ikfast_closest_inverse_kinematics,
+    ikfast_inverse_kinematics,
+)
 from pybullet_helpers.motion_planning import (
     run_smooth_motion_planning_to_pose,
 )
 from pybullet_helpers.robots.single_arm import (
     FingeredSingleArmPyBulletRobot,
+)
+from pybullet_blocks.envs.cleanup_table_env import (
+    CleanupTablePyBulletObjectsEnv,
+    CleanupTableSceneDescription,
 )
 from pybullet_helpers.states import KinematicState
 
@@ -69,12 +77,20 @@ def get_kinematic_plan_to_reach_object(
         initial_state.set_pybullet(robot)
         state = initial_state
         plan = [state]
+        object_pose = state.object_poses[object_id]
 
         # First lift the hand to above everything.
-        curr_ee_pose = robot.get_end_effector_pose()
-        lift_pose = Pose(
-            (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
-            curr_ee_pose.orientation,
+        reach = multiply_poses(object_pose, object_to_link, relative_reach)
+        relative_pose = np.array(
+            [
+                [1, 0, 0, 0.0],
+                [0, 1, 0, 0.0],
+                [0, 0, 1, -lifting_height],
+                [0, 0, 0, 1],
+            ]
+        )
+        lift_pose = multiply_poses(
+            reach, Pose.from_matrix(relative_pose)
         )
         plan_to_lift = run_smooth_motion_planning_to_pose(
             lift_pose,
@@ -96,8 +112,6 @@ def get_kinematic_plan_to_reach_object(
         state.set_pybullet(robot)
 
         # Calculate the reach in the world frame.
-        object_pose = state.object_poses[object_id]
-        reach = multiply_poses(object_pose, object_to_link, relative_reach)
 
         # Motion plan to the prereach pose.
         plan_to_reach = run_smooth_motion_planning_to_pose(
@@ -286,7 +300,6 @@ def get_kinematic_plan_to_grasp_object(
         for robot_joints in grasp_to_postgrasp_plan:
             state = state.copy_with(robot_joints=robot_joints)
             plan.append(state)
-
         # Planning succeeded.
         return plan
 
