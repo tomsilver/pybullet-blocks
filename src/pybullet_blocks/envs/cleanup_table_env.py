@@ -44,7 +44,7 @@ class ObjaverseConfig:
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
-                "scale": 2.3e-6,
+                "scale": 2.2e-6,
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
@@ -235,7 +235,7 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
 
     toy_states: Collection[LabeledObjectState]
     bin_state: ObjectState
-    wiper_state: ObjectState
+    wiper_state: LabeledObjectState
     robot_state: RobotState
 
     @classmethod
@@ -286,7 +286,7 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
         """Build a state from a graph."""
         robot_state: RobotState | None = None
         bin_state: ObjectState | None = None
-        wiper_state: ObjectState | None = None
+        wiper_state: LabeledObjectState | None = None
         toy_states: list[LabeledObjectState] = []
 
         for node in obs.nodes:
@@ -298,9 +298,9 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
                 bin_vec = node[1 : 1 + ObjectState.get_dimension()]
                 bin_state = ObjectState.from_vec(bin_vec)
             elif np.isclose(node[0], 3):  # Wiper
-                wiper_vec = node[1 : 1 + ObjectState.get_dimension()]
-                wiper_state = ObjectState.from_vec(wiper_vec)
-            elif np.isclose(node[0], 1):  # Toy (LabeledObjectState)
+                wiper_vec = node[1 : 1 + LabeledObjectState.get_dimension()]
+                wiper_state = LabeledObjectState.from_vec(wiper_vec)
+            elif np.isclose(node[0], 1):  # Toy
                 vec = node[: LabeledObjectState.get_dimension()]
                 toy_state = LabeledObjectState.from_vec(vec)
                 toy_states.append(toy_state)
@@ -744,11 +744,8 @@ class CleanupTablePyBulletObjectsEnv(
                     if toy_index < len(self.toy_ids):
                         self.current_held_object_id = self.toy_ids[toy_index]
                         break
-            else:
-                if self.current_held_object_id == self.wiper_id:
-                    pass
-                else:
-                    self.current_held_object_id = None
+            if state.wiper_state.held:
+                self.current_held_object_id = self.wiper_id
         else:
             self.current_held_object_id = None
 
@@ -766,7 +763,8 @@ class CleanupTablePyBulletObjectsEnv(
         bin_state = ObjectState(bin_pose)
 
         wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
-        wiper_state = ObjectState(wiper_pose)
+        wiper_held = bool(self.current_held_object_id == self.wiper_id)
+        wiper_state = LabeledObjectState(wiper_pose, "W", wiper_held)
 
         robot_joints = self.robot.get_joint_positions()
         robot_state = RobotState(robot_joints, self.current_grasp_transform)

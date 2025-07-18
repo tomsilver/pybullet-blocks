@@ -824,12 +824,8 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                     if toy_state.held:
                         assert held_object_id == -1  # Only one toy can be held
                         held_object_id = toy_id
-            if (
-                sim_state.robot_state.grasp_transform is not None
-                and held_object_id == -1
-            ):
-                if self._sim.current_held_object_id == self._sim.wiper_id:
-                    held_object_id = self._sim.wiper_id
+            if held_object_id == -1 and sim_state.wiper_state.held:
+                held_object_id = self._sim.wiper_id
             attachments = {}
             if sim_state.robot_state.grasp_transform is not None:
                 assert held_object_id > -1
@@ -985,6 +981,7 @@ class ReachObjaverseSkill(PyBulletObjectsSkill):
             reach_generator=reach_generator(),
             reach_generator_iters=20,
             lifting_height=0.25,
+            lift_from_reach_pose=is_wiper,
         )
         return kinematic_plan
 
@@ -1084,20 +1081,11 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
             )
             grasp_orientation = self._robot_grasp_orientation
             grasp_pose = Pose(grasp_pos, grasp_orientation)
-            grasp_rotated = multiply_poses(
-                grasp_pose,
-                Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
-            )
             postgrasp_translation = None
 
             def grasp_generator() -> Iterator[Pose]:
                 while True:
-                    # Sample two grasp poses, one is the original grasp pose,
-                    # the other is rotated by 90 degrees around the z-axis.
-                    pose = self._sim.np_random.choice(
-                        [grasp_pose, grasp_rotated], p=[0.5, 0.5]
-                    )
-                    yield pose
+                    yield grasp_pose
 
         kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
