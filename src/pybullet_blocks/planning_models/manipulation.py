@@ -36,6 +36,7 @@ def get_kinematic_plan_to_reach_object(
     object_link_id: int | None = None,
     max_motion_planning_time: float = 1.0,
     max_motion_planning_candidates: int | None = None,
+    lift_from_reach_pose: bool = False,
     seed: int = 0,
 ) -> list[KinematicState] | None:
     """Make a plan to pick up the object from a surface.
@@ -69,13 +70,27 @@ def get_kinematic_plan_to_reach_object(
         initial_state.set_pybullet(robot)
         state = initial_state
         plan = [state]
+        object_pose = state.object_poses[object_id]
 
         # First lift the hand to above everything.
-        curr_ee_pose = robot.get_end_effector_pose()
-        lift_pose = Pose(
-            (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
-            curr_ee_pose.orientation,
-        )
+        if lift_from_reach_pose:
+            reach = multiply_poses(object_pose, object_to_link, relative_reach)
+            relative_pose = np.array(
+                [
+                    [1, 0, 0, 0.0],
+                    [0, 1, 0, 0.0],
+                    [0, 0, 1, -lifting_height],
+                    [0, 0, 0, 1],
+                ]
+            )
+            lift_pose = multiply_poses(reach, Pose.from_matrix(relative_pose))
+        else:
+            curr_ee_pose = robot.get_end_effector_pose()
+            lift_pose = Pose(
+                (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
+                curr_ee_pose.orientation,
+            )
+
         plan_to_lift = run_smooth_motion_planning_to_pose(
             lift_pose,
             robot,
@@ -96,8 +111,9 @@ def get_kinematic_plan_to_reach_object(
         state.set_pybullet(robot)
 
         # Calculate the reach in the world frame.
-        object_pose = state.object_poses[object_id]
-        reach = multiply_poses(object_pose, object_to_link, relative_reach)
+        if not lift_from_reach_pose:
+            object_pose = state.object_poses[object_id]
+            reach = multiply_poses(object_pose, object_to_link, relative_reach)
 
         # Motion plan to the prereach pose.
         plan_to_reach = run_smooth_motion_planning_to_pose(
@@ -286,7 +302,6 @@ def get_kinematic_plan_to_grasp_object(
         for robot_joints in grasp_to_postgrasp_plan:
             state = state.copy_with(robot_joints=robot_joints)
             plan.append(state)
-
         # Planning succeeded.
         return plan
 

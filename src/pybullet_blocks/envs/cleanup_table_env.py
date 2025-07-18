@@ -44,7 +44,7 @@ class ObjaverseConfig:
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
-                "scale": 2.3e-6,
+                "scale": 2.2e-6,
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
@@ -108,7 +108,7 @@ class BinDimensions:
 class CleanupTableSceneDescription(BaseSceneDescription):
     """Container for toy cleanup task hyperparameters."""
 
-    num_toys: int = 5
+    num_toys: int = 4
 
     # Bin parameters
     bin_position: tuple[float, float, float] = (0.5, 0.45, -0.275)
@@ -153,11 +153,17 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     robot_stand_pose: Pose = Pose((0.0, 0.0, -0.2))
     robot_stand_half_extents: tuple[float, float, float] = (0.2, 0.2, 0.125)
 
-    # Pick related settings
+    # Pick related settings -- toys
     z_dist_threshold_for_reach: float = 0.02
     z_dist_threshold_for_grasp: float = -0.03
     hand_ready_pick_z: float = 0.1
     xy_dist_threshold: float = 0.075
+
+    # Pick related settings -- wiper
+    wiper_horizontal_dist_threshold: float = 0.15
+    wiper_horizontal_dist_threshold_for_grasp: float = 0.02
+    wiper_vertical_dist_threshold_for_reach: float = 0.1
+    wiper_vertical_dist_threshold_for_grasp: float = 0.02
 
     @property
     def wall_position(self) -> tuple[float, float, float]:
@@ -229,6 +235,7 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
 
     toy_states: Collection[LabeledObjectState]
     bin_state: ObjectState
+    wiper_state: LabeledObjectState
     robot_state: RobotState
 
     @classmethod
@@ -248,9 +255,16 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
         bin_vec = self.bin_state.to_vec()
         bin_node[1 : 1 + len(bin_vec)] = bin_vec
 
+        # Add wiper node (type 3)
+        wiper_node = np.zeros(self.get_node_dimension(), dtype=np.float32)
+        wiper_node[0] = 3
+        wiper_vec = self.wiper_state.to_vec()
+        wiper_node[1 : 1 + len(wiper_vec)] = wiper_vec
+
         inner_vecs: list[NDArray] = [
             self.robot_state.to_vec(),
             bin_node,
+            wiper_node,
         ]
 
         for toy_state in self.toy_states:
@@ -272,6 +286,7 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
         """Build a state from a graph."""
         robot_state: RobotState | None = None
         bin_state: ObjectState | None = None
+        wiper_state: LabeledObjectState | None = None
         toy_states: list[LabeledObjectState] = []
 
         for node in obs.nodes:
@@ -282,17 +297,21 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
             elif np.isclose(node[0], 2):  # Bin
                 bin_vec = node[1 : 1 + ObjectState.get_dimension()]
                 bin_state = ObjectState.from_vec(bin_vec)
-            elif np.isclose(node[0], 1):  # Toy (LabeledObjectState)
+            elif np.isclose(node[0], 3):  # Wiper
+                wiper_vec = node[1 : 1 + LabeledObjectState.get_dimension()]
+                wiper_state = LabeledObjectState.from_vec(wiper_vec)
+            elif np.isclose(node[0], 1):  # Toy
                 vec = node[: LabeledObjectState.get_dimension()]
                 toy_state = LabeledObjectState.from_vec(vec)
                 toy_states.append(toy_state)
 
         assert robot_state is not None
         assert bin_state is not None
+        assert wiper_state is not None
 
         toy_states.sort(key=lambda x: x.label)
 
-        return cls(toy_states, bin_state, robot_state)
+        return cls(toy_states, bin_state, wiper_state, robot_state)
 
 
 class ObjaverseLoader:
@@ -711,6 +730,8 @@ class CleanupTablePyBulletObjectsEnv(
         # Bin pose is fixed, but we could update it if needed
         # set_pose(self.bin_id, state.bin_state.pose, self.physics_client_id)
 
+        set_pose(self.wiper_id, state.wiper_state.pose, self.physics_client_id)
+
         # Set robot state
         self.robot.set_joints(state.robot_state.joint_positions)
         self.current_grasp_transform = state.robot_state.grasp_transform
@@ -723,6 +744,8 @@ class CleanupTablePyBulletObjectsEnv(
                     if toy_index < len(self.toy_ids):
                         self.current_held_object_id = self.toy_ids[toy_index]
                         break
+            if state.wiper_state.held:
+                self.current_held_object_id = self.wiper_id
         else:
             self.current_held_object_id = None
 
@@ -739,10 +762,16 @@ class CleanupTablePyBulletObjectsEnv(
         bin_pose = get_pose(self.bin_id, self.physics_client_id)
         bin_state = ObjectState(bin_pose)
 
+        wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
+        wiper_held = bool(self.current_held_object_id == self.wiper_id)
+        wiper_state = LabeledObjectState(wiper_pose, "W", wiper_held)
+
         robot_joints = self.robot.get_joint_positions()
         robot_state = RobotState(robot_joints, self.current_grasp_transform)
 
-        return CleanupTablePyBulletObjectsState(toy_states, bin_state, robot_state)
+        return CleanupTablePyBulletObjectsState(
+            toy_states, bin_state, wiper_state, robot_state
+        )
 
     def get_collision_ids(self) -> set[int]:
         """Expose all pybullet IDs for collision checking."""
@@ -750,7 +779,6 @@ class CleanupTablePyBulletObjectsEnv(
             self.table_id,
             self.wall_id,
             self.floor_id,
-            self.wiper_id,
             self.left_shelf_id,
             self.right_shelf_id,
         } | self.bin_part_ids
@@ -758,6 +786,7 @@ class CleanupTablePyBulletObjectsEnv(
         # Add toys that aren't currently held
         if self.current_held_object_id is None:
             ids.update(self.toy_ids)
+            ids.add(self.wiper_id)
         else:
             # Don't include held object in collision checking
             ids.update(
@@ -765,6 +794,8 @@ class CleanupTablePyBulletObjectsEnv(
                 for toy_id in self.toy_ids
                 if toy_id != self.current_held_object_id
             )
+            if self.current_held_object_id != self.wiper_id:
+                ids.add(self.wiper_id)
 
         return ids
 
@@ -808,19 +839,21 @@ class CleanupTablePyBulletObjectsEnv(
 
     def _get_movable_object_ids(self) -> set[int]:
         """Get all PyBullet IDs for movable objects."""
-        return set(self.toy_ids)
+        movable_ids = set(self.toy_ids)
+        movable_ids.add(self.wiper_id)
+        return movable_ids
 
     def _get_terminated(self) -> bool:
         """Get whether the episode is terminated."""
         # Check if all toys are in the bin and gripper is empty
-        all_toys_in_bin = all(self.is_toy_in_bin(toy_id) for toy_id in self.toy_ids)
+        all_toys_in_bin = all(self.is_object_in_bin(toy_id) for toy_id in self.toy_ids)
         gripper_empty = self.current_grasp_transform is None
         return all_toys_in_bin and gripper_empty
 
     def _get_reward(self) -> float:
         """Get the current reward."""
         # NOTE: Simple reward - count how many toys are in the bin
-        toys_in_bin = sum(1 for toy_id in self.toy_ids if self.is_toy_in_bin(toy_id))
+        toys_in_bin = sum(1 for toy_id in self.toy_ids if self.is_object_in_bin(toy_id))
         max_reward = len(self.toy_ids)
 
         # Bonus for completing the task
@@ -829,40 +862,51 @@ class CleanupTablePyBulletObjectsEnv(
 
         return float(toys_in_bin)
 
-    def is_toy_in_bin(self, toy_id: int) -> bool:
-        """Check if a toy is inside the bin container."""
-        toy_pose = get_pose(toy_id, self.physics_client_id)
+    def is_object_in_bin(self, obj_id: int) -> bool:
+        """Check if an object is inside the bin container."""
+        obj_pose = get_pose(obj_id, self.physics_client_id)
         bin_pos = self.scene_description.bin_position
         bin_dim = self.scene_description.bin_dimensions
 
-        # Check if toy is within bin interior bounds
+        # Check if object is within bin interior bounds
         min_x = bin_pos[0] - bin_dim.interior_width / 2
         max_x = bin_pos[0] + bin_dim.interior_width / 2
         min_y = bin_pos[1] - bin_dim.interior_depth / 2
         max_y = bin_pos[1] + bin_dim.interior_depth / 2
         min_z = bin_pos[2] + bin_dim.interior_bottom_z_offset
 
-        toy_pos = toy_pose.position
+        obj_pos = obj_pose.position
 
         # Check bounds
-        in_x_bounds = min_x <= toy_pos[0] <= max_x
-        in_y_bounds = min_y <= toy_pos[1] <= max_y
-        above_bottom = toy_pos[2] >= min_z
+        in_x_bounds = min_x <= obj_pos[0] <= max_x
+        in_y_bounds = min_y <= obj_pos[1] <= max_y
+        above_bottom = obj_pos[2] >= min_z
 
         return in_x_bounds and in_y_bounds and above_bottom
 
     def is_object_ready_pick(self, object_id: int) -> bool:
         """Check if an object is ready to be picked up."""
-        # A toy is ready to pick if:
-        # 1. It's on the table
-        # 2. Hand is right above it with desired z offset and x-y distance
+        if object_id == self.wiper_id:
+            hand_pose = self.robot.get_end_effector_pose()
+            wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
+            horizontal_dist = np.sqrt(
+                (hand_pose.position[0] - wiper_pose.position[0]) ** 2
+                + (hand_pose.position[1] - wiper_pose.position[1]) ** 2
+            )
+            z_dist = abs(hand_pose.position[2] - wiper_pose.position[2])
+            return (
+                horizontal_dist
+                <= self.scene_description.wiper_horizontal_dist_threshold
+                and z_dist
+                <= self.scene_description.wiper_vertical_dist_threshold_for_reach
+            )
+
         is_on_table = check_body_collisions(
             object_id,
             self.table_id,
             self.physics_client_id,
             distance_threshold=1e-3,
         )
-
         hand_pose = self.robot.get_end_effector_pose()
         object_pose = get_pose(object_id, self.physics_client_id)
         label = self._toy_id_to_label[object_id]
@@ -874,17 +918,26 @@ class CleanupTablePyBulletObjectsEnv(
         )
         z_ok = z_dist <= self.scene_description.z_dist_threshold_for_reach
         xy_ok = xy_dist <= self.scene_description.xy_dist_threshold
-
         if object_id in self.toy_ids:
             return is_on_table and z_ok and xy_ok
-        if object_id == self.wiper_id:
-            return True
+
         return False
 
-    def is_robot_closely_above(self, object_id: int) -> bool:
-        """Check if the robot is closely above an object."""
+    def is_robot_close(self, object_id: int) -> bool:
+        """Check if the robot is close to an object."""
         object_pose = get_pose(object_id, self.physics_client_id)
         hand_pose = self.robot.get_end_effector_pose()
+        if object_id == self.wiper_id:
+            horizontal_dist = np.sqrt(
+                (hand_pose.position[0] - object_pose.position[0]) ** 2
+                + (hand_pose.position[1] - object_pose.position[1]) ** 2
+            )
+            z_dist = abs(hand_pose.position[2] - object_pose.position[2])
+            return (
+                horizontal_dist < self.scene_description.wiper_horizontal_dist_threshold
+                and z_dist
+                < self.scene_description.wiper_vertical_dist_threshold_for_reach
+            )
         z_dist = abs(hand_pose.position[2] - object_pose.position[2])
         xy_dist = np.sqrt(
             (hand_pose.position[0] - object_pose.position[0]) ** 2
@@ -982,18 +1035,32 @@ class CleanupTablePyBulletObjectsEnv(
 
     def _is_graspable(self, object_id: int) -> bool:
         """Check if object is graspable based on proximity to end effectors."""
+        if object_id == self.wiper_id:
+            wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
+            ee_pose = self.robot.get_end_effector_pose()
+            # need to use relative pose to check distance, not absolute
+            relative_pose = multiply_poses(wiper_pose.invert(), ee_pose)
+            # if the handle is between gripper along gripper x axis
+            x_dist = abs(relative_pose.position[0])
+            # if the handle is closely above gripper along gripper z axis
+            z_dist = abs(relative_pose.position[2])
+            return (
+                x_dist
+                <= self.scene_description.wiper_horizontal_dist_threshold_for_grasp
+                and z_dist
+                <= self.scene_description.wiper_vertical_dist_threshold_for_grasp
+            )
+
         object_top_z = self.get_top_z_at_object_center(
             object_id, self._toy_id_to_label[object_id]
         )
         object_position = get_pose(object_id, self.physics_client_id).position
         end_effector_position = self.robot.get_end_effector_pose().position
-
         xy_dist = np.sqrt(
             (end_effector_position[0] - object_position[0]) ** 2
             + (end_effector_position[1] - object_position[1]) ** 2
         )
         z_dist = end_effector_position[2] - object_top_z
-
         return (
             xy_dist <= self.scene_description.xy_dist_threshold
             and z_dist <= self.scene_description.z_dist_threshold_for_grasp
@@ -1083,13 +1150,10 @@ class CleanupTablePyBulletObjectsEnv(
         scene_description = self.scene_description
         assert isinstance(scene_description, CleanupTableSceneDescription)
 
-        if self._np_random is None:
-            self._np_random, _ = seeding.np_random(0)
-
         for toy_id in self.toy_ids:
             placed = False
             for _ in range(100):
-                position = self._np_random.uniform(
+                position = self.np_random.uniform(
                     scene_description.toy_init_position_lower,
                     scene_description.toy_init_position_upper,
                 )
@@ -1123,16 +1187,17 @@ class CleanupTablePyBulletObjectsEnv(
         for _ in range(50):
             p.stepSimulation(physicsClientId=self.physics_client_id)
 
-    def get_collision_check_ids(self, toy_id: int) -> set[int]:
+    def get_collision_check_ids(self, object_id: int) -> set[int]:
         """Get IDs to check for collisions during free pose sampling."""
         collision_ids = {
             self.table_id,
             self.wall_id,
-            self.wiper_id,
             self.left_shelf_id,
             self.right_shelf_id,
         } | self.bin_part_ids
-        collision_ids.update(t_id for t_id in self.toy_ids if t_id != toy_id)
+        collision_ids.update(t_id for t_id in self.toy_ids if t_id != object_id)
+        if object_id != self.wiper_id:
+            collision_ids.add(self.wiper_id)
         return collision_ids
 
     def extract_relevant_object_features(self, obs, relevant_object_names):

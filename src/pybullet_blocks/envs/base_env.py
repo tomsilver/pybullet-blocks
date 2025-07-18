@@ -341,7 +341,8 @@ class PyBulletObjectsEnv(gym.Env, Generic[ObsType, ActType]):
 
         # Create the PyBullet client.
         if use_gui:
-            self.physics_client_id = create_gui_connection(camera_yaw=180)
+            camera_info = self.scene_description.get_camera_kwargs(0)
+            self.physics_client_id = create_gui_connection(**camera_info)
         else:
             self.physics_client_id = p.connect(p.DIRECT)
 
