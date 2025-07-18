@@ -16,19 +16,11 @@ from pybullet_helpers.manipulation import (
     iter_between_poses,
     smoothly_follow_end_effector_path,
 )
-from pybullet_helpers.ikfast.utils import (
-    ikfast_closest_inverse_kinematics,
-    ikfast_inverse_kinematics,
-)
 from pybullet_helpers.motion_planning import (
     run_smooth_motion_planning_to_pose,
 )
 from pybullet_helpers.robots.single_arm import (
     FingeredSingleArmPyBulletRobot,
-)
-from pybullet_blocks.envs.cleanup_table_env import (
-    CleanupTablePyBulletObjectsEnv,
-    CleanupTableSceneDescription,
 )
 from pybullet_helpers.states import KinematicState
 
@@ -89,9 +81,7 @@ def get_kinematic_plan_to_reach_object(
                 [0, 0, 0, 1],
             ]
         )
-        lift_pose = multiply_poses(
-            reach, Pose.from_matrix(relative_pose)
-        )
+        lift_pose = multiply_poses(reach, Pose.from_matrix(relative_pose))
         plan_to_lift = run_smooth_motion_planning_to_pose(
             lift_pose,
             robot,

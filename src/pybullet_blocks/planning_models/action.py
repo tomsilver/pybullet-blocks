@@ -1048,10 +1048,10 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
         object_pose = state.object_poses[object_id]
         if is_wiper:
             postgrasp_translation = Pose(
-                (wiper_lifting_dx, \
-                 wiper_lifting_dy, 
-                 wiper_lifting_dz), p.getQuaternionFromEuler([0, 0, 0])
+                (wiper_lifting_dx, wiper_lifting_dy, wiper_lifting_dz),
+                p.getQuaternionFromEuler([0, 0, 0]),
             )
+
             def grasp_generator() -> Iterator[Pose]:
                 while True:
                     relative_x = self._sim.np_random.uniform(-0.01, -0.01)
@@ -1070,6 +1070,7 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
                         object_pose, Pose.from_matrix(relative_pose)
                     )
                     yield grasping_pose
+
         else:
             label = obj.name
             object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
@@ -1088,6 +1089,7 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
                 Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
             )
             postgrasp_translation = None
+
             def grasp_generator() -> Iterator[Pose]:
                 while True:
                     # Sample two grasp poses, one is the original grasp pose,

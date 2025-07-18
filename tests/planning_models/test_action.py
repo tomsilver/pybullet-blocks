@@ -231,12 +231,13 @@ def test_cleanup_table_pybullet_objects_action():
     )
     sim = CleanupTablePyBulletObjectsEnv(
         scene_description=scene_description,
-        use_gui=True,
+        use_gui=False,
         seed=seed,
     )
 
-    from gymnasium.wrappers import RecordVideo
-    env = RecordVideo(env, "videos/cleanup-table-ttmp-test")
+    # from gymnasium.wrappers import RecordVideo
+
+    # env = RecordVideo(env, "videos/cleanup-table-ttmp-test")
 
     max_motion_planning_time = 0.1
 

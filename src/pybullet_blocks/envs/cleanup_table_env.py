@@ -1041,9 +1041,7 @@ class CleanupTablePyBulletObjectsEnv(
             wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
             ee_pose = self.robot.get_end_effector_pose()
             # need to use relative pose to check distance, not absolute
-            relative_pose = multiply_poses(
-                wiper_pose.invert(), ee_pose
-            )
+            relative_pose = multiply_poses(wiper_pose.invert(), ee_pose)
             # if the handle is between gripper along gripper x axis
             x_dist = abs(relative_pose.position[0])
             # if the handle is closely above gripper along gripper z axis
