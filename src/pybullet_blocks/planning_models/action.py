@@ -1041,9 +1041,9 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
         collision_ids = set(state.object_poses)
 
         is_wiper = obj.name == "wiper"
-        wiper_lifting_dx = 0.2
+        wiper_lifting_dx = 0.15
         wiper_lifting_dy = 0.0
-        wiper_lifting_dz = 0.4
+        wiper_lifting_dz = 0.5
 
         object_pose = state.object_poses[object_id]
         if is_wiper:

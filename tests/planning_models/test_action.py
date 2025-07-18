@@ -235,9 +235,9 @@ def test_cleanup_table_pybullet_objects_action():
         seed=seed,
     )
 
-    # from gymnasium.wrappers import RecordVideo
+    from gymnasium.wrappers import RecordVideo
 
-    # env = RecordVideo(env, "videos/cleanup-table-ttmp-test")
+    env = RecordVideo(env, "videos/cleanup-table-ttmp-test")
 
     max_motion_planning_time = 0.1
 
