@@ -889,8 +889,8 @@ class ReachSkill(PyBulletObjectsSkill):
 
         def reach_generator() -> Iterator[Pose]:
             while True:
-                relative_x = 0.0
-                relative_y = 0.0
+                relative_x = self._sim.np_random.uniform(-0.01, 0.01)
+                relative_y = self._sim.np_random.uniform(-0.01, 0.01)
                 relative_z = self._sim.np_random.uniform(0.005, 0.015)
                 grasp_1 = Pose((0, 0, 0), self._robot_grasp_orientation)
                 relative_pose = Pose(
@@ -1395,14 +1395,16 @@ class DropSkill(PyBulletObjectsSkill):
     ) -> list[KinematicState] | None:
         _, obj, surface = objects
         object_id = self._object_to_pybullet_id(obj)
-        bin_id = self._object_to_pybullet_id(surface)
+        surface_id = self._object_to_pybullet_id(surface)
         collision_ids = set(state.object_poses) - {object_id}
-        lifting_height = 0.4
+        lifting_height = 0.3
 
         state.set_pybullet(self._sim.robot)
         plan = [state]
 
-        bin_pose = state.object_poses[bin_id]
+        surface_pose = state.object_poses[surface_id]
+        drop_position = self._get_drop_position_for_surface(surface, surface_pose)
+
         object_pose = state.object_poses[object_id]
         curr_ee_pose = self._sim.robot.get_end_effector_pose()
         drop_height = object_pose.position[2] + lifting_height / 2
@@ -1415,12 +1417,12 @@ class DropSkill(PyBulletObjectsSkill):
             ),
             # 2. Move to above the bin at safe height
             Pose(
-                (bin_pose.position[0], bin_pose.position[1], lifting_height),
+                (drop_position[0], drop_position[1], lifting_height),
                 curr_ee_pose.orientation,
             ),
             # 3. Lower to drop position
             Pose(
-                (bin_pose.position[0], bin_pose.position[1], drop_height),
+                (drop_position[0], drop_position[1], drop_height),
                 curr_ee_pose.orientation,
             ),
         ]
@@ -1456,6 +1458,39 @@ class DropSkill(PyBulletObjectsSkill):
             plan.append(state)
 
         return plan
+
+    def _get_drop_position_for_surface(
+        self, surface: Object, surface_pose: Pose
+    ) -> tuple[float, float, float]:
+        """Get the drop position based on the surface type."""
+        assert isinstance(self._sim, CleanupTablePyBulletObjectsEnv)
+
+        if surface.name in ["bin", "table"]:
+            return surface_pose.position
+        assert surface.name == "floor", "No support for other surfaces for DropSkill"
+
+        table_pose = self._sim.scene_description.table_pose
+        bin_position = self._sim.scene_description.bin_position
+
+        # Vector from table to bin
+        table_to_bin = (
+            bin_position[0] - table_pose.position[0],
+            bin_position[1] - table_pose.position[1],
+        )
+
+        # Get the opposite direction
+        magnitude = np.sqrt(table_to_bin[0] ** 2 + table_to_bin[1] ** 2)
+        opposite_direction = (
+            -table_to_bin[0] / magnitude,
+            -table_to_bin[1] / magnitude,
+        )
+
+        table_half_extents = self._sim.scene_description.table_half_extents
+        distance_from_table = max(table_half_extents[0], table_half_extents[1]) + 0.2
+        drop_x = table_pose.position[0] + opposite_direction[0] * distance_from_table
+        drop_y = table_pose.position[1] + opposite_direction[1] * distance_from_table
+
+        return (drop_x, drop_y, 0.0)
 
 
 SKILLS = {

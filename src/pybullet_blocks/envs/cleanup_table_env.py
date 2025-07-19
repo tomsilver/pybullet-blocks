@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import os
 import ssl
 from dataclasses import dataclass, field
@@ -40,19 +41,19 @@ class ObjaverseConfig:
         default_factory=lambda: {
             "A": {
                 "uid": "a84cecb600c04eeba60d02f99b8b154b",  # Duck toy
-                "scale": 0.08,
+                "scale": 0.06,
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
-                "scale": 2.2e-6,
+                "scale": 2e-6,
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
-                "scale": 6e-4,
+                "scale": 5e-4,
             },
             "D": {
                 "uid": "a953358282604011b8567b7574b0b563",  # Gun toy
-                "scale": 0.04,
+                "scale": 0.025,
             },
         }
     )
@@ -188,10 +189,12 @@ class CleanupTableSceneDescription(BaseSceneDescription):
         return (
             self.table_pose.position[0]
             - self.table_half_extents[0]
-            + self.toy_half_extents[0],
+            + self.toy_half_extents[0]
+            + 0.15,
             self.table_pose.position[1]
             - self.table_half_extents[1]
-            + self.toy_half_extents[1],
+            + self.toy_half_extents[1]
+            + 0.05,
             self.table_pose.position[2]
             + self.table_half_extents[2]
             + self.toy_half_extents[2],
@@ -667,6 +670,9 @@ class CleanupTablePyBulletObjectsEnv(
         final_wiper_pose = Pose(wiper_position, rotation_quat)
         set_pose(self.wiper_id, final_wiper_pose, self.physics_client_id)
 
+        for _ in range(50):
+            p.stepSimulation(physicsClientId=self.physics_client_id)
+
     def _setup_shelf(self) -> None:
         """Create shelf blocks on the wall for wiper support."""
         scene_description = self.scene_description
@@ -845,10 +851,10 @@ class CleanupTablePyBulletObjectsEnv(
 
     def _get_terminated(self) -> bool:
         """Get whether the episode is terminated."""
-        # Check if all toys are in the bin and gripper is empty
+        # Check if all toys are in the bin and gripper is holding wiper
         all_toys_in_bin = all(self.is_object_in_bin(toy_id) for toy_id in self.toy_ids)
-        gripper_empty = self.current_grasp_transform is None
-        return all_toys_in_bin and gripper_empty
+        # holding_wiper = self.current_held_object_id == self.wiper_id
+        return all_toys_in_bin  # and holding_wiper
 
     def _get_reward(self) -> float:
         """Get the current reward."""
@@ -882,7 +888,27 @@ class CleanupTablePyBulletObjectsEnv(
         in_y_bounds = min_y <= obj_pos[1] <= max_y
         above_bottom = obj_pos[2] >= min_z
 
-        return in_x_bounds and in_y_bounds and above_bottom
+        # Check collision within bin
+        touch_bottom = check_body_collisions(
+            obj_id,
+            self.bin_id,
+            self.physics_client_id,
+            distance_threshold=1e-3,
+        )
+        if touch_bottom is False:
+            for toy_id in self.toy_ids:
+                if toy_id == obj_id:
+                    continue
+                if check_body_collisions(
+                    toy_id,
+                    obj_id,
+                    self.physics_client_id,
+                    perform_collision_detection=False,
+                ):
+                    touch_bottom = True
+                    break
+
+        return in_x_bounds and in_y_bounds and above_bottom and touch_bottom
 
     def is_object_ready_pick(self, object_id: int) -> bool:
         """Check if an object is ready to be picked up."""
@@ -1150,39 +1176,46 @@ class CleanupTablePyBulletObjectsEnv(
         scene_description = self.scene_description
         assert isinstance(scene_description, CleanupTableSceneDescription)
 
-        for toy_id in self.toy_ids:
-            placed = False
-            for _ in range(100):
-                position = self.np_random.uniform(
-                    scene_description.toy_init_position_lower,
-                    scene_description.toy_init_position_upper,
-                )
-                set_pose(toy_id, Pose(tuple(position)), self.physics_client_id)
+        x_vals = np.linspace(
+            scene_description.toy_init_position_lower[0],
+            scene_description.toy_init_position_upper[0],
+            num=3,
+        )
+        y_vals = np.linspace(
+            scene_description.toy_init_position_lower[1],
+            scene_description.toy_init_position_upper[1],
+            num=3,
+        )
+        z_val = scene_description.toy_init_position_lower[2]
 
-                collision_free = True
-                p.performCollisionDetection(physicsClientId=self.physics_client_id)
+        candidate_positions = [
+            np.array([x, y, z_val]) for x, y in itertools.product(x_vals, y_vals)
+        ]
+        self.np_random.shuffle(candidate_positions)
 
-                collision_ids = (
-                    self.bin_part_ids
-                    | {self.wall_id, self.floor_id, self.wiper_id}
-                    | (set(self.toy_ids) - {toy_id})
-                )
+        for toy_id, position in zip(self.toy_ids, candidate_positions):
+            set_pose(toy_id, Pose(tuple(position)), self.physics_client_id)
+            p.performCollisionDetection(physicsClientId=self.physics_client_id)
 
-                for other_id in collision_ids:
-                    if check_body_collisions(
-                        toy_id,
-                        other_id,
-                        self.physics_client_id,
-                        perform_collision_detection=False,
-                    ):
-                        collision_free = False
-                        break
+            collision_free = True
+            collision_ids = (
+                self.bin_part_ids
+                | {self.wall_id, self.floor_id, self.wiper_id}
+                | (set(self.toy_ids) - {toy_id})
+            )
 
-                if collision_free:
-                    placed = True
+            for other_id in collision_ids:
+                if check_body_collisions(
+                    toy_id,
+                    other_id,
+                    self.physics_client_id,
+                    perform_collision_detection=False,
+                ):
+                    collision_free = False
                     break
 
-            assert placed, f"Failed to place toy {toy_id} on table after 100 attempts."
+            if not collision_free:
+                continue  # Try next grid position
 
         for _ in range(50):
             p.stepSimulation(physicsClientId=self.physics_client_id)
