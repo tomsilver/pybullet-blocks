@@ -45,7 +45,7 @@ class ObjaverseConfig:
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
-                "scale": 2e-6,
+                "scale": 2.2e-6,
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy

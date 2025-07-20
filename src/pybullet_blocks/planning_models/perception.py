@@ -878,6 +878,7 @@ class CleanupTablePyBulletObjectsPerceiver(
         goal.add(GroundAtom(Holding, [self._robot, self._wiper]))
         # return goal
         return {GroundAtom(On, [toy, self._bin]) for toy in self._toys}
+        # return {GroundAtom(Holding, [self._robot, self._wiper])}
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = set(self._toys) | {self._wiper}
