@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import os
 import ssl
 from dataclasses import dataclass, field
@@ -18,7 +19,6 @@ from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, get_pose, multiply_poses, set_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.utils import create_pybullet_block
-from tomsgeoms2d.structs import Circle, Geom2D, Rectangle
 
 from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
@@ -41,7 +41,7 @@ class ObjaverseConfig:
         default_factory=lambda: {
             "A": {
                 "uid": "a84cecb600c04eeba60d02f99b8b154b",  # Duck toy
-                "scale": 0.08,
+                "scale": 0.06,
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
@@ -49,11 +49,11 @@ class ObjaverseConfig:
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
-                "scale": 4e-4,
+                "scale": 5e-4,
             },
             "D": {
-                "uid": "a953358282604011b8567b7574b0b563",  # Gun toy
-                "scale": 0.03,
+                "uid": "36c5a7d36196442fb03e61d218a4a08e",  # Apple toy
+                "scale": 0.02,
             },
         }
     )
@@ -113,7 +113,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     # Toy parameters
     toy_rgba: tuple[float, float, float, float] = (0.8, 0.2, 0.2, 1.0)
     toy_half_extents: tuple[float, float, float] = (0.1, 0.1, 0.1)
-    init_dist: float = 0.05
+    init_dist: float = 0.08
     toy_mass: float = 0.3
     toy_friction: float = 0.9
 
@@ -149,7 +149,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
 
     # Pick related settings -- toys
     z_dist_threshold_for_reach: float = 0.02
-    z_dist_threshold_for_grasp: float = -0.03
+    z_dist_threshold_for_grasp: float = -0.025
     hand_ready_pick_z: float = 0.1
     xy_dist_threshold: float = 0.075
 
@@ -160,7 +160,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     wiper_vertical_dist_threshold_for_grasp: float = 0.06
 
     # above everything threshold
-    above_everything_z_threshold: float = 0.3
+    above_everything_z_threshold: float = 0.1
 
     @property
     def wall_position(self) -> tuple[float, float, float]:
@@ -793,7 +793,30 @@ class CleanupTablePyBulletObjectsEnv(
         in_y_bounds = min_y <= obj_pos[1] <= max_y
         above_bottom = obj_pos[2] >= min_z
 
-        return in_x_bounds and in_y_bounds and above_bottom
+        # Check collision within bin
+        touch_bottom = False
+        for bin_part in self.bin_part_ids:
+            if check_body_collisions(
+                obj_id,
+                bin_part,
+                self.physics_client_id,
+                distance_threshold=1e-3,
+            ):
+                touch_bottom = True
+        if not touch_bottom:
+            for obj2_id in self.toy_ids + [self.wiper_id]:
+                if obj2_id == obj_id:
+                    continue
+                if check_body_collisions(
+                    obj2_id,
+                    obj_id,
+                    self.physics_client_id,
+                    perform_collision_detection=False,
+                ):
+                    touch_bottom = True
+                    break
+
+        return in_x_bounds and in_y_bounds and above_bottom and touch_bottom
 
     def is_object_ready_pick(self, object_id: int) -> bool:
         """Check if an object is ready to be picked up."""
@@ -1000,7 +1023,7 @@ class CleanupTablePyBulletObjectsEnv(
         if seed is not None:
             self._np_random, seed = seeding.np_random(seed)
         _ = super().reset(seed=seed)
-        self._place_toys_on_table()
+        self._place_objs_on_table()
         return self.get_state().to_observation(), self._get_info()
 
     def reset_from_state(
@@ -1069,72 +1092,48 @@ class CleanupTablePyBulletObjectsEnv(
         angle_diff = 2 * np.arccos(dot_product)
         return angle_diff > 0.1  # ~5 degrees
 
-    def _place_toys_on_table(self) -> None:
+    def _place_objs_on_table(self) -> None:
         """Place toys randomly on the table."""
         scene_description = self.scene_description
         assert isinstance(scene_description, CleanupTableSceneDescription)
         target_object_ids = self.toy_ids + [self.wiper_id]
-        toy_geom_set: set[Geom2D] = set()
 
-        for toy_id in target_object_ids:
-            placed = False
-            for _ in range(200):
-                if toy_id in self.toy_ids:
-                    position = self.np_random.uniform(
-                        scene_description.toy_init_position_lower,
-                        scene_description.toy_init_position_upper,
-                    )
-                else:
-                    # assume wiper is at a fixed position
-                    position = np.array(scene_description.wiper_init_position)
-                set_pose(toy_id, Pose(tuple(position)), self.physics_client_id)
-
-                collision_free = True
-                geom_far = True
-                p.performCollisionDetection(physicsClientId=self.physics_client_id)
-
-                collision_ids = (
-                    self.bin_part_ids
-                    | {self.wall_id, self.floor_id, self.wiper_id}
-                    | set(self.toy_ids)
-                ) - {toy_id}
-
-                for other_id in collision_ids:
-                    if check_body_collisions(
-                        toy_id,
-                        other_id,
-                        self.physics_client_id,
-                        perform_collision_detection=False,
-                    ):
-                        collision_free = False
-                        break
-
-                tentative_geom: Geom2D
-                if toy_id in self.toy_ids:
-                    tentative_geom = Circle(
-                        position[0],
-                        position[1],
-                        scene_description.init_dist,
-                    )
-                else:
-                    tentative_geom = Rectangle.from_center(
-                        position[0],
-                        position[1],
-                        scene_description.wiper_half_extents[0],
-                        scene_description.wiper_half_extents[1],
-                        0.0,  # No rotation for wiper
-                    )
-                for other_geom in toy_geom_set:
-                    if other_geom.intersects(tentative_geom):
-                        geom_far = False
-                        break
-
-                if collision_free and geom_far:
-                    toy_geom_set.add(tentative_geom)
-                    placed = True
+        x_vals = np.linspace(
+            scene_description.toy_init_position_lower[0],
+            scene_description.toy_init_position_upper[0],
+            num=3,
+        )
+        y_vals = np.linspace(
+            scene_description.toy_init_position_lower[1],
+            scene_description.toy_init_position_upper[1],
+            num=3,
+        )
+        z_val = scene_description.toy_init_position_lower[2]
+        candidate_positions = [
+            np.array([x, y, z_val]) for x, y in itertools.product(x_vals, y_vals)
+        ]
+        self.np_random.shuffle(candidate_positions)
+        for obj_id, position in zip(target_object_ids, candidate_positions):
+            if obj_id == self.wiper_id:
+                position = np.array(scene_description.wiper_init_position)
+            set_pose(obj_id, Pose(tuple(position)), self.physics_client_id)
+            collision_free = True
+            collision_ids = (
+                self.bin_part_ids
+                | {self.wall_id, self.floor_id, self.wiper_id}
+                | set(self.toy_ids)
+            ) - {obj_id}
+            for other_id in collision_ids:
+                if check_body_collisions(
+                    obj_id,
+                    other_id,
+                    self.physics_client_id,
+                    perform_collision_detection=False,
+                ):
+                    collision_free = False
                     break
-
-            assert placed, f"Failed to place toy {toy_id} on table after 100 attempts."
+            if not collision_free:
+                continue  # Try next grid position
 
         for _ in range(50):
             p.stepSimulation(physicsClientId=self.physics_client_id)

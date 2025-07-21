@@ -960,7 +960,7 @@ class ReachObjaverseSkill(PyBulletObjectsSkill):
         def reach_generator() -> Iterator[Pose]:
             while True:
                 relative_x = 0.0
-                relative_y = 0.0
+                relative_y = self._sim.np_random.uniform(-0.05, 0.05)
                 relative_z_1 = object_top_z - object_center[2]
                 relative_z_2 = object_top_z - object_center[2] + 0.02
                 relative_z = self._sim.np_random.uniform(relative_z_1, relative_z_2)
@@ -1057,9 +1057,12 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
         grasp_orientation = self._robot_grasp_orientation
         grasp_pose = Pose(grasp_pos, grasp_orientation)
 
-        def grasp_generator() -> Iterator[Pose]:
-            while True:
-                yield grasp_pose
+        # add one more possible relative grasp (orientation)
+        grasp_rotated = multiply_poses(
+            grasp_pose,
+            Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
+        )
+        grasp_generator = iter([grasp_pose, grasp_rotated])
 
         kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
@@ -1067,7 +1070,7 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
             object_id,
             surface_id,
             collision_ids,
-            grasp_generator=grasp_generator(),
+            grasp_generator=grasp_generator,
             grasp_generator_iters=5,
             grasp_along_object_axis=False,
             grasp_relative_to_object=False,
@@ -1369,7 +1372,7 @@ class LiftSkill(PyBulletObjectsSkill):
         _, obj = objects
         object_id = self._object_to_pybullet_id(obj)
         collision_ids = set(state.object_poses) - {object_id}
-        lifting_height = 0.4
+        lifting_height = 0.2
 
         state.set_pybullet(self._sim.robot)
         plan = [state]
@@ -1377,7 +1380,6 @@ class LiftSkill(PyBulletObjectsSkill):
         curr_ee_pose = self._sim.robot.get_end_effector_pose()
 
         waypoints = [
-            # 1. Lift up to a height above everything
             Pose(
                 (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
                 curr_ee_pose.orientation,
