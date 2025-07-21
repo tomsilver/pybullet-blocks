@@ -54,6 +54,8 @@ NotHolding = Predicate("NotHolding", [robot_type, object_type])
 GripperEmpty = Predicate("GripperEmpty", [robot_type])
 IsTarget = Predicate("IsTarget", [object_type])
 NotIsTarget = Predicate("NotIsTarget", [object_type])
+AboveEverything = Predicate("AboveEverything", [object_type])
+NotAboveEverything = Predicate("NotAboveEverything", [object_type])
 # for drawer
 IsTargetObject = Predicate("IsTargetObject", [object_type])
 NotIsTargetObject = Predicate("NotIsTargetObject", [object_type])
@@ -107,6 +109,8 @@ DRAWER_PREDICATES = {
 }
 
 CLEANUP_PREDICATES = {
+    AboveEverything,
+    NotAboveEverything,
     IsMovable,
     NotIsMovable,
     ReadyPick,
@@ -861,6 +865,8 @@ class CleanupTablePyBulletObjectsPerceiver(
             self._interpret_ReadyPick,
             self._interpret_NotReadyPick,
             self._interpret_HandReadyPick,
+            self._interpret_AboveEverything,
+            self._interpret_NotAboveEverything,
         ]
 
     def _get_objects(self) -> set[Object]:
@@ -874,7 +880,11 @@ class CleanupTablePyBulletObjectsPerceiver(
     def _get_goal(
         self, obs: gym.spaces.GraphInstance, info: dict[str, Any]
     ) -> set[GroundAtom]:
-        return {GroundAtom(On, [toy, self._bin]) for toy in self._toys}
+        # Toys on the bin
+        atoms = {GroundAtom(On, [toy, self._bin]) for toy in self._toys}
+        # Wiper on the bin
+        atoms.add(GroundAtom(On, [self._wiper, self._bin]))
+        return atoms
         # return {GroundAtom(Holding, [self._robot, self._wiper])}
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
@@ -901,6 +911,25 @@ class CleanupTablePyBulletObjectsPerceiver(
         return {
             GroundAtom(NotReadyPick, [self._robot, obj]) for obj in not_ready_objects
         }
+
+    def _interpret_AboveEverything(self) -> set[GroundAtom]:
+        """Determine if the robot is ready to pick an object."""
+        above_everything_atoms = set()
+        for toy in self._toys:
+            toy_id = self._pybullet_ids[toy]
+            if self._sim.is_object_above_everything(toy_id):
+                above_everything_atoms.add(GroundAtom(AboveEverything, [toy]))
+        wiper_id = self._pybullet_ids[self._wiper]
+        if self._sim.is_object_above_everything(wiper_id):
+            above_everything_atoms.add(GroundAtom(AboveEverything, [self._wiper]))
+        return above_everything_atoms
+
+    def _interpret_NotAboveEverything(self) -> set[GroundAtom]:
+        above_everything_atoms = self._interpret_AboveEverything()
+        above_e_objects = {a.objects[0] for a in above_everything_atoms}
+        all_movable = set(self._toys) | {self._wiper}
+        not_above_e_objects = all_movable - above_e_objects
+        return {GroundAtom(NotAboveEverything, [obj]) for obj in not_above_e_objects}
 
     def _interpret_HandReadyPick(self) -> set[GroundAtom]:
         """Determine if the robot is ready to reach an object."""

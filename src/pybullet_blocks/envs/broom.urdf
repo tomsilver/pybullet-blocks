@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<robot name="broom">
+    <!-- Main Horizontal segment as sweeper -->
+    <link name="base_link">
+        <visual>
+            <geometry>
+                <box size="0.03 0.3 0.03"/>
+            </geometry>
+            <material name="gray">
+                <color rgba="0.65 0.50 0.39 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.03 0.3 0.03"/>
+            </geometry>
+        </collision>
+        <contact>
+            <lateral_friction value="10.0"/>
+            <rolling_friction value="10.0"/>
+            <spinning_friction value="10.0"/>
+        </contact>
+        <inertial>
+            <!-- Corrected inertial origin to be within the link's geometry -->
+            <mass value="0.1"/>
+            <inertia ixx="0.0001" iyy="0.0001" izz="0.0001" ixy="0" ixz="0" iyz="0"/>
+        </inertial>
+    </link>
+
+    <!-- Vertical segment as handle -->
+    <link name="base_link---short">
+        <visual>
+            <geometry>
+                <box size="0.03 0.1 0.05"/>
+            </geometry>
+            <origin rpy="0 0 0" xyz="0 0 0.025"/>
+            <material name="gray">
+                <color rgba="0.25 0.25 0.28 1.0"/>
+            </material>
+        </visual>
+        <collision>
+            <geometry>
+                <box size="0.03 0.05 0.05"/>
+            </geometry>
+            <origin rpy="0 0 0" xyz="0 0 0.025"/>
+        </collision>
+        <contact>
+            <lateral_friction value="10.0"/>
+            <rolling_friction value="10.0"/>
+            <spinning_friction value="10.0"/>
+        </contact>
+        <inertial>
+            <!-- Corrected inertial origin to be within the link's geometry -->
+            <mass value="0.06"/>
+            <inertia ixx="0.00005" iyy="0.00005" izz="0.00005" ixy="0" ixz="0" iyz="0"/>
+        </inertial>
+    </link>
+
+    <!-- Joint connecting long_segment to short_segment -->
+    <joint name="hook_joint" type="fixed">
+        <parent link="base_link"/>
+        <child link="base_link---short"/>
+        <origin xyz="0.0 0.0 0.015" rpy="0 0 0.0"/>
+    </joint>
+</robot>

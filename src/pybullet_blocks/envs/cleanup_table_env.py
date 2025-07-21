@@ -18,6 +18,7 @@ from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, get_pose, multiply_poses, set_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.utils import create_pybullet_block
+from tomsgeoms2d.structs import Circle, Geom2D, Rectangle
 
 from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
@@ -48,18 +49,12 @@ class ObjaverseConfig:
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
-                "scale": 6e-4,
+                "scale": 4e-4,
             },
             "D": {
                 "uid": "a953358282604011b8567b7574b0b563",  # Gun toy
-                "scale": 0.04,
+                "scale": 0.03,
             },
-        }
-    )
-    wiper_config: dict[str, Any] = field(
-        default_factory=lambda: {
-            "uid": "fd007cd7f27648678e263c137f30a6c8",
-            "scale": 0.5,
         }
     )
 
@@ -118,6 +113,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     # Toy parameters
     toy_rgba: tuple[float, float, float, float] = (0.8, 0.2, 0.2, 1.0)
     toy_half_extents: tuple[float, float, float] = (0.1, 0.1, 0.1)
+    init_dist: float = 0.05
     toy_mass: float = 0.3
     toy_friction: float = 0.9
 
@@ -132,13 +128,11 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     floor_position: tuple[float, float, float] = (0.25, 0.0, -0.375)
 
     # Wiper parameters
-    wiper_mass: float = 0.5
-    wiper_offset_from_wall: float = -0.075
-
-    # Shelf parameters
-    shelf_rgba: tuple[float, float, float, float] = (0.7, 0.7, 0.7, 1.0)
-    shelf_half_extents: tuple[float, float, float] = (0.03, 0.02, 0.05)
-    shelf_offset_from_wiper: float = 0.1  # How far below wiper top
+    wiper_urdf_path: str = field(
+        default_factory=lambda: os.path.join(os.path.dirname(__file__), "broom.urdf")
+    )
+    wiper_half_extents: tuple[float, float, float] = (0.015, 0.15, 0.04)
+    wiper_init_position: tuple[float, float, float] = (0.35, -0.1, 0.0)
 
     # Objaverse configuration
     objaverse_config: ObjaverseConfig = field(default_factory=ObjaverseConfig)
@@ -160,10 +154,13 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     xy_dist_threshold: float = 0.075
 
     # Pick related settings -- wiper
-    wiper_horizontal_dist_threshold: float = 0.15
-    wiper_horizontal_dist_threshold_for_grasp: float = 0.02
+    wiper_horizontal_dist_threshold: float = 0.1
+    wiper_horizontal_dist_threshold_for_grasp: float = 0.01
     wiper_vertical_dist_threshold_for_reach: float = 0.1
-    wiper_vertical_dist_threshold_for_grasp: float = 0.02
+    wiper_vertical_dist_threshold_for_grasp: float = 0.06
+
+    # above everything threshold
+    above_everything_z_threshold: float = 0.3
 
     @property
     def wall_position(self) -> tuple[float, float, float]:
@@ -186,9 +183,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     def toy_init_position_lower(self) -> tuple[float, float, float]:
         """Lower bounds for toy position on table."""
         return (
-            self.table_pose.position[0]
-            - self.table_half_extents[0]
-            + self.toy_half_extents[0],
+            self.wiper_init_position[0] + self.toy_half_extents[0],
             self.table_pose.position[1]
             - self.table_half_extents[1]
             + self.toy_half_extents[1],
@@ -211,22 +206,6 @@ class CleanupTableSceneDescription(BaseSceneDescription):
             + self.table_half_extents[2]
             + self.toy_half_extents[2],
         )
-
-    def get_wiper_position(
-        self, wiper_half_extents: tuple[float, float, float]
-    ) -> tuple[float, float, float]:
-        """Calculate wiper position based on its half extents."""
-        wall_pos = self.wall_position
-        wiper_x = (
-            wall_pos[0]
-            + self.wall_half_extents[0]
-            + wiper_half_extents[0]
-            + self.wiper_offset_from_wall
-        )
-        wiper_y = wall_pos[1] - self.robot_stand_half_extents[1] - wiper_half_extents[1]
-        floor_top_z = self.floor_position[2] + self.floor_half_extents[2]
-        wiper_z = floor_top_z + wiper_half_extents[2]
-        return (wiper_x, wiper_y, wiper_z)
 
 
 @dataclass(frozen=True)
@@ -336,7 +315,6 @@ class ObjaverseLoader:
     def _download_all_objects(self) -> None:
         """Download all objects defined in configuration."""
         uids = [obj_config["uid"] for obj_config in self.config.toy_objects.values()]
-        uids.append(self.config.wiper_config["uid"])
         downloaded_objects = objaverse.load_objects(
             uids=uids,
             download_processes=1,
@@ -371,18 +349,13 @@ class ObjaverseLoader:
         is_wiper: bool = False,
     ) -> int:
         """Load toy objects or wiper object from Objaverse."""
-        if not is_wiper:
-            assert label is not None, "Label must be provided for toy objects."
-            obj_config = self.config.toy_objects.get(label)
-            assert obj_config is not None, f"Object config for label {label} not found."
-            uid = obj_config["uid"]
-            if scale is None:
-                scale = obj_config.get("scale", self.config.default_scale)
-        else:
-            wiper_config = self.config.wiper_config
-            uid = wiper_config["uid"]
-            if scale is None:
-                scale = wiper_config.get("scale", self.config.default_scale)
+        assert not is_wiper
+        assert label is not None, "Label must be provided for toy objects."
+        obj_config = self.config.toy_objects.get(label)
+        assert obj_config is not None, f"Object config for label {label} not found."
+        uid = obj_config["uid"]
+        if scale is None:
+            scale = obj_config.get("scale", self.config.default_scale)
 
         if mass is None:
             mass = self.config.default_mass
@@ -458,8 +431,6 @@ class CleanupTablePyBulletObjectsEnv(
 
         self.objaverse_loader = ObjaverseLoader(scene_description.objaverse_config)
         self._setup_wiper()
-
-        self._setup_shelf()
 
         # Create toys using Objaverse objects or labeled objects
         self.toy_ids = []
@@ -649,70 +620,11 @@ class CleanupTablePyBulletObjectsEnv(
         assert isinstance(scene_description, CleanupTableSceneDescription)
 
         # Load wiper at origin first
-        self.wiper_id = self.objaverse_loader.load_object(
-            self.physics_client_id,
-            mass=scene_description.wiper_mass,
-            is_wiper=True,
-        )
-        rotation_quat = p.getQuaternionFromEuler([np.pi / 2 - 0.1, 0.5, np.pi + 0.2])
-        temp_pose = Pose((0, 0, 0), rotation_quat)
-        set_pose(self.wiper_id, temp_pose, self.physics_client_id)
-
-        # Get actual half-extents and calculate proper position
-        aabb_min, aabb_max = p.getAABB(
-            self.wiper_id, physicsClientId=self.physics_client_id
-        )
-        wiper_half_extents = tuple((aabb_max[i] - aabb_min[i]) / 2 for i in range(3))
-        wiper_position = scene_description.get_wiper_position(wiper_half_extents)
-        final_wiper_pose = Pose(wiper_position, rotation_quat)
-        set_pose(self.wiper_id, final_wiper_pose, self.physics_client_id)
-
-    def _setup_shelf(self) -> None:
-        """Create shelf blocks on the wall for wiper support."""
-        scene_description = self.scene_description
-        assert isinstance(scene_description, CleanupTableSceneDescription)
-
-        wiper_aabb_min, wiper_aabb_max = p.getAABB(
-            self.wiper_id, physicsClientId=self.physics_client_id
-        )
-        shelf_z = wiper_aabb_max[2] - scene_description.shelf_offset_from_wiper
-
-        wall_pos = scene_description.wall_position
-        left_shelf_x = (
-            wall_pos[0]
-            + scene_description.wall_half_extents[0]
-            + scene_description.shelf_half_extents[0]
-        )
-        left_shelf_y = (
-            wiper_aabb_min[1] - scene_description.shelf_half_extents[1] + 0.05
-        )
-        right_shelf_x = left_shelf_x
-        right_shelf_y = (
-            wiper_aabb_max[1] + scene_description.shelf_half_extents[1] - 0.15
-        )
-
-        self.left_shelf_id = create_pybullet_block(
-            scene_description.shelf_rgba,
-            half_extents=scene_description.shelf_half_extents,
-            physics_client_id=self.physics_client_id,
-            mass=0.0,
-        )
-        set_pose(
-            self.left_shelf_id,
-            Pose((left_shelf_x, left_shelf_y, shelf_z)),
-            self.physics_client_id,
-        )
-
-        self.right_shelf_id = create_pybullet_block(
-            scene_description.shelf_rgba,
-            half_extents=scene_description.shelf_half_extents,
-            physics_client_id=self.physics_client_id,
-            mass=0.0,
-        )
-        set_pose(
-            self.right_shelf_id,
-            Pose((right_shelf_x, right_shelf_y, shelf_z)),
-            self.physics_client_id,
+        self.wiper_id = p.loadURDF(
+            scene_description.wiper_urdf_path,
+            basePosition=scene_description.bin_position,
+            useFixedBase=False,
+            physicsClientId=self.physics_client_id,
         )
 
     def set_state(self, state: PyBulletObjectsState) -> None:
@@ -779,8 +691,6 @@ class CleanupTablePyBulletObjectsEnv(
             self.table_id,
             self.wall_id,
             self.floor_id,
-            self.left_shelf_id,
-            self.right_shelf_id,
         } | self.bin_part_ids
 
         # Add toys that aren't currently held
@@ -833,8 +743,6 @@ class CleanupTablePyBulletObjectsEnv(
                     bin_dim.bin_wall_thickness / 2,
                     bin_dim.bin_size[2] / 2,
                 )
-            if object_id in [self.left_shelf_id, self.right_shelf_id]:
-                return self.scene_description.shelf_half_extents
         return self.scene_description.table_half_extents
 
     def _get_movable_object_ids(self) -> set[int]:
@@ -846,7 +754,10 @@ class CleanupTablePyBulletObjectsEnv(
     def _get_terminated(self) -> bool:
         """Get whether the episode is terminated."""
         # Check if all toys are in the bin and gripper is empty
-        all_toys_in_bin = all(self.is_object_in_bin(toy_id) for toy_id in self.toy_ids)
+        target_objects = self._get_movable_object_ids()
+        all_toys_in_bin = all(
+            self.is_object_in_bin(obj_id) for obj_id in target_objects
+        )
         gripper_empty = self.current_grasp_transform is None
         return all_toys_in_bin and gripper_empty
 
@@ -894,11 +805,18 @@ class CleanupTablePyBulletObjectsEnv(
                 + (hand_pose.position[1] - wiper_pose.position[1]) ** 2
             )
             z_dist = abs(hand_pose.position[2] - wiper_pose.position[2])
+            is_on_table = check_body_collisions(
+                object_id,
+                self.table_id,
+                self.physics_client_id,
+                distance_threshold=1e-3,
+            )
             return (
                 horizontal_dist
                 <= self.scene_description.wiper_horizontal_dist_threshold
                 and z_dist
                 <= self.scene_description.wiper_vertical_dist_threshold_for_reach
+                and is_on_table
             )
 
         is_on_table = check_body_collisions(
@@ -945,6 +863,12 @@ class CleanupTablePyBulletObjectsEnv(
         )
         xy_ok = xy_dist < self.scene_description.xy_dist_threshold
         return z_dist < self.scene_description.hand_ready_pick_z and xy_ok
+
+    def is_object_above_everything(self, object_id: int) -> bool:
+        """Check if the object is above everything."""
+        object_pose = get_pose(object_id, self.physics_client_id)
+        obj_z = object_pose.position[2]
+        return obj_z > self.scene_description.above_everything_z_threshold
 
     def step(  # type: ignore[override]
         self,
@@ -1149,24 +1073,31 @@ class CleanupTablePyBulletObjectsEnv(
         """Place toys randomly on the table."""
         scene_description = self.scene_description
         assert isinstance(scene_description, CleanupTableSceneDescription)
+        target_object_ids = self.toy_ids + [self.wiper_id]
+        toy_geom_set: set[Geom2D] = set()
 
-        for toy_id in self.toy_ids:
+        for toy_id in target_object_ids:
             placed = False
-            for _ in range(100):
-                position = self.np_random.uniform(
-                    scene_description.toy_init_position_lower,
-                    scene_description.toy_init_position_upper,
-                )
+            for _ in range(200):
+                if toy_id in self.toy_ids:
+                    position = self.np_random.uniform(
+                        scene_description.toy_init_position_lower,
+                        scene_description.toy_init_position_upper,
+                    )
+                else:
+                    # assume wiper is at a fixed position
+                    position = np.array(scene_description.wiper_init_position)
                 set_pose(toy_id, Pose(tuple(position)), self.physics_client_id)
 
                 collision_free = True
+                geom_far = True
                 p.performCollisionDetection(physicsClientId=self.physics_client_id)
 
                 collision_ids = (
                     self.bin_part_ids
                     | {self.wall_id, self.floor_id, self.wiper_id}
-                    | (set(self.toy_ids) - {toy_id})
-                )
+                    | set(self.toy_ids)
+                ) - {toy_id}
 
                 for other_id in collision_ids:
                     if check_body_collisions(
@@ -1178,7 +1109,28 @@ class CleanupTablePyBulletObjectsEnv(
                         collision_free = False
                         break
 
-                if collision_free:
+                tentative_geom: Geom2D
+                if toy_id in self.toy_ids:
+                    tentative_geom = Circle(
+                        position[0],
+                        position[1],
+                        scene_description.init_dist,
+                    )
+                else:
+                    tentative_geom = Rectangle.from_center(
+                        position[0],
+                        position[1],
+                        scene_description.wiper_half_extents[0],
+                        scene_description.wiper_half_extents[1],
+                        0.0,  # No rotation for wiper
+                    )
+                for other_geom in toy_geom_set:
+                    if other_geom.intersects(tentative_geom):
+                        geom_far = False
+                        break
+
+                if collision_free and geom_far:
+                    toy_geom_set.add(tentative_geom)
                     placed = True
                     break
 
@@ -1192,8 +1144,6 @@ class CleanupTablePyBulletObjectsEnv(
         collision_ids = {
             self.table_id,
             self.wall_id,
-            self.left_shelf_id,
-            self.right_shelf_id,
         } | self.bin_part_ids
         collision_ids.update(t_id for t_id in self.toy_ids if t_id != object_id)
         if object_id != self.wiper_id:
