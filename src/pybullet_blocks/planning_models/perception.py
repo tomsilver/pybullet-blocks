@@ -839,7 +839,6 @@ class CleanupTablePyBulletObjectsPerceiver(
         assert isinstance(self._sim, CleanupTablePyBulletObjectsEnv)
         self._bin = Object("bin", object_type)
         self._wiper = Object("wiper", object_type)
-        self._floor = Object("floor", object_type)
         self._toys = [
             Object(chr(65 + i), object_type)
             for i in range(self._sim.scene_description.num_toys)
@@ -850,7 +849,6 @@ class CleanupTablePyBulletObjectsPerceiver(
             self._table: self._sim.table_id,
             self._bin: self._sim.bin_id,
             self._wiper: self._sim.wiper_id,
-            self._floor: self._sim.floor_id,
         }
         for i, toy in enumerate(self._toys):
             self._pybullet_ids[toy] = self._sim.toy_ids[i]
@@ -870,9 +868,7 @@ class CleanupTablePyBulletObjectsPerceiver(
         ]
 
     def _get_objects(self) -> set[Object]:
-        return {self._robot, self._table, self._bin, self._wiper, self._floor} | set(
-            self._toys
-        )
+        return {self._robot, self._table, self._bin, self._wiper} | set(self._toys)
 
     def _set_sim_from_obs(self, obs: gym.spaces.GraphInstance) -> None:
         self._sim.set_state(CleanupTablePyBulletObjectsState.from_observation(obs))
@@ -880,12 +876,9 @@ class CleanupTablePyBulletObjectsPerceiver(
     def _get_goal(
         self, obs: gym.spaces.GraphInstance, info: dict[str, Any]
     ) -> set[GroundAtom]:
-        # Toys on the bin
         atoms = {GroundAtom(On, [toy, self._bin]) for toy in self._toys}
-        # Wiper on the bin
         atoms.add(GroundAtom(On, [self._wiper, self._bin]))
         return atoms
-        # return {GroundAtom(Holding, [self._robot, self._wiper])}
 
     def _interpret_IsMovable(self) -> set[GroundAtom]:
         movable_objects = set(self._toys) | {self._wiper}
@@ -955,23 +948,21 @@ class CleanupTablePyBulletObjectsPerceiver(
                 obj_pose.position[1],
                 obj_pose.position[2] - obj_half_extents[2],
             )
-            for surface in [self._table, self._floor]:
-                surface_id = self._pybullet_ids[surface]
-                surface_pose = get_pose(surface_id, self._sim.physics_client_id)
-                surface_half_extents = self._sim.get_object_half_extents(surface_id)
-                surface_top_center = (
-                    surface_pose.position[0],
-                    surface_pose.position[1],
-                    surface_pose.position[2] + surface_half_extents[2],
-                )
-                vertical_distance = abs(obj_bottom_center[2] - surface_top_center[2])
-                if vertical_distance < 0.08:
-                    if check_body_collisions(
-                        obj_id,
-                        surface_id,
-                        self._sim.physics_client_id,
-                        distance_threshold=1e-3,
-                    ):
-                        on_relations.add((obj, surface))
-                        break
+            surface_id = self._pybullet_ids[self._table]
+            surface_pose = get_pose(surface_id, self._sim.physics_client_id)
+            surface_half_extents = self._sim.get_object_half_extents(surface_id)
+            surface_top_center = (
+                surface_pose.position[0],
+                surface_pose.position[1],
+                surface_pose.position[2] + surface_half_extents[2],
+            )
+            vertical_distance = abs(obj_bottom_center[2] - surface_top_center[2])
+            if vertical_distance < 0.08:
+                if check_body_collisions(
+                    obj_id,
+                    surface_id,
+                    self._sim.physics_client_id,
+                    distance_threshold=1e-3,
+                ):
+                    on_relations.add((obj, self._table))
         return on_relations

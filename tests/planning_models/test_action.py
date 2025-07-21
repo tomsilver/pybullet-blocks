@@ -226,7 +226,7 @@ def test_cleanup_table_pybullet_objects_action():
 
     env = CleanupTablePyBulletObjectsEnv(
         scene_description=scene_description,
-        use_gui=False,
+        use_gui=True,
         seed=seed,
     )
     sim = CleanupTablePyBulletObjectsEnv(

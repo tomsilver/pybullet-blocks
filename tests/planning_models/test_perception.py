@@ -128,10 +128,10 @@ def test_cleanup_table_pybullet_perceiver():
     perceiver = CleanupTablePyBulletObjectsPerceiver(sim)
     obs, info = env.reset(seed=124)
     objects, atoms, goal = perceiver.reset(obs, info)
-    assert len(objects) == 9
+    assert len(objects) == 8
     assert (
         str(sorted(atoms))
-        == "[(GripperEmpty robot), (HandReadyPick robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable D), (IsMovable wiper), (NotAboveEverything A), (NotAboveEverything B), (NotAboveEverything C), (NotAboveEverything D), (NotAboveEverything wiper), (NotHolding robot A), (NotHolding robot B), (NotHolding robot C), (NotHolding robot D), (NotHolding robot bin), (NotHolding robot floor), (NotHolding robot table), (NotHolding robot wiper), (NotIsMovable bin), (NotIsMovable floor), (NotIsMovable table), (NotReadyPick robot A), (NotReadyPick robot B), (NotReadyPick robot C), (NotReadyPick robot D), (NotReadyPick robot wiper), (On A table), (On B table), (On C table), (On D table), (On wiper table)]"  # pylint: disable=line-too-long
+        == "[(GripperEmpty robot), (HandReadyPick robot), (IsMovable A), (IsMovable B), (IsMovable C), (IsMovable D), (IsMovable wiper), (NotAboveEverything A), (NotAboveEverything B), (NotAboveEverything C), (NotAboveEverything D), (NotAboveEverything wiper), (NotHolding robot A), (NotHolding robot B), (NotHolding robot C), (NotHolding robot D), (NotHolding robot bin), (NotHolding robot table), (NotHolding robot wiper), (NotIsMovable bin), (NotIsMovable table), (NotReadyPick robot A), (NotReadyPick robot B), (NotReadyPick robot C), (NotReadyPick robot D), (NotReadyPick robot wiper), (On A table), (On B table), (On C table), (On D table), (On wiper table)]"  # pylint: disable=line-too-long
     )
     assert (
         str(sorted(goal))
