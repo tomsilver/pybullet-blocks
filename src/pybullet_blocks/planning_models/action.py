@@ -1442,12 +1442,10 @@ class DropSkill(PyBulletObjectsSkill):
         drop_height = lifting_height / 2
 
         waypoints = [
-            # 1. Move to above the bin at safe height
             Pose(
                 (bin_pose.position[0], bin_pose.position[1], lifting_height),
                 curr_ee_pose.orientation,
             ),
-            # 3. Lower to drop position
             Pose(
                 (bin_pose.position[0], bin_pose.position[1], drop_height),
                 curr_ee_pose.orientation,
