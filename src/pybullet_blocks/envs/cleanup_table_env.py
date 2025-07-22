@@ -159,7 +159,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     wiper_vertical_dist_threshold_for_reach: float = 0.1
     wiper_vertical_dist_threshold_for_grasp: float = 0.06
 
-    # above everything threshold
+    # Above everything threshold
     above_everything_z_threshold: float = 0.1
 
     @property
@@ -811,7 +811,7 @@ class CleanupTablePyBulletObjectsEnv(
                     obj2_id,
                     obj_id,
                     self.physics_client_id,
-                    perform_collision_detection=False,
+                    distance_threshold=1e-3,
                 ):
                     touch_bottom = True
                     break
@@ -1093,7 +1093,7 @@ class CleanupTablePyBulletObjectsEnv(
         return angle_diff > 0.1  # ~5 degrees
 
     def _place_objs_on_table(self) -> None:
-        """Place toys randomly on the table."""
+        """Place toys and wiper on the table using a grid-based approach."""
         scene_description = self.scene_description
         assert isinstance(scene_description, CleanupTableSceneDescription)
         target_object_ids = self.toy_ids + [self.wiper_id]
@@ -1113,11 +1113,11 @@ class CleanupTablePyBulletObjectsEnv(
             np.array([x, y, z_val]) for x, y in itertools.product(x_vals, y_vals)
         ]
         self.np_random.shuffle(candidate_positions)
+
         for obj_id, position in zip(target_object_ids, candidate_positions):
             if obj_id == self.wiper_id:
                 position = np.array(scene_description.wiper_init_position)
             set_pose(obj_id, Pose(tuple(position)), self.physics_client_id)
-            collision_free = True
             collision_ids = (
                 self.bin_part_ids
                 | {self.wall_id, self.floor_id, self.wiper_id}
@@ -1130,10 +1130,7 @@ class CleanupTablePyBulletObjectsEnv(
                     self.physics_client_id,
                     perform_collision_detection=False,
                 ):
-                    collision_free = False
                     break
-            if not collision_free:
-                continue  # Try next grid position
 
         for _ in range(50):
             p.stepSimulation(physicsClientId=self.physics_client_id)
@@ -1157,13 +1154,16 @@ class CleanupTablePyBulletObjectsEnv(
         nodes = obs.nodes
         robot_node = None
         bin_node = None
+        wiper_node = None
         toy_nodes = {}
 
         for node in nodes:
             if np.isclose(node[0], 0):  # Robot
                 robot_node = node[1 : RobotState.get_dimension()]
             elif np.isclose(node[0], 2):  # Bin
-                bin_node = node[1 : ObjectState.get_dimension()]
+                bin_node = node[1 : ObjectState.get_dimension() + 1]
+            elif np.isclose(node[0], 3):  # Wiper
+                wiper_node = node[1 : LabeledObjectState.get_dimension() + 1]
             elif np.isclose(node[0], 1):  # Toy
                 labeled_object_dim = LabeledObjectState.get_dimension()
                 label_idx = labeled_object_dim - 2
@@ -1177,6 +1177,8 @@ class CleanupTablePyBulletObjectsEnv(
             features.extend(robot_node)
         if "bin" in relevant_object_names and bin_node is not None:
             features.extend(bin_node)
+        if "wiper" in relevant_object_names and wiper_node is not None:
+            features.extend(wiper_node)
         for obj_name in sorted(relevant_object_names):
             if obj_name in toy_nodes:
                 features.extend(toy_nodes[obj_name])

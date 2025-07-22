@@ -962,7 +962,7 @@ class ReachObjaverseSkill(PyBulletObjectsSkill):
                 relative_x = 0.0
                 relative_y = self._sim.np_random.uniform(-0.05, 0.05)
                 relative_z_1 = object_top_z - object_center[2]
-                relative_z_2 = object_top_z - object_center[2] + 0.02
+                relative_z_2 = object_top_z - object_center[2] + 0.05
                 relative_z = self._sim.np_random.uniform(relative_z_1, relative_z_2)
                 grasp = Pose((0, 0, 0), self._robot_grasp_orientation)
                 orientation = grasp.orientation
