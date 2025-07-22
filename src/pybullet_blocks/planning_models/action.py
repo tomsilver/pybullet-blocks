@@ -54,6 +54,7 @@ from pybullet_blocks.planning_models.manipulation import (
     get_kinematic_plan_to_reach_object,
 )
 from pybullet_blocks.planning_models.perception import (
+    AboveEverything,
     BackClear,
     BlockingBack,
     BlockingFront,
@@ -69,6 +70,7 @@ from pybullet_blocks.planning_models.perception import (
     IsTarget,
     IsTargetObject,
     LeftClear,
+    NotAboveEverything,
     NothingOn,
     NotHolding,
     NotIsMovable,
@@ -187,6 +189,18 @@ GraspObjaverseOperator = LiftedOperator(
         LiftedAtom(ReadyPick, [Robot, Obj]),
         LiftedAtom(On, [Obj, Surface]),
     },
+)
+
+LiftObjaverseOperator = LiftedOperator(
+    "LiftObjaverse",
+    [Robot, Obj],
+    preconditions={
+        LiftedAtom(IsMovable, [Obj]),
+        LiftedAtom(Holding, [Robot, Obj]),
+        LiftedAtom(NotAboveEverything, [Obj]),
+    },
+    add_effects={LiftedAtom(AboveEverything, [Obj])},
+    delete_effects={LiftedAtom(NotAboveEverything, [Obj])},
 )
 
 Obj_blo = Variable("?objblo", object_type)
@@ -520,16 +534,19 @@ DropOperator = LiftedOperator(
     "Drop",
     [Robot, Obj, Surface],
     preconditions={
+        LiftedAtom(AboveEverything, [Obj]),
         LiftedAtom(Holding, [Robot, Obj]),
         LiftedAtom(NotIsMovable, [Surface]),
     },
     add_effects={
+        LiftedAtom(NotAboveEverything, [Obj]),
         LiftedAtom(On, [Obj, Surface]),
         LiftedAtom(GripperEmpty, [Robot]),
         LiftedAtom(NotHolding, [Robot, Obj]),
         LiftedAtom(HandReadyPick, [Robot]),
     },
     delete_effects={
+        LiftedAtom(AboveEverything, [Obj]),
         LiftedAtom(Holding, [Robot, Obj]),
     },
 )
@@ -559,6 +576,7 @@ OPERATORS_DRAWER = {
 OPERATORS_CLEANUP = {
     ReachObjaverseOperator,
     GraspObjaverseOperator,
+    LiftObjaverseOperator,
     DropOperator,
 }
 
@@ -672,8 +690,6 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 return self._sim.bin_id
             if obj.name == "wiper":
                 return self._sim.wiper_id
-            if obj.name == "floor":
-                return self._sim.floor_id
             assert len(obj.name) == 1
             toy_index = ord(obj.name) - 65
             assert toy_index < len(self._sim.toy_ids)
@@ -813,7 +829,6 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
                 self._sim.table_id: self._sim.scene_description.table_pose,
                 self._sim.bin_id: sim_state.bin_state.pose,
                 self._sim.wiper_id: sim_state.wiper_state.pose,
-                self._sim.floor_id: Pose(self._sim.scene_description.floor_position),
             }
             held_object_id = -1
             for toy_state in sim_state.toy_states:
@@ -932,46 +947,27 @@ class ReachObjaverseSkill(PyBulletObjectsSkill):
 
         is_wiper = obj.name == "wiper"
         if is_wiper:
-
-            def reach_generator() -> Iterator[Pose]:
-                while True:
-                    relative_x = self._sim.np_random.uniform(-0.01, -0.01)
-                    # Approach from front since wiper is leaning against the wall
-                    relative_y = -0.15
-                    relative_z = self._sim.np_random.uniform(0.05, 0.1)
-
-                    # Keep the robot's original orientation for reaching
-                    # Will be adjusted later in grasping
-                    # we want robot-z = -wiper-y; robot-x = wiper-z; robot-y = -wiper-x
-                    relative_pose = np.array(
-                        [
-                            [0, 1, 0, relative_x],
-                            [1, 0, 0, relative_y],
-                            [0, 0, -1, relative_z],
-                            [0, 0, 0, 1],
-                        ]
-                    )
-                    relative_reach = Pose.from_matrix(relative_pose)
-                    yield relative_reach
+            object_center = state.object_poses[object_id].position
+            object_top_z = (
+                object_center[2] + 2 * self._sim.scene_description.wiper_half_extents[2]
+            )
 
         else:
             label = obj.name
             object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
             object_center = state.object_poses[object_id].position
 
-            def reach_generator() -> Iterator[Pose]:
-                while True:
-                    relative_x = 0.0
-                    relative_y = 0.0
-                    relative_z_1 = object_top_z - object_center[2]
-                    relative_z_2 = object_top_z - object_center[2] + 0.02
-                    relative_z = self._sim.np_random.uniform(relative_z_1, relative_z_2)
-                    grasp = Pose((0, 0, 0), self._robot_grasp_orientation)
-                    orientation = grasp.orientation
-                    relative_reach = Pose(
-                        (relative_x, relative_y, relative_z), orientation
-                    )
-                    yield relative_reach
+        def reach_generator() -> Iterator[Pose]:
+            while True:
+                relative_x = 0.0
+                relative_y = self._sim.np_random.uniform(-0.05, 0.05)
+                relative_z_1 = object_top_z - object_center[2]
+                relative_z_2 = object_top_z - object_center[2] + 0.05
+                relative_z = self._sim.np_random.uniform(relative_z_1, relative_z_2)
+                grasp = Pose((0, 0, 0), self._robot_grasp_orientation)
+                orientation = grasp.orientation
+                relative_reach = Pose((relative_x, relative_y, relative_z), orientation)
+                yield relative_reach
 
         kinematic_plan = get_kinematic_plan_to_reach_object(
             state,
@@ -1038,54 +1034,35 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
         collision_ids = set(state.object_poses)
 
         is_wiper = obj.name == "wiper"
-        wiper_lifting_dx = 0.15
-        wiper_lifting_dy = 0.0
-        wiper_lifting_dz = 0.5
-
         object_pose = state.object_poses[object_id]
         if is_wiper:
-            postgrasp_translation = Pose(
-                (wiper_lifting_dx, wiper_lifting_dy, wiper_lifting_dz),
-                p.getQuaternionFromEuler([0, 0, 0]),
+            object_pose = state.object_poses[object_id]
+            object_top_z = (
+                object_pose.position[2]
+                + 2 * self._sim.scene_description.wiper_half_extents[2]
             )
-
-            def grasp_generator() -> Iterator[Pose]:
-                while True:
-                    relative_x = self._sim.np_random.uniform(-0.01, -0.01)
-                    # Approach from front since wiper is leaning against the wall
-                    relative_y = -0.15
-                    relative_z = self._sim.np_random.uniform(0.0, 0.02)
-                    relative_pose = np.array(
-                        [
-                            [0, 1, 0, relative_x],
-                            [1, 0, 0, relative_y],
-                            [0, 0, -1, relative_z],
-                            [0, 0, 0, 1],
-                        ]
-                    )
-                    grasping_pose = multiply_poses(
-                        object_pose, Pose.from_matrix(relative_pose)
-                    )
-                    yield grasping_pose
 
         else:
             label = obj.name
             object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
             object_pose = state.object_poses[object_id]
-            grasp_pos = (
-                object_pose.position[0],
-                object_pose.position[1],
-                object_top_z
-                + self._sim.scene_description.z_dist_threshold_for_grasp
-                - 0.005,
-            )
-            grasp_orientation = self._robot_grasp_orientation
-            grasp_pose = Pose(grasp_pos, grasp_orientation)
-            postgrasp_translation = None
 
-            def grasp_generator() -> Iterator[Pose]:
-                while True:
-                    yield grasp_pose
+        grasp_pos = (
+            object_pose.position[0],
+            object_pose.position[1],
+            object_top_z
+            + self._sim.scene_description.z_dist_threshold_for_grasp
+            - 0.005,
+        )
+        grasp_orientation = self._robot_grasp_orientation
+        grasp_pose = Pose(grasp_pos, grasp_orientation)
+
+        # add one more possible relative grasp (orientation)
+        grasp_rotated = multiply_poses(
+            grasp_pose,
+            Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
+        )
+        grasp_generator = iter([grasp_pose, grasp_rotated])
 
         kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
@@ -1093,8 +1070,7 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
             object_id,
             surface_id,
             collision_ids,
-            postgrasp_translation=postgrasp_translation,
-            grasp_generator=grasp_generator(),
+            grasp_generator=grasp_generator,
             grasp_generator_iters=5,
             grasp_along_object_axis=False,
             grasp_relative_to_object=False,
@@ -1384,6 +1360,65 @@ class StackSkill(PlaceSkill):
         return StackOperator
 
 
+class LiftSkill(PyBulletObjectsSkill):
+    """Skill for lifting objects before dropping."""
+
+    def _get_lifted_operator(self) -> LiftedOperator:
+        return LiftObjaverseOperator
+
+    def _get_kinematic_plan_given_objects(
+        self, objects: Sequence[Object], state: KinematicState
+    ) -> list[KinematicState] | None:
+        _, obj = objects
+        object_id = self._object_to_pybullet_id(obj)
+        collision_ids = set(state.object_poses) - {object_id}
+        lifting_height = 0.2
+
+        state.set_pybullet(self._sim.robot)
+        plan = [state]
+
+        curr_ee_pose = self._sim.robot.get_end_effector_pose()
+
+        waypoints = [
+            Pose(
+                (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
+                curr_ee_pose.orientation,
+            )
+        ]
+        for target_pos in waypoints:
+            state.set_pybullet(self._sim.robot)
+            motion_plan = run_smooth_motion_planning_to_pose(
+                target_pos,
+                self._sim.robot,
+                collision_ids=collision_ids,
+                end_effector_frame_to_plan_frame=Pose.identity(),
+                seed=self._seed,
+                max_time=self._max_motion_planning_time,
+                held_object=object_id,
+                base_link_to_held_obj=state.attachments[object_id],
+            )
+            if motion_plan is None:
+                return None
+            for robot_joints in motion_plan:
+                state = state.copy_with(robot_joints=robot_joints)
+                plan.append(state)
+
+        # Release object
+        state.set_pybullet(self._sim.robot)
+        state = KinematicState.from_pybullet(
+            self._sim.robot,
+            set(state.object_poses),
+            attached_object_ids=set(state.attachments) - {object_id},
+        )
+        plan.append(state)
+
+        # Add several "wait" states with the same robot joints to let physics settle
+        for _ in range(10):
+            plan.append(state)
+
+        return plan
+
+
 class DropSkill(PyBulletObjectsSkill):
     """Skill for dropping objects into bin."""
 
@@ -1403,22 +1438,14 @@ class DropSkill(PyBulletObjectsSkill):
         plan = [state]
 
         bin_pose = state.object_poses[bin_id]
-        object_pose = state.object_poses[object_id]
         curr_ee_pose = self._sim.robot.get_end_effector_pose()
-        drop_height = object_pose.position[2] + lifting_height / 2
+        drop_height = lifting_height / 2
 
         waypoints = [
-            # 1. Lift up to a height above everything
-            Pose(
-                (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
-                curr_ee_pose.orientation,
-            ),
-            # 2. Move to above the bin at safe height
             Pose(
                 (bin_pose.position[0], bin_pose.position[1], lifting_height),
                 curr_ee_pose.orientation,
             ),
-            # 3. Lower to drop position
             Pose(
                 (bin_pose.position[0], bin_pose.position[1], drop_height),
                 curr_ee_pose.orientation,
@@ -1484,4 +1511,5 @@ SKILLS_CLEANUP = {
     ReachObjaverseSkill,
     GraspObjaverseSkill,
     DropSkill,
+    LiftSkill,
 }
