@@ -1041,7 +1041,7 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
                 object_pose.position[2]
                 + 2 * self._sim.scene_description.wiper_half_extents[2]
             )
-            offset = -0.02
+            offset = -0.05
         else:
             label = obj.name
             object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
@@ -1480,7 +1480,7 @@ class DropSkill(PyBulletObjectsSkill):
         plan.append(state)
 
         # Add several "wait" states with the same robot joints to let physics settle
-        for _ in range(10):
+        for _ in range(100):
             plan.append(state)
 
         return plan

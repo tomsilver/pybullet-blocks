@@ -131,7 +131,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
         default_factory=lambda: os.path.join(os.path.dirname(__file__), "broom.urdf")
     )
     wiper_half_extents: tuple[float, float, float] = (0.15, 0.03, 0.05)
-    wiper_init_position: tuple[float, float, float] = (0.5, -0.15, 0.0)
+    wiper_init_position: tuple[float, float, float] = (0.5, -0.12, 0.0)
 
     # Objaverse configuration
     objaverse_config: ObjaverseConfig = field(default_factory=ObjaverseConfig)
@@ -156,7 +156,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     wiper_horizontal_dist_threshold: float = 0.1
     wiper_horizontal_dist_threshold_for_grasp: float = 0.01
     wiper_vertical_dist_threshold_for_reach: float = 0.2
-    wiper_vertical_dist_threshold_for_grasp: float = 0.08
+    wiper_vertical_dist_threshold_for_grasp: float = 0.05
 
     # Above everything threshold
     above_everything_z_threshold: float = 0.1
@@ -185,7 +185,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
             self.table_pose.position[0]
             - self.table_half_extents[0]
             + self.toy_half_extents[0]
-            + 0.05,
+            + 0.08,
             self.wiper_init_position[1] + self.toy_half_extents[1] + 0.08,
             self.table_pose.position[2]
             + self.table_half_extents[2]
@@ -1095,7 +1095,7 @@ class CleanupTablePyBulletObjectsEnv(
         return angle_diff > 0.25  # ~15 degrees
 
     def _place_objs_on_table(self) -> None:
-        """Place toys and wiper on the table using a grid-based approach."""
+        """Place toys and wiper on the table."""
         scene_description = self.scene_description
         assert isinstance(scene_description, CleanupTableSceneDescription)
         target_object_ids = self.toy_ids + [self.wiper_id]
