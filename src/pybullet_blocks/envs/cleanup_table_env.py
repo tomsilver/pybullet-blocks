@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import itertools
 import os
 import ssl
 from dataclasses import dataclass, field
@@ -42,7 +41,7 @@ class ObjaverseConfig:
         default_factory=lambda: {
             "A": {
                 "uid": "a84cecb600c04eeba60d02f99b8b154b",  # Duck toy
-                "scale": 0.06,
+                "scale": 0.08,
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
@@ -50,7 +49,7 @@ class ObjaverseConfig:
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
-                "scale": 5e-4,
+                "scale": 6e-4,
             },
             "D": {
                 "uid": "36c5a7d36196442fb03e61d218a4a08e",  # Apple toy
