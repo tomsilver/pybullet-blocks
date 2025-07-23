@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import itertools
 import os
 import ssl
 from dataclasses import dataclass, field
@@ -19,6 +18,7 @@ from numpy.typing import NDArray
 from pybullet_helpers.geometry import Pose, get_pose, multiply_poses, set_pose
 from pybullet_helpers.inverse_kinematics import check_body_collisions
 from pybullet_helpers.utils import create_pybullet_block
+from tomsgeoms2d.structs import Circle, Geom2D, Rectangle
 
 from pybullet_blocks.envs.base_env import (
     BaseSceneDescription,
@@ -41,15 +41,15 @@ class ObjaverseConfig:
         default_factory=lambda: {
             "A": {
                 "uid": "a84cecb600c04eeba60d02f99b8b154b",  # Duck toy
-                "scale": 0.06,
+                "scale": 0.08,
             },
             "B": {
                 "uid": "0ec701a445b84eb6bd0ea16a20e0fa4a",  # Robot toy
-                "scale": 2.2e-6,
+                "scale": 2.4e-6,
             },
             "C": {
                 "uid": "8ce1a6e5ce4d43ada896ee8f2d4ab289",  # Dinosaur toy
-                "scale": 5e-4,
+                "scale": 6e-4,
             },
             "D": {
                 "uid": "36c5a7d36196442fb03e61d218a4a08e",  # Apple toy
@@ -103,7 +103,7 @@ class BinDimensions:
 class CleanupTableSceneDescription(BaseSceneDescription):
     """Container for toy cleanup task hyperparameters."""
 
-    num_toys: int = 4
+    num_toys: int = 3
 
     # Bin parameters
     bin_position: tuple[float, float, float] = (0.5, 0.45, -0.275)
@@ -113,8 +113,7 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     # Toy parameters
     toy_rgba: tuple[float, float, float, float] = (0.8, 0.2, 0.2, 1.0)
     toy_half_extents: tuple[float, float, float] = (0.1, 0.1, 0.1)
-    init_dist: float = 0.08
-    toy_mass: float = 0.3
+    toy_mass: float = 0.01
     toy_friction: float = 0.9
 
     # Wall parameters
@@ -131,8 +130,8 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     wiper_urdf_path: str = field(
         default_factory=lambda: os.path.join(os.path.dirname(__file__), "broom.urdf")
     )
-    wiper_half_extents: tuple[float, float, float] = (0.015, 0.15, 0.04)
-    wiper_init_position: tuple[float, float, float] = (0.35, -0.1, 0.0)
+    wiper_half_extents: tuple[float, float, float] = (0.15, 0.03, 0.05)
+    wiper_init_position: tuple[float, float, float] = (0.5, -0.15, 0.0)
 
     # Objaverse configuration
     objaverse_config: ObjaverseConfig = field(default_factory=ObjaverseConfig)
@@ -149,15 +148,15 @@ class CleanupTableSceneDescription(BaseSceneDescription):
 
     # Pick related settings -- toys
     z_dist_threshold_for_reach: float = 0.02
-    z_dist_threshold_for_grasp: float = -0.025
+    z_dist_threshold_for_grasp: float = -0.02
     hand_ready_pick_z: float = 0.1
     xy_dist_threshold: float = 0.075
 
     # Pick related settings -- wiper
     wiper_horizontal_dist_threshold: float = 0.1
     wiper_horizontal_dist_threshold_for_grasp: float = 0.01
-    wiper_vertical_dist_threshold_for_reach: float = 0.1
-    wiper_vertical_dist_threshold_for_grasp: float = 0.06
+    wiper_vertical_dist_threshold_for_reach: float = 0.2
+    wiper_vertical_dist_threshold_for_grasp: float = 0.08
 
     # Above everything threshold
     above_everything_z_threshold: float = 0.1
@@ -183,10 +182,11 @@ class CleanupTableSceneDescription(BaseSceneDescription):
     def toy_init_position_lower(self) -> tuple[float, float, float]:
         """Lower bounds for toy position on table."""
         return (
-            self.wiper_init_position[0] + self.toy_half_extents[0],
-            self.table_pose.position[1]
-            - self.table_half_extents[1]
-            + self.toy_half_extents[1],
+            self.table_pose.position[0]
+            - self.table_half_extents[0]
+            + self.toy_half_extents[0]
+            + 0.05,
+            self.wiper_init_position[1] + self.toy_half_extents[1] + 0.08,
             self.table_pose.position[2]
             + self.table_half_extents[2]
             + self.toy_half_extents[2],
@@ -198,10 +198,12 @@ class CleanupTableSceneDescription(BaseSceneDescription):
         return (
             self.table_pose.position[0]
             + self.table_half_extents[0]
-            - self.toy_half_extents[0],
+            - self.toy_half_extents[0]
+            - 0.08,
             self.table_pose.position[1]
             + self.table_half_extents[1]
-            - self.toy_half_extents[1],
+            - self.toy_half_extents[1]
+            + 0.05,
             self.table_pose.position[2]
             + self.table_half_extents[2]
             + self.toy_half_extents[2],
@@ -296,12 +298,12 @@ class CleanupTablePyBulletObjectsState(PyBulletObjectsState):
 class ObjaverseLoader:
     """Helper class for loading Objaverse objects."""
 
-    def __init__(self, config: ObjaverseConfig) -> None:
+    def __init__(self, config: ObjaverseConfig, num_toys: int) -> None:
         self.config = config
         os.makedirs(config.cache_dir, exist_ok=True)
         self.downloaded_objects: dict[str, str] = {}
         self._setup_ssl_context()
-        self._download_all_objects()
+        self._download_all_objects(num_toys)
 
     def _setup_ssl_context(self) -> None:
         """Set up SSL context to handle certificate verification."""
@@ -312,9 +314,11 @@ class ObjaverseLoader:
             lambda: ssl_context
         )
 
-    def _download_all_objects(self) -> None:
-        """Download all objects defined in configuration."""
-        uids = [obj_config["uid"] for obj_config in self.config.toy_objects.values()]
+    def _download_all_objects(self, num_toys: int) -> None:
+        """Download all objects needed from configuration."""
+        available_labels = list(self.config.toy_objects.keys())
+        needed_labels = available_labels[:num_toys]
+        uids = [self.config.toy_objects[label]["uid"] for label in needed_labels]
         downloaded_objects = objaverse.load_objects(
             uids=uids,
             download_processes=1,
@@ -429,7 +433,9 @@ class CleanupTablePyBulletObjectsEnv(
         self._setup_wall()
         self._setup_floor()
 
-        self.objaverse_loader = ObjaverseLoader(scene_description.objaverse_config)
+        self.objaverse_loader = ObjaverseLoader(
+            scene_description.objaverse_config, scene_description.num_toys
+        )
         self._setup_wiper()
 
         # Create toys using Objaverse objects or labeled objects
@@ -985,14 +991,11 @@ class CleanupTablePyBulletObjectsEnv(
         if object_id == self.wiper_id:
             wiper_pose = get_pose(self.wiper_id, self.physics_client_id)
             ee_pose = self.robot.get_end_effector_pose()
-            # need to use relative pose to check distance, not absolute
             relative_pose = multiply_poses(wiper_pose.invert(), ee_pose)
-            # if the handle is between gripper along gripper x axis
-            x_dist = abs(relative_pose.position[0])
-            # if the handle is closely above gripper along gripper z axis
+            y_dist = abs(relative_pose.position[1])
             z_dist = abs(relative_pose.position[2])
             return (
-                x_dist
+                y_dist
                 <= self.scene_description.wiper_horizontal_dist_threshold_for_grasp
                 and z_dist
                 <= self.scene_description.wiper_vertical_dist_threshold_for_grasp
@@ -1070,7 +1073,6 @@ class CleanupTablePyBulletObjectsEnv(
         close_indices = np.where(distances < radius)[0]
 
         if len(close_indices) == 0:
-            print(f"Falling back to max Z for object {object_id} with label {label}.")
             result = max(vertices_world[:, 2])
         else:
             result = np.max(vertices_world[close_indices, 2])
@@ -1083,56 +1085,86 @@ class CleanupTablePyBulletObjectsEnv(
         """Check if two poses differ significantly enough to invalidate
         cache."""
         pos_diff = np.linalg.norm(np.array(pose1.position) - np.array(pose2.position))
-        if pos_diff > 0.01:
+        if pos_diff > 0.05:
             return True
         q1 = np.array(pose1.orientation)
         q2 = np.array(pose2.orientation)
         dot_product = abs(np.dot(q1, q2))
         dot_product = min(1.0, dot_product)
         angle_diff = 2 * np.arccos(dot_product)
-        return angle_diff > 0.1  # ~5 degrees
+        return angle_diff > 0.25  # ~15 degrees
 
     def _place_objs_on_table(self) -> None:
         """Place toys and wiper on the table using a grid-based approach."""
         scene_description = self.scene_description
         assert isinstance(scene_description, CleanupTableSceneDescription)
         target_object_ids = self.toy_ids + [self.wiper_id]
+        toy_geom_set: set[Geom2D] = set()
 
-        x_vals = np.linspace(
-            scene_description.toy_init_position_lower[0],
-            scene_description.toy_init_position_upper[0],
-            num=3,
-        )
-        y_vals = np.linspace(
-            scene_description.toy_init_position_lower[1],
-            scene_description.toy_init_position_upper[1],
-            num=3,
-        )
-        z_val = scene_description.toy_init_position_lower[2]
-        candidate_positions = [
-            np.array([x, y, z_val]) for x, y in itertools.product(x_vals, y_vals)
-        ]
-        self.np_random.shuffle(candidate_positions)
+        for toy_id in target_object_ids:
+            placed = False
+            for _ in range(200):
+                if toy_id in self.toy_ids:
+                    position = self.np_random.uniform(
+                        scene_description.toy_init_position_lower,
+                        scene_description.toy_init_position_upper,
+                    )
+                    # Special case due to robot toy's orientation
+                    toy_label = self._toy_id_to_label[toy_id]
+                    if toy_label == "B":
+                        position[1] = scene_description.toy_init_position_upper[1]
+                else:
+                    position = np.array(scene_description.wiper_init_position)
+                set_pose(toy_id, Pose(tuple(position)), self.physics_client_id)
 
-        for obj_id, position in zip(target_object_ids, candidate_positions):
-            if obj_id == self.wiper_id:
-                position = np.array(scene_description.wiper_init_position)
-            set_pose(obj_id, Pose(tuple(position)), self.physics_client_id)
-            collision_ids = (
-                self.bin_part_ids
-                | {self.wall_id, self.floor_id, self.wiper_id}
-                | set(self.toy_ids)
-            ) - {obj_id}
-            for other_id in collision_ids:
-                if check_body_collisions(
-                    obj_id,
-                    other_id,
-                    self.physics_client_id,
-                    perform_collision_detection=False,
-                ):
+                collision_free = True
+                geom_far = True
+                p.performCollisionDetection(physicsClientId=self.physics_client_id)
+
+                collision_ids = (
+                    self.bin_part_ids
+                    | {self.wall_id, self.floor_id, self.wiper_id}
+                    | set(self.toy_ids)
+                ) - {toy_id}
+
+                for other_id in collision_ids:
+                    if check_body_collisions(
+                        toy_id,
+                        other_id,
+                        self.physics_client_id,
+                        perform_collision_detection=False,
+                    ):
+                        collision_free = False
+                        break
+
+                tentative_geom: Geom2D
+                if toy_id in self.toy_ids:
+                    tentative_geom = Circle(
+                        position[0],
+                        position[1],
+                        max(self.get_object_half_extents(toy_id)) + 0.015,
+                    )
+                else:
+                    tentative_geom = Rectangle.from_center(
+                        position[0],
+                        position[1],
+                        scene_description.wiper_half_extents[0],
+                        scene_description.wiper_half_extents[1],
+                        0.0,  # No rotation for wiper
+                    )
+                for other_geom in toy_geom_set:
+                    if other_geom.intersects(tentative_geom):
+                        geom_far = False
+                        break
+
+                if collision_free and geom_far:
+                    toy_geom_set.add(tentative_geom)
+                    placed = True
                     break
 
-        for _ in range(50):
+            assert placed, f"Failed to place toy {toy_id} on table after 200 attempts."
+
+        for _ in range(100):
             p.stepSimulation(physicsClientId=self.physics_client_id)
 
     def get_collision_check_ids(self, object_id: int) -> set[int]:

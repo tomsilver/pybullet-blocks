@@ -1041,18 +1041,19 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
                 object_pose.position[2]
                 + 2 * self._sim.scene_description.wiper_half_extents[2]
             )
-
+            offset = -0.02
         else:
             label = obj.name
             object_top_z = self._sim.get_top_z_at_object_center(object_id, label)
             object_pose = state.object_poses[object_id]
+            offset = -0.005
 
         grasp_pos = (
             object_pose.position[0],
             object_pose.position[1],
             object_top_z
             + self._sim.scene_description.z_dist_threshold_for_grasp
-            - 0.005,
+            + offset,
         )
         grasp_orientation = self._robot_grasp_orientation
         grasp_pose = Pose(grasp_pos, grasp_orientation)
@@ -1062,7 +1063,10 @@ class GraspObjaverseSkill(GraspFrontBackSkill):
             grasp_pose,
             Pose((0, 0, 0), p.getQuaternionFromEuler([0, 0, -np.pi / 2])),
         )
-        grasp_generator = iter([grasp_pose, grasp_rotated])
+        if is_wiper:
+            grasp_generator = iter([grasp_rotated])
+        else:
+            grasp_generator = iter([grasp_pose, grasp_rotated])
 
         kinematic_plan = get_kinematic_plan_to_grasp_object(
             state,
@@ -1379,29 +1383,26 @@ class LiftSkill(PyBulletObjectsSkill):
 
         curr_ee_pose = self._sim.robot.get_end_effector_pose()
 
-        waypoints = [
-            Pose(
-                (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
-                curr_ee_pose.orientation,
-            )
-        ]
-        for target_pos in waypoints:
-            state.set_pybullet(self._sim.robot)
-            motion_plan = run_smooth_motion_planning_to_pose(
-                target_pos,
-                self._sim.robot,
-                collision_ids=collision_ids,
-                end_effector_frame_to_plan_frame=Pose.identity(),
-                seed=self._seed,
-                max_time=self._max_motion_planning_time,
-                held_object=object_id,
-                base_link_to_held_obj=state.attachments[object_id],
-            )
-            if motion_plan is None:
-                return None
-            for robot_joints in motion_plan:
-                state = state.copy_with(robot_joints=robot_joints)
-                plan.append(state)
+        target_pos = Pose(
+            (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
+            curr_ee_pose.orientation,
+        )
+        state.set_pybullet(self._sim.robot)
+        motion_plan = run_smooth_motion_planning_to_pose(
+            target_pos,
+            self._sim.robot,
+            collision_ids=collision_ids,
+            end_effector_frame_to_plan_frame=Pose.identity(),
+            seed=self._seed,
+            max_time=self._max_motion_planning_time,
+            held_object=object_id,
+            base_link_to_held_obj=state.attachments[object_id],
+        )
+        if motion_plan is None:
+            return None
+        for robot_joints in motion_plan:
+            state = state.copy_with(robot_joints=robot_joints)
+            plan.append(state)
 
         # Release object
         state.set_pybullet(self._sim.robot)
