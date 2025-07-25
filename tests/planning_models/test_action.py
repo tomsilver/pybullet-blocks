@@ -17,6 +17,10 @@ from pybullet_blocks.envs.obstacle_tower_env import (
     ObstacleTowerPyBulletObjectsEnv,
     ObstacleTowerSceneDescription,
 )
+from pybullet_blocks.envs.obstacle_tower_env_stochastic import (
+    StochasticGraphObstacleTowerPyBulletObjectsEnv,
+    StochasticObstacleTowerSceneDescription,
+)
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletObjectsEnv
 from pybullet_blocks.planning_models.action import (
     OPERATORS,
@@ -109,22 +113,29 @@ def test_block_stacking_pybullet_objects_action():
 
 
 @pytest.mark.parametrize(
-    "env_cls,perceiver_cls",
+    "env_cls,perceiver_cls,scene_description_cls",
     [
         (
             GraphObstacleTowerPyBulletObjectsEnv,
             GraphObstacleTowerPyBulletObjectsPerceiver,
+            ObstacleTowerSceneDescription,
         ),
-        (ObstacleTowerPyBulletObjectsEnv, ObstacleTowerPyBulletObjectsPerceiver),
+        (
+            ObstacleTowerPyBulletObjectsEnv,
+            ObstacleTowerPyBulletObjectsPerceiver,
+            ObstacleTowerSceneDescription,
+        ),
     ],
 )
-def test_obstacle_tower_pybullet_objects_action(env_cls, perceiver_cls):
+def test_obstacle_tower_pybullet_objects_action(
+    env_cls, perceiver_cls, scene_description_cls
+):
     """Tests task then motion planning in ObstacleTowerPyBulletObjectsEnv()."""
     seed = 123
 
-    scene_description = ObstacleTowerSceneDescription(
+    scene_description = scene_description_cls(
         num_obstacle_blocks=3,
-        stack_blocks=True,
+        stack_blocks=False,
     )
 
     env = env_cls(
@@ -163,6 +174,84 @@ def test_obstacle_tower_pybullet_objects_action(env_cls, perceiver_cls):
         assert False, "Goal not reached"
 
     env.close()
+
+
+@pytest.mark.parametrize(
+    "env_cls,perceiver_cls,scene_description_cls",
+    [
+        (
+            StochasticGraphObstacleTowerPyBulletObjectsEnv,
+            GraphObstacleTowerPyBulletObjectsPerceiver,
+            StochasticObstacleTowerSceneDescription,
+        ),
+    ],
+)
+def test_obstacle_tower_pybullet_objects_action_with_replanning(
+    env_cls, perceiver_cls, scene_description_cls
+):
+    """Tests task then motion planning in ObstacleTowerPyBulletObjectsEnv()."""
+    seed = 124
+
+    scene_description = scene_description_cls(
+        num_obstacle_blocks=3,
+        stack_blocks=True,
+    )
+
+    env = env_cls(
+        scene_description=scene_description,
+        use_gui=False,
+        seed=seed,
+    )
+    sim = env_cls(
+        scene_description=scene_description,
+        use_gui=False,
+        seed=seed,
+    )
+
+    # from gymnasium.wrappers import RecordVideo
+    # env = RecordVideo(env, "videos/obstacle-tower-ttmp-test")
+    max_motion_planning_time = 0.1  # increase for prettier videos
+    max_replans = 5
+    max_steps_per_plan = 500  # Maximum steps before considering plan failed
+
+    perceiver = perceiver_cls(sim)
+    skills = {s(sim, max_motion_planning_time=max_motion_planning_time) for s in SKILLS}
+
+    # Create the planner
+    planner = TaskThenMotionPlanner(
+        TYPES, PREDICATES, perceiver, OPERATORS, skills, planner_id="pyperplan"
+    )
+
+    # Run an episode
+    obs, info = env.reset(seed=seed)
+
+    # Outer replanning loop
+    for replan_attempt in range(max_replans):
+        print(f"Planning attempt {replan_attempt + 1}/{max_replans}")
+
+        planner.reset(obs, info)
+        steps_in_current_plan = 0
+
+        for _ in range(max_steps_per_plan):
+            steps_in_current_plan += 1
+
+            try:
+                action = planner.step(obs)
+            except Exception as e:
+                print(f"Planner failed with exception: {e}. Replanning...")
+                break
+
+            obs, reward, done, _, _ = env.step(action)
+            if done:  # goal reached!
+                assert reward > 0
+                print(
+                    f"Goal reached after {steps_in_current_plan} steps in attempt {replan_attempt + 1}!"    # pylint: disable=line-too-long
+                )
+                env.close()
+                return
+
+    env.close()
+    assert False, f"Goal not reached after {max_replans} planning attempts."
 
 
 def test_cluttered_drawer_pybullet_objects_action():

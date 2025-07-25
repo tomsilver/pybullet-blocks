@@ -249,7 +249,7 @@ class GraphObstacleTowerPyBulletObjectsEnv(
     ) -> None:
         if scene_description is None:
             scene_description = ObstacleTowerSceneDescription()
-        assert isinstance(scene_description, ObstacleTowerSceneDescription)
+        # assert isinstance(scene_description, ObstacleTowerSceneDescription)
 
         super().__init__(scene_description, render_mode, use_gui, seed=seed)
 

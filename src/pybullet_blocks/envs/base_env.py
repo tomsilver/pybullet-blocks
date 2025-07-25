@@ -579,7 +579,7 @@ class PyBulletObjectsEnv(gym.Env, Generic[ObsType, ActType]):
                     object_id,
                     collision_id,
                     self.physics_client_id,
-                    perform_collision_detection=False,
+                    distance_threshold=1e-3,
                 )
                 if collision:
                     collision_free = False

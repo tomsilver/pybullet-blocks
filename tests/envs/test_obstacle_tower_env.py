@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 import numpy as np
+import pybullet as p
 import pytest
 from pybullet_helpers.geometry import Pose, iter_between_poses, multiply_poses
 from pybullet_helpers.motion_planning import (
@@ -18,6 +19,10 @@ from pybullet_blocks.envs.obstacle_tower_env import (
     ObstacleTowerPyBulletObjectsEnv,
     ObstacleTowerPyBulletObjectsState,
     ObstacleTowerSceneDescription,
+)
+from pybullet_blocks.envs.obstacle_tower_env_stochastic import (
+    StochasticGraphObstacleTowerPyBulletObjectsEnv,
+    StochasticObstacleTowerSceneDescription,
 )
 
 
@@ -258,3 +263,18 @@ def test_obstacle_tower_env(env_cls, state_cls):
     state = _execute_pybullet_helpers_plan(lift_plan, state)
 
     env.close()
+
+
+@pytest.mark.skip(reason="Requires GUI for testing")
+def test_stochastic_obstacle_tower_env_init():
+    """Test initialization of StochasticObstacleTowerEnv."""
+    scene_description = StochasticObstacleTowerSceneDescription(
+        num_obstacle_blocks=3,
+        stack_blocks=True,
+    )
+    env = StochasticGraphObstacleTowerPyBulletObjectsEnv(
+        scene_description=scene_description, use_gui=True
+    )
+    _ = env.reset(seed=123)
+    while True:
+        p.getMouseEvents(physicsClientId=env.physics_client_id)

@@ -32,6 +32,9 @@ from pybullet_blocks.envs.obstacle_tower_env import (
     ObstacleTowerPyBulletObjectsEnv,
     ObstacleTowerPyBulletObjectsState,
 )
+from pybullet_blocks.envs.obstacle_tower_env_stochastic import (
+    StochasticGraphObstacleTowerPyBulletObjectsEnv,
+)
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletObjectsEnv,
     PickPlacePyBulletObjectsState,
@@ -469,7 +472,13 @@ class GraphObstacleTowerPyBulletObjectsPerceiver(
         super().__init__(sim)
 
         # Create constant objects
-        assert isinstance(self._sim, GraphObstacleTowerPyBulletObjectsEnv)
+        assert isinstance(
+            self._sim,
+            (
+                GraphObstacleTowerPyBulletObjectsEnv,
+                StochasticGraphObstacleTowerPyBulletObjectsEnv,
+            ),
+        )
         self._target_block = Object("T", object_type)
         self._target_area = Object("target", object_type)
         self._obstacle_blocks = sorted(
