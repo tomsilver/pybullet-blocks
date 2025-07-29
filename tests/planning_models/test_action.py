@@ -245,7 +245,7 @@ def test_obstacle_tower_pybullet_objects_action_with_replanning(
             if done:  # goal reached!
                 assert reward > 0
                 print(
-                    f"Goal reached after {steps_in_current_plan} steps in attempt {replan_attempt + 1}!"    # pylint: disable=line-too-long
+                    f"Goal reached after {steps_in_current_plan} steps in attempt {replan_attempt + 1}!"  # pylint: disable=line-too-long
                 )
                 env.close()
                 return

@@ -117,7 +117,7 @@ class GraphObstacleTowerPyBulletObjectsState(PyBulletObjectsState):
             elif np.isclose(node[0], 1):  # Block
                 # Check if it's a labelObjectState or a regular ObjectState (target area)
                 if len(node) >= LabeledObjectState.get_dimension() and not np.isclose(
-                    node[LabeledObjectState.get_dimension() - 3], 0
+                    node[LabeledObjectState.get_dimension() - 2], 0
                 ):
                     # It's a LabeledObjectState
                     vec = node[: LabeledObjectState.get_dimension()]

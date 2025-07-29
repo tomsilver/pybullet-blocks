@@ -103,7 +103,6 @@ class StochasticGraphObstacleTowerPyBulletObjectsEnv(
             half_extents = tuple(
                 dim * size_multiplier for dim in scene_desc.object_half_extents
             )
-            print(f"Block ID {block_id} half extents: {half_extents}")
 
             mass_multiplier = self._np_random.uniform(
                 1 - scene_desc.object_mass_variation,

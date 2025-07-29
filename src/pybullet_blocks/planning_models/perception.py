@@ -529,6 +529,12 @@ class GraphObstacleTowerPyBulletObjectsPerceiver(
     def _interpret_IsTarget(self) -> set[GroundAtom]:
         return {GroundAtom(IsTarget, [self._target_area])}
 
+    def get_objects(self) -> set[Object]:
+        """Get all objects in the environment."""
+        return {self._robot, self._table, self._target_block, self._target_area} | set(
+            self._obstacle_blocks
+        )
+
 
 class ClutteredDrawerPyBulletObjectsPerceiver(
     PyBulletObjectsPerceiver[gym.spaces.GraphInstance]
@@ -836,6 +842,12 @@ class ClutteredDrawerPyBulletObjectsPerceiver(
 
         return in_drawer
 
+    def get_objects(self) -> set[Object]:
+        """Get all objects in the environment."""
+        return {self._robot, self._table, self._drawer, self._target_object} | set(
+            self._drawer_objects
+        )
+
 
 class CleanupTablePyBulletObjectsPerceiver(
     PyBulletObjectsPerceiver[gym.spaces.GraphInstance]
@@ -975,3 +987,7 @@ class CleanupTablePyBulletObjectsPerceiver(
                 ):
                     on_relations.add((obj, self._table))
         return on_relations
+
+    def get_objects(self) -> set[Object]:
+        """Get all objects in the environment."""
+        return {self._robot, self._table, self._bin, self._wiper} | set(self._toys)

@@ -72,12 +72,11 @@ class LabeledObjectState(ObjectState):
 
     label: str
     held: bool
-    stacked_on: str | None = None
 
     @classmethod
     def get_dimension(cls) -> int:
         """Get the dimension of this state."""
-        return super().get_dimension() + 3
+        return super().get_dimension() + 2
 
     def to_vec(self) -> NDArray[np.float32]:
         """Create vector representation of the state."""
@@ -88,32 +87,26 @@ class LabeledObjectState(ObjectState):
                 self.pose.orientation,
                 [ord(self.label.lower()) - 97],
                 [self.held],
-                [
-                    (
-                        ord(self.stacked_on.lower()) - 97
-                        if self.stacked_on is not None
-                        else -1
-                    )
-                ],
             ]
         )
 
     @classmethod
     def from_vec(cls, vec: NDArray[np.float32]) -> LabeledObjectState:
         """Build a state from a vector."""
-        (_, pos_vec, orn_vec, label_vec, held_vec, stacked_on_vec) = np.split(
+        (
+            _,
+            pos_vec,
+            orn_vec,
+            label_vec,
+            held_vec,
+        ) = np.split(
             vec,
-            [1, 4, 8, 9, 10],
+            [1, 4, 8, 9],
         )
         label = chr(int(label_vec[0] + 97)).upper()
         held = bool(held_vec[0])
         pose = Pose(tuple(pos_vec), tuple(orn_vec))
-        stacked_on = (
-            chr(int(stacked_on_vec[0] + 97)).upper()
-            if stacked_on_vec[0] != -1
-            else None
-        )  # None if it is not on any block
-        return cls(pose, label, held, stacked_on)
+        return cls(pose, label, held)
 
 
 @dataclass(frozen=True)
