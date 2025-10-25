@@ -135,7 +135,7 @@ def test_obstacle_tower_pybullet_objects_action(
 
     scene_description = scene_description_cls(
         num_obstacle_blocks=3,
-        stack_blocks=False,
+        stack_blocks=True,
     )
 
     env = env_cls(

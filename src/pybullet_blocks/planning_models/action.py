@@ -850,6 +850,46 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
         raise NotImplementedError
 
 
+class PartialObservabilityPyBulletObjectsSkill(PyBulletObjectsSkill):
+    """Skills that use planning simulator for motion planning."""
+
+    def __init__(
+        self,
+        execution_sim: PyBulletObjectsEnv[ObsType, NDArray[np.float32]],
+        planning_sim: PyBulletObjectsEnv[ObsType, NDArray[np.float32]],
+        max_motion_planning_time: float = 1.0,
+        seed: int = 0,
+    ) -> None:
+        # Store both sims
+        self._execution_sim = execution_sim
+        self._planning_sim = planning_sim
+
+        # Initialize with planning sim (for motion planning)
+        super().__init__(planning_sim, max_motion_planning_time, seed)
+
+    def _obs_to_sim_state(self, obs: ObsType) -> PyBulletObjectsState:
+        """Convert observation using planning sim."""
+        return GraphObstacleTowerPyBulletObjectsState.from_observation(
+            obs  # type:ignore
+        )
+
+    def _object_to_pybullet_id(self, obj: Object) -> int:
+        """Map objects to planning sim PyBullet IDs."""
+        if obj.name == "table":
+            return self._planning_sim.table_id
+        if obj.name == "target":
+            return self._planning_sim.target_area_id
+        if obj.name == "T":
+            return self._planning_sim.target_block_id
+        assert len(obj.name) == 1
+        label = obj.name
+        # Only works for visible blocks (B, C) not hidden blocks (D)
+        block_index = ord(label) - 65 - 1
+        if block_index < len(self._planning_sim.obstacle_block_ids):
+            return self._planning_sim.obstacle_block_ids[block_index]
+        raise ValueError(f"Object {obj.name} not found in planning simulator")
+
+
 class PickSkill(PyBulletObjectsSkill):
     """Skill for picking."""
 
