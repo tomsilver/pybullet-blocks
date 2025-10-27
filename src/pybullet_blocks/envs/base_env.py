@@ -211,7 +211,7 @@ class BaseSceneDescription:
     object_friction: float = 0.9
 
     target_rgba: tuple[float, float, float, float] = (0.0, 0.7, 0.2, 1.0)
-    target_half_extents: tuple[float, float, float] = (0.03, 0.03, 0.001)
+    target_half_extents: tuple[float, float, float] = (0.026, 0.026, 0.001)
 
     robot_table_penetration_dist: float = 0.01
     grasped_object_table_penetration_dist: float = 0.02

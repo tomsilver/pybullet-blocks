@@ -328,6 +328,8 @@ def test_cleanup_table_pybullet_objects_action():
     # env = RecordVideo(env, "videos/cleanup-table-ttmp-test")
 
     max_motion_planning_time = 0.1
+    max_replans = 5
+    max_steps_per_plan = 500
 
     perceiver = CleanupTablePyBulletObjectsPerceiver(sim)
     skills = {
@@ -347,23 +349,30 @@ def test_cleanup_table_pybullet_objects_action():
 
     # Run an episode
     obs, info = env.reset(seed=seed)
-    planner.reset(obs, info)
-    for _ in range(10000):
-        action = planner.step(obs)
 
-        # import imageio.v2 as iio
-        # try:
-        obs, reward, done, _, _ = env.step(action)
-        # except AssertionError as e:
-        #     print(f"Exception during step: {e}")
-        #     break
-        # img = env.render()
-        # iio.imwrite(f"videos/cleanup-table-ttmp-test/{k:04d}.png", img)
+    # Outer replanning loop
+    for replan_attempt in range(max_replans):
+        print(f"Planning attempt {replan_attempt + 1}/{max_replans}")
 
-        if done:
-            assert reward > 0
-            break
-    # else:
-    #     assert False, "Goal not reached"
+        planner.reset(obs, info)
+        steps_in_current_plan = 0
+
+        for _ in range(max_steps_per_plan):
+            steps_in_current_plan += 1
+            try:
+                action = planner.step(obs)
+            except Exception as e:
+                print(f"Planner failed with exception: {e}. Replanning...")
+                break
+
+            obs, reward, done, _, _ = env.step(action)
+            if done:
+                assert reward > 0
+                print(
+                    f"Goal reached after {steps_in_current_plan} steps in attempt {replan_attempt + 1}!"  # pylint: disable=line-too-long
+                )
+                env.close()
+                return
 
     env.close()
+    assert False, f"Goal not reached after {max_replans} planning attempts."

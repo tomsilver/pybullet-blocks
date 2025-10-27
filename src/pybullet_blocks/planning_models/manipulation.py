@@ -37,6 +37,7 @@ def get_kinematic_plan_to_reach_object(
     max_motion_planning_time: float = 1.0,
     max_motion_planning_candidates: int | None = None,
     lift_from_reach_pose: bool = False,
+    target_object_id: int | None = None,
     seed: int = 0,
 ) -> list[KinematicState] | None:
     """Make a plan to pick up the object from a surface.
@@ -90,7 +91,6 @@ def get_kinematic_plan_to_reach_object(
                 (curr_ee_pose.position[0], curr_ee_pose.position[1], lifting_height),
                 curr_ee_pose.orientation,
             )
-
         plan_to_lift = run_smooth_motion_planning_to_pose(
             lift_pose,
             robot,
@@ -116,6 +116,8 @@ def get_kinematic_plan_to_reach_object(
             reach = multiply_poses(object_pose, object_to_link, relative_reach)
 
         # Motion plan to the prereach pose.
+        if target_object_id is not None:
+            collision_ids.add(target_object_id)
         plan_to_reach = run_smooth_motion_planning_to_pose(
             reach,
             robot,

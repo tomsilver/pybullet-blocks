@@ -940,7 +940,8 @@ class ReachSkill(PyBulletObjectsSkill):
         # same as pick
         _, obj = objects
         object_id = self._object_to_pybullet_id(obj)
-        collision_ids = set(state.object_poses)
+        assert isinstance(self._sim, ClutteredDrawerPyBulletObjectsEnv)
+        target_object_id = self._sim.target_object_id
 
         def reach_generator() -> Iterator[Pose]:
             while True:
@@ -962,9 +963,10 @@ class ReachSkill(PyBulletObjectsSkill):
             state,
             self._sim.robot,
             object_id,
-            collision_ids,
+            set(),
             reach_generator=reach_generator(),
             reach_generator_iters=20,
+            target_object_id=target_object_id,
         )
         return kinematic_plan
 
