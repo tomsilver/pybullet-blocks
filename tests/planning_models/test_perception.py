@@ -16,6 +16,10 @@ from pybullet_blocks.envs.obstacle_tower_env import (
     ObstacleTowerPyBulletObjectsEnv,
     ObstacleTowerSceneDescription,
 )
+from pybullet_blocks.envs.obstacle_tower_env_stochastic import (
+    StochasticGraphObstacleTowerPyBulletObjectsEnv,
+    StochasticObstacleTowerSceneDescription,
+)
 from pybullet_blocks.envs.pick_place_env import PickPlacePyBulletObjectsEnv
 from pybullet_blocks.planning_models.perception import (
     BlockStackingPyBulletObjectsPerceiver,
@@ -68,18 +72,30 @@ def test_block_stacking_pybullet_perceiver():
 
 
 @pytest.mark.parametrize(
-    "env_cls,perceiver_cls",
+    "env_cls,perceiver_cls,scene_description_cls",
     [
         (
             GraphObstacleTowerPyBulletObjectsEnv,
             GraphObstacleTowerPyBulletObjectsPerceiver,
+            ObstacleTowerSceneDescription,
         ),
-        (ObstacleTowerPyBulletObjectsEnv, ObstacleTowerPyBulletObjectsPerceiver),
+        (
+            ObstacleTowerPyBulletObjectsEnv,
+            ObstacleTowerPyBulletObjectsPerceiver,
+            ObstacleTowerSceneDescription,
+        ),
+        (
+            StochasticGraphObstacleTowerPyBulletObjectsEnv,
+            GraphObstacleTowerPyBulletObjectsPerceiver,
+            StochasticObstacleTowerSceneDescription,
+        ),
     ],
 )
-def test_obstacle_tower_pybullet_perceiver(env_cls, perceiver_cls):
+def test_obstacle_tower_pybullet_perceiver(
+    env_cls, perceiver_cls, scene_description_cls
+):
     """Tests for ObstacleTowerPyBulletObjectsPerceiver()."""
-    scene_description = ObstacleTowerSceneDescription(
+    scene_description = scene_description_cls(
         num_obstacle_blocks=3,
         stack_blocks=True,
     )

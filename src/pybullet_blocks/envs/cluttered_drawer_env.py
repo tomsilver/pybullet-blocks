@@ -119,7 +119,7 @@ class ClutteredDrawerSceneDescription(BaseSceneDescription):
     xy_dist_threshold: float = 0.025  # XY distance threshold for pick
 
     # Initial target object position offset
-    tgt_x_offset: float = -0.08  # w.r.t. drawer center
+    tgt_x_offset: float = -0.04  # w.r.t. drawer center
 
     @property
     def table_placement_position_lower(self) -> tuple[float, float, float]:
@@ -684,7 +684,7 @@ class ClutteredDrawerPyBulletObjectsEnv(
         )
         z = scene_description.dimensions.on_drawer_object_z
 
-        # move the target to further from the tabel edge
+        # move the target to further from the table edge
         # otherwise very weird collision happens
         target_x = drawer_pos[0] + self.scene_description.tgt_x_offset
         target_y = drawer_pos[1]

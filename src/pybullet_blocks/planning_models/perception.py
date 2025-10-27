@@ -32,6 +32,9 @@ from pybullet_blocks.envs.obstacle_tower_env import (
     ObstacleTowerPyBulletObjectsEnv,
     ObstacleTowerPyBulletObjectsState,
 )
+from pybullet_blocks.envs.obstacle_tower_env_stochastic import (
+    StochasticGraphObstacleTowerPyBulletObjectsEnv,
+)
 from pybullet_blocks.envs.pick_place_env import (
     PickPlacePyBulletObjectsEnv,
     PickPlacePyBulletObjectsState,
@@ -469,7 +472,13 @@ class GraphObstacleTowerPyBulletObjectsPerceiver(
         super().__init__(sim)
 
         # Create constant objects
-        assert isinstance(self._sim, GraphObstacleTowerPyBulletObjectsEnv)
+        assert isinstance(
+            self._sim,
+            (
+                GraphObstacleTowerPyBulletObjectsEnv,
+                StochasticGraphObstacleTowerPyBulletObjectsEnv,
+            ),
+        )
         self._target_block = Object("T", object_type)
         self._target_area = Object("target", object_type)
         self._obstacle_blocks = sorted(
@@ -519,6 +528,12 @@ class GraphObstacleTowerPyBulletObjectsPerceiver(
 
     def _interpret_IsTarget(self) -> set[GroundAtom]:
         return {GroundAtom(IsTarget, [self._target_area])}
+
+    def get_objects(self) -> set[Object]:
+        """Get all objects in the environment."""
+        return {self._robot, self._table, self._target_block, self._target_area} | set(
+            self._obstacle_blocks
+        )
 
 
 class ClutteredDrawerPyBulletObjectsPerceiver(
@@ -827,6 +842,12 @@ class ClutteredDrawerPyBulletObjectsPerceiver(
 
         return in_drawer
 
+    def get_objects(self) -> set[Object]:
+        """Get all objects in the environment."""
+        return {self._robot, self._table, self._drawer, self._target_object} | set(
+            self._drawer_objects
+        )
+
 
 class CleanupTablePyBulletObjectsPerceiver(
     PyBulletObjectsPerceiver[gym.spaces.GraphInstance]
@@ -966,3 +987,7 @@ class CleanupTablePyBulletObjectsPerceiver(
                 ):
                     on_relations.add((obj, self._table))
         return on_relations
+
+    def get_objects(self) -> set[Object]:
+        """Get all objects in the environment."""
+        return {self._robot, self._table, self._bin, self._wiper} | set(self._toys)
