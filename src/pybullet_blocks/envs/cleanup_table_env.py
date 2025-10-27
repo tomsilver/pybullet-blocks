@@ -311,7 +311,7 @@ class ObjaverseLoader:
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
         ssl._create_default_https_context = (  # pylint: disable=protected-access
-            lambda: ssl_context
+            lambda *args, **kwargs: ssl_context
         )
 
     def _download_all_objects(self, num_toys: int) -> None:
