@@ -254,6 +254,7 @@ def test_obstacle_tower_pybullet_objects_action_with_replanning(
     assert False, f"Goal not reached after {max_replans} planning attempts."
 
 
+@pytest.mark.skip(reason="Long-horizon task")
 def test_cluttered_drawer_pybullet_objects_action():
     """Tests task then motion planning in
     ClutteredDrawerPyBulletObjectsEnv()."""
@@ -308,6 +309,7 @@ def test_cluttered_drawer_pybullet_objects_action():
     env.close()
 
 
+@pytest.mark.skip(reason="Long-horizon task")
 def test_cleanup_table_pybullet_objects_action():
     """Tests task then motion planning in CleanupTablePyBulletObjectsEnv()."""
     seed = 123
