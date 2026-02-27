@@ -705,11 +705,11 @@ class PyBulletObjectsSkill(LiftedOperatorSkill[ObsType, NDArray[np.float32]]):
             return PickPlacePyBulletObjectsState.from_observation(obs)  # type: ignore
         if isinstance(self._sim, BlockStackingPyBulletObjectsEnv):
             return BlockStackingPyBulletObjectsState.from_observation(
-                obs  # type:ignore
+                obs  # type: ignore
             )
         if isinstance(self._sim, ObstacleTowerPyBulletObjectsEnv):
             return ObstacleTowerPyBulletObjectsState.from_observation(
-                obs  # type:ignore
+                obs  # type: ignore
             )
         if isinstance(self._sim, GraphObstacleTowerPyBulletObjectsEnv):
             return GraphObstacleTowerPyBulletObjectsState.from_observation(obs)  # type: ignore  # pylint:disable=line-too-long
@@ -870,7 +870,7 @@ class PartialObservabilityPyBulletObjectsSkill(PyBulletObjectsSkill):
     def _obs_to_sim_state(self, obs: ObsType) -> PyBulletObjectsState:
         """Convert observation using planning sim."""
         return GraphObstacleTowerPyBulletObjectsState.from_observation(
-            obs  # type:ignore
+            obs  # type: ignore
         )
 
     def _object_to_pybullet_id(self, obj: Object) -> int:

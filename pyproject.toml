@@ -10,9 +10,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
    "numpy",
-   "pybullet_helpers@git+https://github.com/tomsilver/pybullet-helpers.git",
+   "pybullet_helpers@git+https://github.com/Princeton-Robot-Planning-and-Learning/prpl-mono.git#subdirectory=pybullet-helpers",
    "task_then_motion_planning@git+https://github.com/tomsilver/task-then-motion-planning.git",
-   "tomsgeoms2d@git+https://github.com/tomsilver/toms-geoms-2d.git",
+   "tomsgeoms2d@git+https://github.com/Princeton-Robot-Planning-and-Learning/prpl-mono.git#subdirectory=toms-geoms-2d",
    "gymnasium==1.0.0",
    "moviepy",
    "objaverse",
